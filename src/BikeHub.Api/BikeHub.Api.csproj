@@ -5,6 +5,7 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+        <UserSecretsId>59cf445c-5411-4fbc-aa9e-d24549fe46b1</UserSecretsId>
     </PropertyGroup>
 
     <ItemGroup>
@@ -14,7 +15,9 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\BikeHub.Application\BikeHub.Application.csproj" />
+      <ProjectReference Include="..\BikeHub.Application\BikeHub.Application.csproj" />
+      <ProjectReference Include="..\BikeHub.Dal\BikeHub.Dal.csproj" />
+      <ProjectReference Include="..\BikeHub.Domain\BikeHub.Domain.csproj" />
     </ItemGroup>
 
 </Project>

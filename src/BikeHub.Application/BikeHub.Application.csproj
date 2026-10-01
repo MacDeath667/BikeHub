@@ -10,4 +10,8 @@
       <Folder Include="Commands\" />
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\BikeHub.Dal\BikeHub.Dal.csproj" />
+    </ItemGroup>
+
 </Project>

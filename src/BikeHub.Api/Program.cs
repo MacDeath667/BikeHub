@@ -1,8 +1,11 @@
+using BikeHub.Dal;
 using Microsoft.AspNetCore.Mvc;
 using GetBike = BikeHub.Application.Queries.GetBike;
 using GetBikes = BikeHub.Application.Queries.GetBikes;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.AddDapper("BikeHub");
 builder.Services.AddScoped<GetBike.Handler>();
 builder.Services.AddScoped<GetBikes.Handler>();
 
