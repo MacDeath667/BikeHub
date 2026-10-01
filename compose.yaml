@@ -1,0 +1,7 @@
+﻿services:
+  bikehub.api:
+    image: bikehub.api
+    build:
+      context: .
+      dockerfile: ../src/BikeHub.Api/Dockerfile
+
