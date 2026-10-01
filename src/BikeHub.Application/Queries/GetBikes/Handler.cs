@@ -1,10 +1,5 @@
 ﻿namespace BikeHub.Application.Queries.GetBikes;
 
-public class Query(Guid ownerId)
-{
-    public Guid OwnerId => ownerId;
-}
-
 public class Handler
 {
     public async Task<IReadOnlyCollection<BikeDto>> Handle(Query query, CancellationToken cancellationToken)
@@ -17,5 +12,3 @@ public class Handler
         ];
     }
 }
-
-public record BikeDto(Guid Id, string Name, string Description, Guid OwnerId);

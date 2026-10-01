@@ -8,9 +8,20 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddDapper("BikeHub");
 builder.Services.AddScoped<GetBike.Handler>();
 builder.Services.AddScoped<GetBikes.Handler>();
+builder.Services.AddSingleton<DatabaseMigrator>();
+builder.Services.AddSingleton<DatabaseBootstrapper>();
 
 
 var app = builder.Build();
+
+await app.Services
+    .GetRequiredService<DatabaseBootstrapper>()
+    .EnsureDatabaseAsync(CancellationToken.None);
+
+await app.Services
+    .GetRequiredService<DatabaseMigrator>()
+    .MigrateAsync(CancellationToken.None);
+
 
 app.MapGet("/api/bikes", () => Results.Ok());
 app.MapGet("/api/bikes/{id}/history", (Guid id) => Results.Ok(id));

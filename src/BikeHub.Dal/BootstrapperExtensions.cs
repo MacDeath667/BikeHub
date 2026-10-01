@@ -11,14 +11,7 @@ public static class BootstrapperExtensions
         var connectionString = builder.Configuration.GetConnectionString(connectionName).Protect();
 
         builder.Services.AddSingleton<IDbConnectionFactory>(new SqlDbConnectionFactory(connectionString));
-        return builder;
-    }
-}
 
-public static class ConfigExtensions
-{
-    public static T Protect<T>(this T? obj) where T : class
-    {
-        return obj ?? throw new NullReferenceException("Was null");
+        return builder;
     }
 }

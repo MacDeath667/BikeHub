@@ -5,17 +5,17 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
-    
+
     <ItemGroup>
-      <PackageReference Include="Dapper" Version="2.1.89" />
-      <PackageReference Include="Npgsql" Version="10.0.3" />
-      <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.12" />
-    </ItemGroup>
-    
-    <ItemGroup>
-      <Reference Include="Microsoft.Extensions.Hosting.Abstractions">
-        <HintPath>..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.AspNetCore.App\10.0.11\Microsoft.Extensions.Hosting.Abstractions.dll</HintPath>
-      </Reference>
+        <PackageReference Include="Dapper" Version="2.1.89"/>
+        <PackageReference Include="dbup" Version="5.0.41"/>
+        <PackageReference Include="dbup-postgresql" Version="7.0.1"/>
+        <PackageReference Include="Npgsql" Version="10.0.3"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0"/>
     </ItemGroup>
 
+    <ItemGroup>
+        <EmbeddedResource Include="Migrations\*.sql"/>
+    </ItemGroup>
+    
 </Project>
