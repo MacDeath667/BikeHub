@@ -1,3 +1,4 @@
+using BikeHub.Api.Middleware;
 using BikeHub.Dal;
 using Microsoft.AspNetCore.Mvc;
 using GetBike = BikeHub.Application.Queries.GetBike;
@@ -12,9 +13,19 @@ builder.Services.AddScoped<GetBikes.Handler>();
 builder.Services.AddScoped<AddBike.Handler>();
 builder.Services.AddSingleton<DatabaseMigrator>();
 builder.Services.AddSingleton<DatabaseBootstrapper>();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 
 var app = builder.Build();
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseMiddleware<StatisticsMiddleware>();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 await app.Services
     .GetRequiredService<DatabaseBootstrapper>()
