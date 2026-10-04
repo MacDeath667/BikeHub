@@ -1,0 +1,3 @@
+﻿ALTER TABLE bikes
+    ALTER COLUMN id SET DEFAULT uuidv7(),
+    ALTER COLUMN created_at SET DEFAULT NOW();
