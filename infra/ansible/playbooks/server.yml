@@ -2,4 +2,19 @@
 - name: Prepare BikeHub host
   hosts: bikehub
   become: true
-  tasks: []
+  tasks:
+    - name: Refresh APT package metadata
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install QEMU guest agent
+      ansible.builtin.apt:
+        name: qemu-guest-agent
+        state: present
+
+    - name: Enable and start QEMU guest agent
+      ansible.builtin.service:
+        name: qemu-guest-agent
+        enabled: true
+        state: started

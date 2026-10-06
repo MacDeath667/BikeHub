@@ -15,8 +15,9 @@ SHA-512, and converts it to raw directly into that zvol. It refuses to write
 if the target zvol is not empty.
 
 For this step, TrueNAS must be reachable over SSH. The configured SSH user
-needs non-interactive `sudo` access to `bash`, `curl`, `openssl`, `qemu-img`,
-and the zvol device. The VM uses VirtIO and the cloud image boots with UEFI.
+must be able to run `sudo`; Terraform requests the sudo password interactively
+when importing the image and installing the seed ISO. No passwordless sudo
+rule is required. The VM uses VirtIO and the cloud image boots with UEFI.
 
 ## Cloud-init seed
 
@@ -35,8 +36,8 @@ network interface, reserved DHCP address, and seed ISO destination. Terraform
 reads the public key from `~/.ssh/truenas_admin.pub` and uses the matching
 private key at `~/.ssh/truenas_admin`. Keep the TrueNAS API key in
 `TRUENAS_API_KEY`; never commit private keys or state. Locally, macOS `hdiutil`
-or `genisoimage`, `ssh`, and `scp` are required. TrueNAS needs SSH with
-non-interactive sudo as described above.
+or `genisoimage`, `ssh`, and `scp` are required. Run Terraform from an
+interactive terminal so the remote sudo password prompts can be answered.
 
 ```sh
 cd infra/terraform

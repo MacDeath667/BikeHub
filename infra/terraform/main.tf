@@ -1,5 +1,5 @@
 locals {
-  vm_disk_zvol       = "${var.vm_pool}/vms/${var.vm_name}-os"
+  vm_disk_zvol       = "${var.vm_pool}/${var.vm_name}-os"
   ssh_public_key     = trimspace(file(pathexpand(var.ssh_public_key_path)))
   cloud_init_user_data = templatefile("${path.module}/cloud-init/user-data.yaml", {
     vm_name     = var.vm_name

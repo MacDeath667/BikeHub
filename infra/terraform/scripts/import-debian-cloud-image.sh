@@ -30,15 +30,22 @@ if [[ ! "$TRUENAS_ZVOL_PATH" =~ ^/dev/zvol/[A-Za-z0-9_.:/-]+$ ]]; then
 fi
 
 artifact="debian-13-generic-amd64-daily-${DEBIAN_IMAGE_VERSION}.qcow2"
-artifact_url="https://cloud.debian.org/images/cloud/trixie/daily/${DEBIAN_IMAGE_VERSION}/${artifact}"
 ssh_args=(-p "$ssh_port" -o BatchMode=yes)
+scp_args=(-P "$ssh_port" -o BatchMode=yes)
 if [[ -n "$identity_file" ]]; then
   ssh_args+=(-i "$identity_file")
+  scp_args+=(-i "$identity_file")
 fi
 
-echo "Downloading, verifying, and importing Debian $DEBIAN_IMAGE_VERSION on TrueNAS..."
-ssh -T "${ssh_args[@]}" "$TRUENAS_SSH_TARGET" \
-  "sudo -n bash -s -- '$TRUENAS_ZVOL_PATH' '$DEBIAN_IMAGE_VERSION' '$DEBIAN_IMAGE_SHA512'" <<'REMOTE_SCRIPT'
+work_dir="$(mktemp -d "${TMPDIR:-/tmp}/bikehub-image-import.XXXXXX")"
+remote_script="/tmp/bikehub-image-import-${DEBIAN_IMAGE_VERSION}-$$.sh"
+cleanup() {
+  rm -f "$work_dir/import.sh"
+  rmdir "$work_dir"
+}
+trap cleanup EXIT
+
+cat > "$work_dir/import.sh" <<'REMOTE_SCRIPT'
 set -euo pipefail
 device="$1"
 version="$2"
@@ -69,5 +76,10 @@ fi
 qemu-img convert -p -f qcow2 -O raw "$image" "$device"
 echo "Imported verified Debian image $version into $device"
 REMOTE_SCRIPT
+
+scp "${scp_args[@]}" "$work_dir/import.sh" "$TRUENAS_SSH_TARGET:$remote_script"
+echo "Downloading, verifying, and importing Debian $DEBIAN_IMAGE_VERSION on TrueNAS..."
+ssh -tt "${ssh_args[@]}" "$TRUENAS_SSH_TARGET" \
+  "sudo bash '$remote_script' '$TRUENAS_ZVOL_PATH' '$DEBIAN_IMAGE_VERSION' '$DEBIAN_IMAGE_SHA512'; status=\$?; rm -f '$remote_script'; exit \$status"
 
 echo "Debian cloud image import completed."

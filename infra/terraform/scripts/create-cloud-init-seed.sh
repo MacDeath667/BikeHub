@@ -61,7 +61,7 @@ fi
 
 remote_tmp="/tmp/bikehub-cloud-init-${CLOUD_INIT_INSTANCE_ID}.iso"
 scp "${scp_args[@]}" "$work_dir/seed.iso" "$TRUENAS_SSH_TARGET:$remote_tmp"
-ssh -T "${ssh_args[@]}" "$TRUENAS_SSH_TARGET" \
-  "sudo -n install -D -o root -g root -m 0644 '$remote_tmp' '$CLOUD_INIT_ISO_PATH' && sudo -n rm -f '$remote_tmp'"
+ssh -tt "${ssh_args[@]}" "$TRUENAS_SSH_TARGET" \
+  "sudo install -D -o root -g root -m 0644 '$remote_tmp' '$CLOUD_INIT_ISO_PATH'; status=\$?; rm -f '$remote_tmp'; exit \$status"
 
 echo "Installed NoCloud seed ISO at $CLOUD_INIT_ISO_PATH"

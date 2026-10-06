@@ -4,7 +4,7 @@ variable "truenas_endpoint" {
 }
 
 variable "truenas_ssh_target" {
-  description = "SSH destination for image import, in user@host form. The account needs non-interactive sudo access to qemu-img and the target zvol."
+  description = "SSH destination for image import, in user@host form. The account must be able to run sudo; the scripts request its password interactively."
   type        = string
 }
 
@@ -62,7 +62,7 @@ variable "vm_pool" {
 }
 
 variable "vm_network_attach" {
-  description = "Existing TrueNAS bridge/interface to which the VirtIO NIC is attached (often br0)."
+  description = "Existing TrueNAS physical interface or bridge to which the VirtIO NIC is attached."
   type        = string
 }
 

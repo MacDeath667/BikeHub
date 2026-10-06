@@ -1,5 +1,5 @@
 truenas_endpoint = "wss://truenas.local/api/current"
-# Use an SSH account with non-interactive sudo access to qemu-img and zvols.
+# SSH key authentication is used; Terraform will prompt for the remote sudo password.
 truenas_ssh_target = "truenas_admin@truenas.local"
 truenas_ssh_identity_file = "~/.ssh/truenas_admin"
 # Supply the API key through the TRUENAS_API_KEY environment variable.
@@ -10,10 +10,10 @@ vm_memory_mb     = 4096
 vm_disk_size_gb  = 30
 vm_pool          = "Applications"
 vm_network_attach = "enp4s0"
-vm_ip            = "192.168.1.50"
+# Reserve this unused address in DHCP before applying; update it to your chosen address.
+vm_ip            = "192.168.0.50"
 ansible_user     = "ansible"
 ssh_public_key_path = "~/.ssh/truenas_admin.pub"
 
-# The ISO must exist on the TrueNAS host. The official provider currently has
-# no resource to build/upload a cloud-init ISO.
-cloud_init_iso_path = "/mnt/tank/iso/bikehub-01-cloud-init.iso"
+# Terraform creates this NoCloud seed ISO and uploads it to TrueNAS.
+cloud_init_iso_path = "/mnt/Applications/bikehub-01-cloud-init.iso"
