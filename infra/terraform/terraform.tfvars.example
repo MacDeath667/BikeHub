@@ -12,6 +12,8 @@ vm_disk_size_gb  = 30
 vm_pool          = "Applications"
 # Create this bridge in TrueNAS first; on TrueNAS 25.10 the default name is br1.
 vm_network_attach = "br1"
+# Set a unique, locally administered MAC per VM on a shared LAN (locally administered addresses start with 02).
+vm_nic_mac        = "02:ab:cd:ef:12:34"
 ansible_user     = "ansible"
 ssh_public_key_path = "~/.ssh/truenas_admin.pub"
 

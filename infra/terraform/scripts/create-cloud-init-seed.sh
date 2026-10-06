@@ -5,6 +5,7 @@ set -euo pipefail
 : "${CLOUD_INIT_ISO_PATH:?Cloud-init ISO path on TrueNAS is required}"
 : "${CLOUD_INIT_INSTANCE_ID:?Cloud-init instance ID is required}"
 : "${CLOUD_INIT_USER_DATA:?Rendered cloud-init user-data is required}"
+: "${CLOUD_INIT_NETWORK_CONFIG:?Rendered cloud-init network-config is required}"
 sudo_password="${TRUENAS_SUDO_PASSWORD:?Run Terraform through terraform-apply.sh to provide the TrueNAS sudo password}"
 unset TRUENAS_SUDO_PASSWORD
 
@@ -31,13 +32,15 @@ fi
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/bikehub-cloud-init.XXXXXX")"
 mkdir "$work_dir/payload"
 cleanup() {
-  rm -f "$work_dir/payload/user-data" "$work_dir/payload/meta-data" "$work_dir/seed.iso"
+  rm -f "$work_dir/payload/user-data" "$work_dir/payload/meta-data" \
+    "$work_dir/payload/network-config" "$work_dir/seed.iso"
   rmdir "$work_dir/payload"
   rmdir "$work_dir"
 }
 trap cleanup EXIT
 
 printf '%s\n' "$CLOUD_INIT_USER_DATA" > "$work_dir/payload/user-data"
+printf '%s\n' "$CLOUD_INIT_NETWORK_CONFIG" > "$work_dir/payload/network-config"
 cat > "$work_dir/payload/meta-data" <<EOF
 instance-id: ${CLOUD_INIT_INSTANCE_ID}
 local-hostname: ${CLOUD_INIT_INSTANCE_ID}
@@ -48,7 +51,8 @@ if command -v hdiutil >/dev/null 2>&1; then
     -o "$work_dir/seed.iso" "$work_dir/payload" >/dev/null
 elif command -v genisoimage >/dev/null 2>&1; then
   genisoimage -quiet -output "$work_dir/seed.iso" -volid cidata \
-    -rational-rock -joliet "$work_dir/payload/user-data" "$work_dir/payload/meta-data"
+    -rational-rock -joliet "$work_dir/payload/user-data" \
+    "$work_dir/payload/meta-data" "$work_dir/payload/network-config"
 else
   echo "Install hdiutil (macOS) or genisoimage to create the NoCloud seed ISO" >&2
   exit 1

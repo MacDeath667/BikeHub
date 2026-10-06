@@ -1,11 +1,13 @@
 locals {
   vm_disk_zvol   = "${var.vm_pool}/${var.vm_name}-os"
+  vm_nic_mac     = lower(var.vm_nic_mac)
   ssh_public_key = trimspace(file(pathexpand(var.ssh_public_key_path)))
   cloud_init_user_data = templatefile("${path.module}/cloud-init/user-data.yaml", {
     vm_name        = var.vm_name
     ansible_user   = var.ansible_user
     ssh_public_key = local.ssh_public_key
   })
+  cloud_init_network_config = file("${path.module}/cloud-init/network-config.yaml")
 }
 
 resource "truenas_zvol" "os" {
@@ -39,6 +41,7 @@ resource "terraform_data" "debian_cloud_image" {
 resource "terraform_data" "cloud_init_seed" {
   triggers_replace = [
     sha256(local.cloud_init_user_data),
+    sha256(local.cloud_init_network_config),
     var.cloud_init_iso_path,
   ]
 
@@ -52,6 +55,7 @@ resource "terraform_data" "cloud_init_seed" {
       CLOUD_INIT_ISO_PATH       = var.cloud_init_iso_path
       CLOUD_INIT_INSTANCE_ID    = var.vm_name
       CLOUD_INIT_USER_DATA      = local.cloud_init_user_data
+      CLOUD_INIT_NETWORK_CONFIG = local.cloud_init_network_config
     }
   }
 }
@@ -104,6 +108,7 @@ resource "truenas_vm_device" "nic" {
     dtype      = "NIC"
     type       = "VIRTIO"
     nic_attach = var.vm_network_attach
+    mac        = local.vm_nic_mac
   })
 
   order = 3000

@@ -77,6 +77,16 @@ variable "vm_network_attach" {
   type        = string
 }
 
+variable "vm_nic_mac" {
+  description = "Unique, stable MAC address for this VM; do not duplicate it on the same LAN."
+  type        = string
+
+  validation {
+    condition     = can(regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$", var.vm_nic_mac))
+    error_message = "vm_nic_mac must be a colon-separated MAC address."
+  }
+}
+
 variable "vm_running" {
   description = "Whether the VM should be running. Keep false while devices are attached; set true in a later apply after preparing the image and seed ISO."
   type        = bool

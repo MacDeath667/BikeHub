@@ -26,10 +26,13 @@ cloud image boots with UEFI.
 
 The Debian cloud image includes cloud-init. Terraform renders
 `terraform/cloud-init/user-data.yaml`, builds a NoCloud seed ISO, and uploads it
-to TrueNAS at `cloud_init_iso_path`. The cloud-init configuration creates the
-Ansible user, installs/starts SSH, enables key-based access, disables
-password/root SSH, and grants passwordless sudo. It does not install Docker,
-nginx, PostgreSQL, BikeHub, or Ansible.
+to TrueNAS at `cloud_init_iso_path`. The seed also includes a DHCP
+`network-config` matching the guest's VirtIO NIC driver (`virtio_net`), not a
+host bridge/interface name or guest interface name. Set `vm_nic_mac` to a
+unique, stable MAC for this VM; two VMs on the same LAN must not share one. The
+cloud-init user-data creates the Ansible user, installs/starts SSH, enables
+key-based access, disables password/root SSH, and grants passwordless sudo. It
+does not install Docker, nginx, PostgreSQL, BikeHub, or Ansible.
 
 ## Configure and apply
 
