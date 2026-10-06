@@ -1,0 +1,5 @@
+---
+- name: Prepare BikeHub host
+  hosts: bikehub
+  become: true
+  tasks: []
