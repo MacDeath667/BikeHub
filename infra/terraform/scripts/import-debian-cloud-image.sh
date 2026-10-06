@@ -5,6 +5,8 @@ set -euo pipefail
 : "${TRUENAS_ZVOL_PATH:?Target zvol path is required}"
 : "${DEBIAN_IMAGE_VERSION:?Pinned Debian image version is required}"
 : "${DEBIAN_IMAGE_SHA512:?Pinned Debian image SHA-512 is required}"
+sudo_password="${TRUENAS_SUDO_PASSWORD:?Run Terraform through terraform-apply.sh to provide the TrueNAS sudo password}"
+unset TRUENAS_SUDO_PASSWORD
 ssh_port="${TRUENAS_SSH_PORT:-22}"
 identity_file="${TRUENAS_SSH_IDENTITY_FILE:-}"
 
@@ -60,7 +62,7 @@ command -v qemu-img >/dev/null
 command -v curl >/dev/null
 command -v openssl >/dev/null
 
-first_block="$(dd if="$device" bs=4096 count=1 status=none | od -An -tu1)"
+first_block="$(dd if="$device" bs=4096 count=1 status=none | od -v -An -tu1)"
 if [[ -n "${first_block//[[:space:]0]/}" ]]; then
   echo "Refusing to overwrite non-empty zvol: $device" >&2
   exit 1
@@ -79,7 +81,8 @@ REMOTE_SCRIPT
 
 scp "${scp_args[@]}" "$work_dir/import.sh" "$TRUENAS_SSH_TARGET:$remote_script"
 echo "Downloading, verifying, and importing Debian $DEBIAN_IMAGE_VERSION on TrueNAS..."
-ssh -tt "${ssh_args[@]}" "$TRUENAS_SSH_TARGET" \
-  "sudo bash '$remote_script' '$TRUENAS_ZVOL_PATH' '$DEBIAN_IMAGE_VERSION' '$DEBIAN_IMAGE_SHA512'; status=\$?; rm -f '$remote_script'; exit \$status"
+printf '%s\n' "$sudo_password" |
+  ssh "${ssh_args[@]}" "$TRUENAS_SSH_TARGET" \
+    "sudo -S -p '' bash '$remote_script' '$TRUENAS_ZVOL_PATH' '$DEBIAN_IMAGE_VERSION' '$DEBIAN_IMAGE_SHA512'; rc=\$?; rm -f '$remote_script'; exit \$rc"
 
 echo "Debian cloud image import completed."

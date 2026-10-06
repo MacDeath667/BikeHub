@@ -1,17 +1,16 @@
 truenas_endpoint = "wss://truenas.local/api/current"
-# SSH key authentication is used; Terraform will prompt for the remote sudo password.
+truenas_ca_cert_path = "~/.config/truenas/pki/bikehub-ca.crt"
+# SSH key authentication is used; terraform-apply.sh prompts locally for the remote sudo password.
 truenas_ssh_target = "truenas_admin@truenas.local"
 truenas_ssh_identity_file = "~/.ssh/truenas_admin"
 # Supply the API key through the TRUENAS_API_KEY environment variable.
 
-vm_name          = "bikehub-01"
+vm_name          = "bikehub01"
 vm_vcpus         = 2
 vm_memory_mb     = 4096
 vm_disk_size_gb  = 30
 vm_pool          = "Applications"
 vm_network_attach = "enp4s0"
-# Reserve this unused address in DHCP before applying; update it to your chosen address.
-vm_ip            = "192.168.0.50"
 ansible_user     = "ansible"
 ssh_public_key_path = "~/.ssh/truenas_admin.pub"
 

@@ -5,6 +5,8 @@ set -euo pipefail
 : "${CLOUD_INIT_ISO_PATH:?Cloud-init ISO path on TrueNAS is required}"
 : "${CLOUD_INIT_INSTANCE_ID:?Cloud-init instance ID is required}"
 : "${CLOUD_INIT_USER_DATA:?Rendered cloud-init user-data is required}"
+sudo_password="${TRUENAS_SUDO_PASSWORD:?Run Terraform through terraform-apply.sh to provide the TrueNAS sudo password}"
+unset TRUENAS_SUDO_PASSWORD
 
 ssh_port="${TRUENAS_SSH_PORT:-22}"
 identity_file="${TRUENAS_SSH_IDENTITY_FILE:-}"
@@ -61,7 +63,8 @@ fi
 
 remote_tmp="/tmp/bikehub-cloud-init-${CLOUD_INIT_INSTANCE_ID}.iso"
 scp "${scp_args[@]}" "$work_dir/seed.iso" "$TRUENAS_SSH_TARGET:$remote_tmp"
-ssh -tt "${ssh_args[@]}" "$TRUENAS_SSH_TARGET" \
-  "sudo install -D -o root -g root -m 0644 '$remote_tmp' '$CLOUD_INIT_ISO_PATH'; status=\$?; rm -f '$remote_tmp'; exit \$status"
+printf '%s\n' "$sudo_password" |
+  ssh "${ssh_args[@]}" "$TRUENAS_SSH_TARGET" \
+    "sudo -S -p '' install -D -o root -g root -m 0644 '$remote_tmp' '$CLOUD_INIT_ISO_PATH'; rc=\$?; rm -f '$remote_tmp'; exit \$rc"
 
 echo "Installed NoCloud seed ISO at $CLOUD_INIT_ISO_PATH"

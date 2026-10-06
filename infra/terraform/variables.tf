@@ -3,8 +3,14 @@ variable "truenas_endpoint" {
   type        = string
 }
 
+variable "truenas_ca_cert_path" {
+  description = "Path to the local CA certificate used to verify the TrueNAS HTTPS certificate."
+  type        = string
+  default     = "~/.config/truenas/pki/bikehub-ca.crt"
+}
+
 variable "truenas_ssh_target" {
-  description = "SSH destination for image import, in user@host form. The account must be able to run sudo; the scripts request its password interactively."
+  description = "SSH destination for image import, in user@host form. The account must be able to run sudo; terraform-apply.sh supplies the password through SSH stdin."
   type        = string
 }
 
@@ -21,9 +27,14 @@ variable "truenas_ssh_identity_file" {
 }
 
 variable "vm_name" {
-  description = "Name and hostname of the BikeHub VM."
+  description = "Alphanumeric TrueNAS VM name and guest hostname."
   type        = string
-  default     = "bikehub-01"
+  default     = "bikehub01"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9]+$", var.vm_name))
+    error_message = "vm_name must contain only ASCII letters and digits because of the TrueNAS API restriction."
+  }
 }
 
 variable "vm_vcpus" {
@@ -63,11 +74,6 @@ variable "vm_pool" {
 
 variable "vm_network_attach" {
   description = "Existing TrueNAS physical interface or bridge to which the VirtIO NIC is attached."
-  type        = string
-}
-
-variable "vm_ip" {
-  description = "Reserved DHCP address for this VM. Set a reservation for the VM NIC in your DHCP server."
   type        = string
 }
 

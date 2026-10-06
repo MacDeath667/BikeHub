@@ -1,9 +1,9 @@
 locals {
-  vm_disk_zvol       = "${var.vm_pool}/${var.vm_name}-os"
-  ssh_public_key     = trimspace(file(pathexpand(var.ssh_public_key_path)))
+  vm_disk_zvol   = "${var.vm_pool}/${var.vm_name}-os"
+  ssh_public_key = trimspace(file(pathexpand(var.ssh_public_key_path)))
   cloud_init_user_data = templatefile("${path.module}/cloud-init/user-data.yaml", {
-    vm_name     = var.vm_name
-    ansible_user = var.ansible_user
+    vm_name        = var.vm_name
+    ansible_user   = var.ansible_user
     ssh_public_key = local.ssh_public_key
   })
 }
@@ -57,14 +57,14 @@ resource "terraform_data" "cloud_init_seed" {
 }
 
 resource "truenas_vm" "bikehub" {
-  name       = var.vm_name
+  name        = var.vm_name
   description = "BikeHub Debian 13 application host"
-  vcpus      = var.vm_vcpus
-  memory     = var.vm_memory_mb * 1024 * 1024
-  cores      = var.vm_vcpus
-  bootloader = "UEFI"
-  autostart  = true
-  running    = var.vm_running
+  vcpus       = var.vm_vcpus
+  memory      = var.vm_memory_mb * 1024 * 1024
+  cores       = var.vm_vcpus
+  bootloader  = "UEFI"
+  autostart   = true
+  running     = var.vm_running
 }
 
 resource "truenas_vm_device" "os_disk" {
@@ -87,8 +87,10 @@ resource "truenas_vm_device" "cloud_init" {
   depends_on = [terraform_data.cloud_init_seed]
 
   attributes = jsonencode({
-    dtype = "CDROM"
-    path  = var.cloud_init_iso_path
+    dtype  = "RAW"
+    path   = var.cloud_init_iso_path
+    type   = "VIRTIO"
+    exists = true
   })
 
   order = 2000
