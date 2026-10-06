@@ -60,11 +60,12 @@ resource "truenas_vm" "bikehub" {
   name        = var.vm_name
   description = "BikeHub Debian 13 application host"
   vcpus       = var.vm_vcpus
-  memory      = var.vm_memory_mb * 1024 * 1024
-  cores       = var.vm_vcpus
-  bootloader  = "UEFI"
-  autostart   = true
-  running     = var.vm_running
+  # TrueNAS vm.create expects memory in MiB, not bytes.
+  memory     = var.vm_memory_mb
+  cores      = var.vm_vcpus
+  bootloader = "UEFI"
+  autostart  = true
+  running    = var.vm_running
 }
 
 resource "truenas_vm_device" "os_disk" {

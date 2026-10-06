@@ -10,7 +10,8 @@ vm_vcpus         = 2
 vm_memory_mb     = 4096
 vm_disk_size_gb  = 30
 vm_pool          = "Applications"
-vm_network_attach = "enp4s0"
+# Create this bridge in TrueNAS first; on TrueNAS 25.10 the default name is br1.
+vm_network_attach = "br1"
 ansible_user     = "ansible"
 ssh_public_key_path = "~/.ssh/truenas_admin.pub"
 

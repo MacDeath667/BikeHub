@@ -44,7 +44,7 @@ variable "vm_vcpus" {
 }
 
 variable "vm_memory_mb" {
-  description = "VM memory in MiB. TrueNAS API/provider use bytes."
+  description = "VM memory in MiB, as expected by the TrueNAS API."
   type        = number
   default     = 4096
 }
@@ -73,7 +73,7 @@ variable "vm_pool" {
 }
 
 variable "vm_network_attach" {
-  description = "Existing TrueNAS physical interface or bridge to which the VirtIO NIC is attached."
+  description = "Existing TrueNAS bridge interface to which the VirtIO NIC is attached."
   type        = string
 }
 

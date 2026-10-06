@@ -35,12 +35,25 @@ nginx, PostgreSQL, BikeHub, or Ansible.
 
 Copy `terraform/terraform.tfvars.example` to
 `terraform/terraform.tfvars`. Set the API endpoint, SSH destination, ZFS pool,
-network interface, and seed ISO destination. Terraform
+bridge interface, and seed ISO destination. Terraform
 reads the public key from `~/.ssh/truenas_admin.pub` and uses the matching
 private key at `~/.ssh/truenas_admin`. Keep the TrueNAS API key in
 `TRUENAS_API_KEY`; never commit private keys or state. Locally, macOS `hdiutil`
 or `genisoimage`, `ssh`, and `scp` are required. Run applies through the wrapper
 so it can securely prompt for the remote sudo password.
+
+The VM NIC must attach to a TrueNAS bridge (configured as `br1` in the tfvars),
+not directly to the physical `enp4s0` interface. The bridge does not exist yet.
+Before applying this network change, create it in TrueNAS **System > Network**:
+stop apps and VMs using the interface, remove the address from `enp4s0`, add a
+bridge with `enp4s0` as its member, and move the NAS management address to the
+bridge. Preserve the current management IP, subnet, and gateway, then use
+TrueNAS **Test Changes** and confirm access before saving. These steps can
+interrupt NAS/network access; keep local console access available and follow
+the [TrueNAS 25.10 bridge guide](https://www.truenas.com/docs/scale/25.10/scaletutorials/network/containernasbridge/).
+Only proceed once the bridge is visible as `br1` and has the NAS management IP.
+Power off `bikehub01`, then review the Terraform plan before applying so the NIC
+reattachment is made while the VM is stopped.
 
 ```sh
 cd infra/terraform
@@ -59,12 +72,61 @@ VM with a second apply:
 ```
 
 The router assigns the VM its address over DHCP. Find the actual lease for
-`bikehub-01` in the router's DHCP client/lease list. To run Ansible, pass that
-address through `BIKEHUB_VM_IP`, for example:
+`bikehub01` in the router's DHCP client/lease list. To run Ansible, pass that
+address through `BIKEHUB_VM_IP`.
+
+## Ansible application deployment
+
+The Ansible playbook installs nginx, Docker (only to build the app image), and
+single-node K3s with its bundled Traefik disabled. It imports the image into
+K3s, runs database migrations as a one-off Job, and deploys three BikeHub API
+pods behind a Kubernetes NodePort and the host nginx reverse proxy. The external
+PostgreSQL server is not installed or managed by this playbook; the target
+database must already exist and the supplied user must be able to apply schema
+migrations to it. Migrations run once in a Kubernetes Job before the API pods
+start. Kubernetes Secret encryption at rest is enabled in K3s.
+
+Create the ignored, encrypted credentials file on the Ansible control
+machine:
 
 ```sh
-export BIKEHUB_VM_IP=192.168.0.123
-ansible-playbook -i ../ansible/inventory/hosts.yml ../ansible/playbooks/server.yml
+ansible-vault edit infra/ansible/inventory/group_vars/bikehub/vault.yml
+```
+
+Put both variables in the editor that opens. Replace the example connection
+string and choose a unique SSH password of at least 12 characters:
+
+```yaml
+bikehub_database_connection_string: "Host=db.example.lan;Port=5432;Database=bikehub;Username=bikehub;Password=...;"
+vault_ansible_password: "choose-a-long-unique-password"
+```
+
+Once the VM boots and its DHCP address is known, run the one-time key-based
+bootstrap. It sets the `ansible` account password from Vault and enables SSH
+password authentication; root SSH remains disabled:
+
+```sh
+BIKEHUB_VM_IP=192.168.0.123 ansible-playbook \
+  -i infra/ansible/inventory/bootstrap.yml \
+  infra/ansible/playbooks/bootstrap-password.yml \
+  --ask-vault-pass
+```
+
+Then run the normal deployment playbook from the repository root. Its inventory
+uses the password from Vault:
+
+```sh
+BIKEHUB_VM_IP=192.168.0.123 ansible-playbook \
+  -i infra/ansible/inventory/hosts.yml \
+  infra/ansible/playbooks/server.yml \
+  --ask-vault-pass
+```
+
+After the play succeeds, nginx serves the API on `http://<VM-IP>/`. Check the
+three replicas with:
+
+```sh
+ssh -i ~/.ssh/truenas_admin ansible@<VM-IP> 'sudo k3s kubectl get pods -n bikehub'
 ```
 
 The official provider documents TrueNAS 25.04 as API-compatible but not fully

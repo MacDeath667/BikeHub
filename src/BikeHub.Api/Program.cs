@@ -5,7 +5,9 @@ using GetBike = BikeHub.Application.Queries.GetBike;
 using GetBikes = BikeHub.Application.Queries.GetBikes;
 using AddBike = BikeHub.Application.Commands.AddBike;
 
-var builder = WebApplication.CreateBuilder(args);
+var migrationsOnly = args.Contains("--migrate-only", StringComparer.Ordinal);
+var builder = WebApplication.CreateBuilder(
+    args.Where(argument => !string.Equals(argument, "--migrate-only", StringComparison.Ordinal)).ToArray());
 
 builder.AddDapper("BikeHub");
 builder.Services.AddScoped<GetBike.Handler>();
@@ -27,13 +29,19 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-await app.Services
-    .GetRequiredService<DatabaseBootstrapper>()
-    .EnsureDatabaseAsync(CancellationToken.None);
+if (builder.Configuration.GetValue("Database:BootstrapEnabled", true))
+{
+    await app.Services
+        .GetRequiredService<DatabaseBootstrapper>()
+        .EnsureDatabaseAsync(CancellationToken.None);
+}
 
-await app.Services
-    .GetRequiredService<DatabaseMigrator>()
-    .MigrateAsync(CancellationToken.None);
+if (migrationsOnly || builder.Configuration.GetValue("Database:MigrationsEnabled", true))
+{
+    await app.Services
+        .GetRequiredService<DatabaseMigrator>()
+        .MigrateAsync(CancellationToken.None);
+}
 
 
 app.MapGet("/api/bikes", () => Results.Ok());
@@ -76,5 +84,8 @@ app.MapPost("/api/bikes", async (
     return Results.Ok();
 });
 
+
+if (migrationsOnly)
+    return;
 
 app.Run();
