@@ -16,7 +16,7 @@
 - name: Verify API health with certificate and hostname validation
   ansible.builtin.uri:
     url: "{{ bikehub_probe_base_url }}/api/health"
-    ca_path: "{{ bikehub_tls_directory ~ '/ca.crt' if bikehub_tls_enabled | bool else omit }}"
+    ca_path: "{{ bikehub_tls_certificate_path if bikehub_tls_enabled | bool else omit }}"
     validate_certs: true
     return_content: true
     status_code: 200
@@ -28,7 +28,7 @@
 - name: Verify the frontend through nginx
   ansible.builtin.uri:
     url: "{{ bikehub_probe_base_url }}/"
-    ca_path: "{{ bikehub_tls_directory ~ '/ca.crt' if bikehub_tls_enabled | bool else omit }}"
+    ca_path: "{{ bikehub_tls_certificate_path if bikehub_tls_enabled | bool else omit }}"
     validate_certs: true
     return_content: true
     status_code: 200

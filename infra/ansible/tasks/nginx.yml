@@ -37,4 +37,4 @@
   ansible.builtin.service:
     name: nginx
     state: reloaded
-  when: bikehub_nginx_config.changed or bikehub_nginx_default.changed or (bikehub_tls_certificate.changed | default(false))
+  when: bikehub_nginx_config.changed or bikehub_nginx_default.changed or (bikehub_tls_certificate_result.changed | default(false))

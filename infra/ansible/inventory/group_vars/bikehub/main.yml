@@ -23,6 +23,7 @@ bikehub_rotate_k3s_certificates: false
 bikehub_tls_enabled: true
 bikehub_tls_server_name: "{{ bikehub_hostname }}"
 bikehub_tls_directory: /etc/nginx/bikehub-tls
-bikehub_tls_ca_certificate: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/truenas/pki/bikehub-ca.crt"
-bikehub_tls_ca_private_key: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/truenas/pki/bikehub-ca.key"
+bikehub_tls_name: bikehub_tls
+bikehub_tls_key_path: "{{ bikehub_tls_directory }}/{{ bikehub_tls_name }}"
+bikehub_tls_certificate_path: "{{ bikehub_tls_directory }}/{{ bikehub_tls_name }}.pub"
 bikehub_tls_cache_directory: "{{ playbook_dir }}/../.local-pki"

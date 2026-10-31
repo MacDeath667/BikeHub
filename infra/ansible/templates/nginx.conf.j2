@@ -17,8 +17,8 @@ server {
     listen [::]:443 ssl default_server;
     server_name {{ bikehub_tls_server_name }};
 
-    ssl_certificate {{ bikehub_tls_directory }}/server.crt;
-    ssl_certificate_key {{ bikehub_tls_directory }}/server.key;
+    ssl_certificate {{ bikehub_tls_certificate_path }};
+    ssl_certificate_key {{ bikehub_tls_key_path }};
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_session_cache shared:BikeHubTLS:10m;
     ssl_session_timeout 1d;
