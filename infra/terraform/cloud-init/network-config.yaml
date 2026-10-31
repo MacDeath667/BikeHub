@@ -1,0 +1,8 @@
+version: 2
+ethernets:
+  virtio_nics:
+    match:
+      driver: virtio_net
+    dhcp4: true
+    dhcp6: false
+    renderer: networkd

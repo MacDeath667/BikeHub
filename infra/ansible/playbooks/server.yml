@@ -1,0 +1,292 @@
+---
+- name: Deploy BikeHub on a single-node K3s host
+  hosts: bikehub
+  become: true
+  gather_facts: true
+
+  vars:
+    bikehub_source_dir: "{{ playbook_dir }}/../../../src"
+    bikehub_remote_root: /opt/bikehub
+    bikehub_namespace: bikehub
+    bikehub_deployment: bikehub-api
+    bikehub_image: "bikehub-api:build-{{ ansible_facts.date_time.epoch }}"
+
+  pre_tasks:
+    - name: Require an encrypted external database connection string
+      ansible.builtin.assert:
+        that:
+          - bikehub_database_connection_string is defined
+          - bikehub_database_connection_string | length > 0
+          - vault_ansible_password is defined
+          - vault_ansible_password | length >= 12
+        fail_msg: >-
+          Create the encrypted infra/ansible/inventory/group_vars/bikehub/vault.yml
+          with bikehub_database_connection_string and vault_ansible_password,
+          then run with --ask-vault-pass.
+
+  tasks:
+    - name: Refresh APT package metadata
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install host services and container image builder
+      ansible.builtin.apt:
+        name:
+          - qemu-guest-agent
+          - nginx
+          - docker.io
+          - curl
+          - ca-certificates
+        state: present
+
+    - name: Enable and start host services
+      ansible.builtin.service:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop:
+        - qemu-guest-agent
+        - docker
+
+    - name: Create application build directory
+      ansible.builtin.file:
+        path: "{{ bikehub_remote_root }}/src"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Copy application source to the VM
+      ansible.builtin.copy:
+        src: "{{ bikehub_source_dir }}/"
+        dest: "{{ bikehub_remote_root }}/src/"
+        owner: root
+        group: root
+        mode: preserve
+
+    - name: Build the BikeHub API container image on the VM
+      ansible.builtin.command:
+        argv:
+          - docker
+          - build
+          - --tag
+          - "{{ bikehub_image }}"
+          - --file
+          - src/BikeHub.Api/Dockerfile
+          - .
+        chdir: "{{ bikehub_remote_root }}"
+      changed_when: true
+
+    - name: Install the K3s installer
+      ansible.builtin.get_url:
+        url: https://get.k3s.io
+        dest: /usr/local/sbin/install-k3s
+        owner: root
+        group: root
+        mode: "0755"
+        validate_certs: true
+
+    - name: Create K3s configuration directory
+      ansible.builtin.file:
+        path: /etc/rancher/k3s
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Configure single-node K3s without Traefik and with encrypted Secrets
+      ansible.builtin.copy:
+        dest: /etc/rancher/k3s/config.yaml
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          disable:
+            - traefik
+          write-kubeconfig-mode: "0600"
+          secrets-encryption: true
+      register: k3s_config
+
+    - name: Install K3s server if not already installed
+      ansible.builtin.command:
+        argv:
+          - /usr/local/sbin/install-k3s
+      environment:
+        INSTALL_K3S_CHANNEL: stable
+        INSTALL_K3S_EXEC: server
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Restart K3s when its configuration changes
+      ansible.builtin.service:
+        name: k3s
+        state: restarted
+      when: k3s_config.changed
+
+    - name: Enable and start K3s
+      ansible.builtin.service:
+        name: k3s
+        enabled: true
+        state: started
+
+    - name: Wait for the Kubernetes API
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - wait
+          - --for=condition=Ready
+          - node
+          - --all
+          - --timeout=180s
+      changed_when: false
+
+    - name: Import the built image into K3s containerd
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker save '{{ bikehub_image }}' | k3s ctr images import -
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Create Kubernetes resource directory
+      ansible.builtin.file:
+        path: "{{ bikehub_remote_root }}/k8s"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Render BikeHub Kubernetes resources
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/{{ item }}.j2"
+        dest: "{{ bikehub_remote_root }}/k8s/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - namespace.yml
+        - migration-job.yml
+        - app.yml
+
+    - name: Apply namespace and database credentials
+      block:
+        - name: Render the database Secret manifest
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../templates/database-secret.yml.j2"
+            dest: "{{ bikehub_remote_root }}/k8s/database-secret.yml"
+            owner: root
+            group: root
+            mode: "0600"
+          no_log: true
+
+        - name: Apply namespace and database Secret
+          ansible.builtin.command:
+            argv:
+              - k3s
+              - kubectl
+              - apply
+              - -f
+              - "{{ bikehub_remote_root }}/k8s/namespace.yml"
+              - -f
+              - "{{ bikehub_remote_root }}/k8s/database-secret.yml"
+          no_log: true
+      always:
+        - name: Remove temporary plaintext Secret manifest
+          ansible.builtin.file:
+            path: "{{ bikehub_remote_root }}/k8s/database-secret.yml"
+            state: absent
+          no_log: true
+
+    - name: Run database migrations once before starting API replicas
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - apply
+          - -f
+          - "{{ bikehub_remote_root }}/k8s/migration-job.yml"
+      register: migration_apply
+      changed_when: "'configured' in migration_apply.stdout or 'created' in migration_apply.stdout"
+
+    - name: Wait for database migrations to complete
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - wait
+          - --for=condition=complete
+          - "job/bikehub-db-migrate-{{ ansible_facts.date_time.epoch }}"
+          - -n
+          - "{{ bikehub_namespace }}"
+          - --timeout=300s
+      changed_when: false
+
+    - name: Apply the BikeHub application and service
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - apply
+          - -f
+          - "{{ bikehub_remote_root }}/k8s/app.yml"
+      register: app_apply
+      changed_when: "'configured' in app_apply.stdout or 'created' in app_apply.stdout"
+
+    - name: Wait for all BikeHub replicas to become ready
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - rollout
+          - status
+          - "deployment/{{ bikehub_deployment }}"
+          - -n
+          - "{{ bikehub_namespace }}"
+          - --timeout=300s
+      changed_when: false
+
+    - name: Install nginx reverse proxy configuration
+      ansible.builtin.template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/conf.d/bikehub.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Remove Debian's default nginx site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Validate nginx configuration
+      ansible.builtin.command:
+        argv:
+          - nginx
+          - -t
+      changed_when: false
+
+    - name: Enable and start nginx
+      ansible.builtin.service:
+        name: nginx
+        enabled: true
+        state: restarted
+
+    - name: Show BikeHub pod status
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - get
+          - pods
+          - -n
+          - "{{ bikehub_namespace }}"
+          - -o
+          - wide
+      register: bikehub_pods
+      changed_when: false
+
+    - name: Report BikeHub pod status
+      ansible.builtin.debug:
+        var: bikehub_pods.stdout_lines

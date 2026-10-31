@@ -1,0 +1,4 @@
+---
+bikehub_app_port: 8080
+bikehub_node_port: 30080
+bikehub_replica_count: 3

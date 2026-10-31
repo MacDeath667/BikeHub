@@ -1,0 +1,27 @@
+#cloud-config
+hostname: ${vm_name}
+fqdn: ${vm_name}
+manage_etc_hosts: true
+ssh_pwauth: false
+disable_root: true
+package_update: true
+packages:
+  - openssh-server
+users:
+  - name: ${ansible_user}
+    groups:
+      - sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-bikehub-hardening.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin no
+runcmd:
+  - [systemctl, enable, --now, ssh]

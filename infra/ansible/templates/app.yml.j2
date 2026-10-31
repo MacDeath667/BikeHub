@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ bikehub_deployment }}
+  namespace: {{ bikehub_namespace }}
+  labels:
+    app.kubernetes.io/name: bikehub-api
+spec:
+  replicas: {{ bikehub_replica_count }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: bikehub-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: bikehub-api
+    spec:
+      containers:
+        - name: api
+          image: {{ bikehub_image }}
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: {{ bikehub_app_port }}
+              protocol: TCP
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:{{ bikehub_app_port }}
+            - name: Database__BootstrapEnabled
+              value: "false"
+            - name: Database__MigrationsEnabled
+              value: "false"
+            - name: ConnectionStrings__BikeHub
+              valueFrom:
+                secretKeyRef:
+                  name: bikehub-database
+                  key: connection-string
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bikehub-api
+  namespace: {{ bikehub_namespace }}
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: bikehub-api
+  ports:
+    - name: http
+      port: {{ bikehub_app_port }}
+      targetPort: http
+      nodePort: {{ bikehub_node_port }}
+      protocol: TCP

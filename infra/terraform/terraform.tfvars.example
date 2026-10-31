@@ -1,0 +1,21 @@
+truenas_endpoint = "wss://truenas.local/api/current"
+truenas_ca_cert_path = "~/.config/truenas/pki/bikehub-ca.crt"
+# SSH key authentication is used; terraform-apply.sh prompts locally for the remote sudo password.
+truenas_ssh_target = "truenas_admin@truenas.local"
+truenas_ssh_identity_file = "~/.ssh/truenas_admin"
+# Supply the API key through the TRUENAS_API_KEY environment variable.
+
+vm_name          = "bikehub01"
+vm_vcpus         = 2
+vm_memory_mb     = 4096
+vm_disk_size_gb  = 30
+vm_pool          = "Applications"
+# Create this bridge in TrueNAS first; on TrueNAS 25.10 the default name is br1.
+vm_network_attach = "br1"
+# Set a unique, locally administered MAC per VM on a shared LAN (locally administered addresses start with 02).
+vm_nic_mac        = "02:ab:cd:ef:12:34"
+ansible_user     = "ansible"
+ssh_public_key_path = "~/.ssh/truenas_admin.pub"
+
+# Terraform creates this NoCloud seed ISO and uploads it to TrueNAS.
+cloud_init_iso_path = "/mnt/Applications/bikehub-01-cloud-init.iso"
