@@ -1,0 +1,53 @@
+---
+- name: Load observability service definitions
+  ansible.builtin.include_vars: "{{ playbook_dir }}/../vars/observability.yml"
+
+- name: Validate observability NodePorts and namespace
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - bikehub_observability_namespace is match('^[a-z0-9][a-z0-9-]*[a-z0-9]$')
+      - component.node_port | int >= 30000 and component.node_port | int <= 32767
+      - component.node_port | int != bikehub_node_port | int
+    fail_msg: Configure a dedicated namespace and valid unused NodePorts for telemetry.
+  loop: "{{ bikehub_observability_components }}"
+  loop_control:
+    loop_var: component
+    label: "{{ component.name }}"
+
+- name: Require unique observability NodePorts
+  ansible.builtin.assert:
+    quiet: true
+    that:
+      - bikehub_observability_components | map(attribute='node_port') | unique | length == bikehub_observability_components | length
+
+- name: Create the managed Kubernetes manifest directory
+  ansible.builtin.file:
+    path: "{{ bikehub_remote_root }}/k8s"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Render the telemetry services and persistent volumes
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/observability.yml.j2"
+    dest: "{{ bikehub_remote_root }}/k8s/observability.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Apply the telemetry services
+  ansible.builtin.command:
+    argv: [k3s, kubectl, apply, -f, "{{ bikehub_remote_root }}/k8s/observability.yml"]
+  register: bikehub_observability_apply
+  changed_when: "'configured' in bikehub_observability_apply.stdout or 'created' in bikehub_observability_apply.stdout"
+
+- name: Wait for the telemetry services
+  ansible.builtin.command:
+    argv: [k3s, kubectl, rollout, status, "deployment/{{ component.name }}", -n, "{{ bikehub_observability_namespace }}", --timeout=300s]
+  loop: "{{ bikehub_observability_components }}"
+  loop_control:
+    loop_var: component
+    label: "{{ component.name }}"
+  changed_when: false

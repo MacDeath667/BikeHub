@@ -1,0 +1,57 @@
+---
+- name: Validate the local website hostname
+  ansible.builtin.assert:
+    that:
+      - bikehub_hostname is match('^[A-Za-z0-9][A-Za-z0-9-]*[.]local$')
+    fail_msg: Set bikehub_hostname to a single hostname under .local.
+
+- name: Install the mDNS publisher and resolver
+  ansible.builtin.apt:
+    name: [avahi-daemon, avahi-utils]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Remove the legacy static mapping that conflicts with the VM reverse record
+  ansible.builtin.blockinfile:
+    path: /etc/avahi/hosts
+    marker: "# {mark} ANSIBLE BIKEHUB WEBSITE"
+    state: absent
+  register: bikehub_mdns_legacy_hosts
+
+- name: Enable the mDNS publisher
+  ansible.builtin.service:
+    name: avahi-daemon
+    enabled: true
+    state: started
+
+- name: Clear the legacy static mapping from the running daemon
+  ansible.builtin.service:
+    name: avahi-daemon
+    state: restarted
+  when: bikehub_mdns_legacy_hosts.changed
+
+- name: Install the persistent website alias publisher
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/bikehub-mdns.service.j2"
+    dest: /etc/systemd/system/bikehub-mdns.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: bikehub_mdns_unit
+
+- name: Enable the website name publisher at boot
+  ansible.builtin.systemd_service:
+    name: bikehub-mdns
+    daemon_reload: "{{ bikehub_mdns_unit.changed }}"
+    enabled: true
+    state: "{{ 'restarted' if bikehub_mdns_unit.changed else 'started' }}"
+
+- name: Verify the published local name
+  ansible.builtin.command:
+    argv: [avahi-resolve-host-name, -4, "{{ bikehub_hostname }}"]
+  register: bikehub_mdns_resolution
+  until: bikehub_mdns_resolution.rc == 0 and ansible_facts.default_ipv4.address in bikehub_mdns_resolution.stdout
+  retries: 5
+  delay: 2
+  changed_when: false

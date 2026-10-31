@@ -39,6 +39,13 @@ Vite проксирует `/api` на `127.0.0.1:5179`, поэтому CORS дл
 
 Сервисы зарегистрированы через DI: при подключении реального хранилища можно заменить реализации интерфейсов без изменения HTTP-контракта. Существующие DAL и миграции сохранены. В `Development` bootstrap и миграции отключены; `--migrate-only` продолжает запускать миграции явно.
 
+## Grafana
+
+В `Development` API отправляет метрики, логи и трассировки через OpenTelemetry в Collector на `http://bikehub.local:30418`.
+Дашборд — [BikeHub · API](https://truenas.local:30037/d/bikehub-api), фильтр окружения — `Development` или `Production`.
+Первоначальная настройка и проверка описаны в [инструкции наблюдаемости](infra/observability/README.md).
+Чтобы запустить API без экспорта, задайте `Observability__Enabled=false`.
+
 ## Сборка и проверка
 
 ```bash

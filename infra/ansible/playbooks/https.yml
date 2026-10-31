@@ -1,0 +1,19 @@
+---
+- name: Configure and verify BikeHub HTTPS on the existing VM
+  hosts: "{{ bikehub_target_group | default('bikehub') }}"
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Publish the local website name
+      ansible.builtin.import_tasks: ../tasks/mdns.yml
+
+    - name: Configure the existing nginx endpoint
+      ansible.builtin.import_tasks: ../tasks/nginx.yml
+
+    - name: Verify the website endpoint
+      ansible.builtin.import_tasks: ../tasks/verify-web.yml
+
+    - name: Report the website address
+      ansible.builtin.debug:
+        msg: "{{ bikehub_public_url }}"

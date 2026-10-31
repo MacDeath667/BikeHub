@@ -1,13 +1,30 @@
 upstream bikehub_api {
-    server {{ ansible_default_ipv4.address }}:{{ bikehub_node_port }};
+    server {{ ansible_facts.default_ipv4.address }}:{{ bikehub_node_port }};
     keepalive 16;
 }
 
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-    server_name _;
+    server_name {{ bikehub_hostname }};
 
+{% if bikehub_tls_enabled | bool %}
+    return 308 https://{{ bikehub_tls_server_name }}$request_uri;
+}
+
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name {{ bikehub_tls_server_name }};
+
+    ssl_certificate {{ bikehub_tls_certificate_path }};
+    ssl_certificate_key {{ bikehub_tls_key_path }};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:BikeHubTLS:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+{% endif %}
     location / {
         proxy_pass http://bikehub_api;
         proxy_http_version 1.1;

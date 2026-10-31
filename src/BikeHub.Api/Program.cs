@@ -1,4 +1,5 @@
 using BikeHub.Api.Middleware;
+using BikeHub.Api.Observability;
 using BikeHub.Api.Services;
 using BikeHub.Application.Community;
 using BikeHub.Dal;
@@ -25,10 +26,13 @@ builder.Services.AddScoped<ICommunityService, MockCommunityService>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+if (!migrationsOnly)
+    builder.AddBikeHubObservability();
+
 
 var app = builder.Build();
-app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<StatisticsMiddleware>();
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {

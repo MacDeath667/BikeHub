@@ -1,0 +1,116 @@
+---
+- name: Package and build the current API and Web sources
+  when: bikehub_rebuild_image | bool
+  block:
+    - name: Create a temporary source archive on the controller
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .tar.gz
+      delegate_to: localhost
+      become: false
+      register: bikehub_source_archive
+
+    - name: Package a clean and reproducible Docker context
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/../scripts/package-source.py"
+          - --source-root
+          - "{{ bikehub_source_dir }}"
+          - --output
+          - "{{ bikehub_source_archive.path }}"
+      delegate_to: localhost
+      become: false
+      register: bikehub_archive_result
+      changed_when: false
+
+    - name: Select the immutable image tag for this source archive
+      ansible.builtin.set_fact:
+        bikehub_selected_image: >-
+          {{ bikehub_image if bikehub_image | length > 0 else
+             bikehub_image_repository ~ ':build-' ~ (bikehub_archive_result.stdout | from_json).sha256[:16] }}
+
+    - name: Remove only the managed Docker build context
+      ansible.builtin.file:
+        path: "{{ bikehub_remote_root }}/build"
+        state: absent
+
+    - name: Create a fresh Docker build context
+      ansible.builtin.file:
+        path: "{{ bikehub_remote_root }}/build"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Transfer and unpack API and Web sources
+      ansible.builtin.unarchive:
+        src: "{{ bikehub_source_archive.path }}"
+        dest: "{{ bikehub_remote_root }}/build"
+        owner: root
+        group: root
+        mode: "u=rwX,g=rX,o=rX"
+
+    - name: Build the BikeHub application container
+      ansible.builtin.command:
+        argv:
+          - docker
+          - build
+          - --tag
+          - "{{ bikehub_selected_image }}"
+          - --file
+          - src/BikeHub.Api/Dockerfile
+          - .
+        chdir: "{{ bikehub_remote_root }}/build"
+      changed_when: true
+
+    - name: Import the application image into K3s containerd
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker save {{ bikehub_selected_image | quote }} | k3s ctr images import -
+      args:
+        executable: /bin/bash
+      changed_when: true
+  always:
+    - name: Remove the controller's temporary source archive
+      ansible.builtin.file:
+        path: "{{ bikehub_source_archive.path }}"
+        state: absent
+      delegate_to: localhost
+      become: false
+      when: bikehub_source_archive.path is defined
+
+- name: Reuse an explicitly selected or currently deployed image
+  when: not (bikehub_rebuild_image | bool)
+  block:
+    - name: Read the currently deployed image
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - get
+          - "deployment/{{ bikehub_deployment }}"
+          - -n
+          - "{{ bikehub_namespace }}"
+          - -o
+          - "jsonpath={.spec.template.spec.containers[0].image}"
+      register: bikehub_current_image
+      changed_when: false
+      failed_when: false
+      when: bikehub_image | length == 0
+
+    - name: Require an existing image when skipping the build
+      ansible.builtin.assert:
+        that:
+          - bikehub_image | length > 0 or (bikehub_current_image.rc == 0 and bikehub_current_image.stdout | length > 0)
+        fail_msg: First deployment requires a build. Otherwise set bikehub_image to a tag already imported into K3s.
+
+    - name: Select the image to reuse
+      ansible.builtin.set_fact:
+        bikehub_selected_image: "{{ bikehub_image if bikehub_image | length > 0 else bikehub_current_image.stdout }}"
+
+- name: Verify the selected image is available to the Kubernetes runtime
+  ansible.builtin.command:
+    argv: [k3s, crictl, inspecti, "{{ bikehub_selected_image }}"]
+  changed_when: false
+  no_log: true

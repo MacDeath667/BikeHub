@@ -8,6 +8,12 @@ public sealed class StatisticsMiddleware(
 {
     public async Task InvokeAsync(HttpContext context)
     {
+        if (context.Request.Path == "/api/health")
+        {
+            await next(context);
+            return;
+        }
+
         var started = Stopwatch.GetTimestamp();
 
         try

@@ -15,6 +15,10 @@ resource "truenas_zvol" "os" {
   volsize     = var.vm_disk_size_gb * 1024 * 1024 * 1024
   compression = "lz4"
   comments    = "OS disk for ${var.vm_name}; populated from the pinned official Debian 13 cloud image."
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "terraform_data" "debian_cloud_image" {
@@ -68,8 +72,14 @@ resource "truenas_vm" "bikehub" {
   memory     = var.vm_memory_mb
   cores      = var.vm_vcpus
   bootloader = "UEFI"
-  autostart  = true
-  running    = var.vm_running
+  # Modern observability binaries require x86-64-v2 instructions hidden by
+  # QEMU's generic CUSTOM CPU. This VM stays on its existing TrueNAS host.
+  cpu_mode = "HOST-PASSTHROUGH"
+  # Debian interprets the virtual hardware clock as UTC. LOCAL caused a 3-hour
+  # jump at boot and K3s issued certificates before NTP corrected the clock.
+  time      = "UTC"
+  autostart = true
+  running   = var.vm_running
 }
 
 resource "truenas_vm_device" "os_disk" {

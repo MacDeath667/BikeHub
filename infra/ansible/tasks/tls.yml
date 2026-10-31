@@ -1,0 +1,107 @@
+---
+- name: Validate the configured TLS hostname and certificate name
+  ansible.builtin.assert:
+    that:
+      - bikehub_tls_server_name is match('^[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$')
+      - bikehub_tls_directory is match('^/etc/nginx/[A-Za-z0-9_-]+$')
+      - bikehub_tls_name is match('^[A-Za-z0-9][A-Za-z0-9_-]*$')
+    fail_msg: Set a valid DNS name, certificate name and dedicated TLS directory under /etc/nginx.
+
+- name: Install the TLS module dependencies on the VM
+  ansible.builtin.apt:
+    name: [openssl, python3-cryptography]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the private nginx TLS directory
+  ansible.builtin.file:
+    path: "{{ bikehub_tls_directory }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Create the unencrypted website key directly on the VM
+  community.crypto.openssl_privatekey:
+    path: "{{ bikehub_tls_key_path }}"
+    type: RSA
+    size: 2048
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Create a CSR for the hostname and current VM address
+  community.crypto.openssl_csr:
+    path: "{{ bikehub_tls_directory }}/{{ bikehub_tls_name }}.csr"
+    privatekey_path: "{{ bikehub_tls_key_path }}"
+    common_name: "{{ bikehub_tls_server_name }}"
+    subject_alt_name:
+      - "DNS:{{ bikehub_tls_server_name }}"
+      - "IP:{{ ansible_facts.default_ipv4.address }}"
+    use_common_name_for_san: false
+    basic_constraints: ["CA:FALSE"]
+    basic_constraints_critical: true
+    key_usage: [digitalSignature, keyEncipherment]
+    key_usage_critical: true
+    extended_key_usage: [serverAuth]
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Check for the website certificate
+  ansible.builtin.stat:
+    path: "{{ bikehub_tls_certificate_path }}"
+  register: bikehub_tls_existing_file
+
+- name: Check the certificate validity and renewal window
+  community.crypto.x509_certificate_info:
+    path: "{{ bikehub_tls_certificate_path }}"
+    valid_at:
+      now: "+0s"
+      renewal: "+30d"
+  register: bikehub_tls_existing_info
+  when: bikehub_tls_existing_file.stat.exists
+
+- name: Create or renew the self-signed website certificate
+  community.crypto.x509_certificate:
+    path: "{{ bikehub_tls_certificate_path }}"
+    csr_path: "{{ bikehub_tls_directory }}/{{ bikehub_tls_name }}.csr"
+    privatekey_path: "{{ bikehub_tls_key_path }}"
+    provider: selfsigned
+    selfsigned_not_before: "-5m"
+    selfsigned_not_after: "+365d"
+    force: "{{ not ((bikehub_tls_existing_info.valid_at.now | default(false)) and (bikehub_tls_existing_info.valid_at.renewal | default(false))) }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: bikehub_tls_certificate_result
+
+- name: Verify the certificate purpose, signature and hostname before configuring nginx
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - verify
+      - -CAfile
+      - "{{ bikehub_tls_certificate_path }}"
+      - -purpose
+      - sslserver
+      - -verify_hostname
+      - "{{ bikehub_tls_server_name }}"
+      - "{{ bikehub_tls_certificate_path }}"
+  changed_when: false
+
+- name: Create the ignored public certificate cache
+  ansible.builtin.file:
+    path: "{{ bikehub_tls_cache_directory }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+
+- name: Fetch only the public certificate for HTTPS validation and device trust
+  ansible.builtin.fetch:
+    src: "{{ bikehub_tls_certificate_path }}"
+    dest: "{{ bikehub_tls_cache_directory }}/{{ bikehub_tls_name }}.pub"
+    flat: true

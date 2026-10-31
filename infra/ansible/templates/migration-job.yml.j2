@@ -1,13 +1,14 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: bikehub-db-migrate-{{ ansible_facts.date_time.epoch }}
+  name: {{ bikehub_migration_job_name }}
   namespace: {{ bikehub_namespace }}
   labels:
     app.kubernetes.io/name: bikehub-db-migrate
 spec:
   backoffLimit: 1
-  ttlSecondsAfterFinished: 600
+  activeDeadlineSeconds: {{ bikehub_migration_timeout }}
+  ttlSecondsAfterFinished: {{ bikehub_migration_retention }}
   template:
     metadata:
       labels:
@@ -16,13 +17,13 @@ spec:
       restartPolicy: Never
       containers:
         - name: migrate
-          image: {{ bikehub_image }}
+          image: {{ bikehub_selected_image }}
           imagePullPolicy: Never
           args:
             - --migrate-only
           env:
             - name: Database__BootstrapEnabled
-              value: "false"
+              value: {{ bikehub_database_bootstrap_enabled | bool | ternary('true', 'false') | to_json }}
             - name: Database__MigrationsEnabled
               value: "true"
             - name: ConnectionStrings__BikeHub

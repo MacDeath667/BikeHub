@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics;
 
 namespace BikeHub.Api.Middleware;
 
@@ -28,7 +28,7 @@ public sealed class ExceptionHandlingMiddleware(
                     title: "Internal Server Error",
                     extensions: new Dictionary<string, object?>
                     {
-                        ["traceId"] = context.TraceIdentifier
+                        ["traceId"] = Activity.Current?.TraceId.ToString() ?? context.TraceIdentifier
                     })
                 .ExecuteAsync(context);
         }

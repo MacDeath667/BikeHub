@@ -1,0 +1,61 @@
+---
+bikehub_observability_components:
+  - name: otel-collector
+    image: "{{ bikehub_collector_image }}"
+    config: collector.yml
+    args: ["--config=/etc/bikehub/otel-collector.yml"]
+    user: 10001
+    memory_request: 64Mi
+    memory_limit: 256Mi
+    ports:
+      - { name: otlp-http, port: 4318 }
+      - { name: metrics, port: 8889 }
+      - { name: health, port: 13133 }
+    readiness: { port: 13133, path: / }
+    external_port: 4318
+    node_port: "{{ bikehub_otlp_node_port }}"
+  - name: prometheus
+    image: "{{ bikehub_prometheus_image }}"
+    config: prometheus.yml
+    args:
+      - --config.file=/etc/bikehub/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=4GB
+    user: 65534
+    memory_request: 128Mi
+    memory_limit: 384Mi
+    ports: [{ name: http, port: 9090 }]
+    readiness: { port: 9090, path: /-/ready }
+    external_port: 9090
+    node_port: "{{ bikehub_prometheus_node_port }}"
+    data_path: /prometheus
+    storage: 5Gi
+  - name: loki
+    image: "{{ bikehub_loki_image }}"
+    config: loki.yml
+    args: ["-config.file=/etc/bikehub/loki.yml", "-target=all"]
+    user: 10001
+    memory_request: 128Mi
+    memory_limit: 512Mi
+    ports: [{ name: http, port: 3100 }]
+    readiness: { port: 3100, path: /ready }
+    external_port: 3100
+    node_port: "{{ bikehub_loki_node_port }}"
+    data_path: /var/loki
+    storage: 5Gi
+  - name: tempo
+    image: "{{ bikehub_tempo_image }}"
+    config: tempo.yml
+    args: ["-config.file=/etc/bikehub/tempo.yml", "-target=all"]
+    user: 10001
+    memory_request: 128Mi
+    memory_limit: 512Mi
+    ports:
+      - { name: http, port: 3200 }
+      - { name: otlp-http, port: 4318 }
+    readiness: { port: 3200, path: /ready }
+    external_port: 3200
+    node_port: "{{ bikehub_tempo_node_port }}"
+    data_path: /var/tempo
+    storage: 2Gi
