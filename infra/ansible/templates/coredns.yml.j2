@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  truenas.server: |
+    {{ bikehub_truenas_hostname }}:53 {
+      errors
+      hosts {
+        {{ bikehub_truenas_ip }} {{ bikehub_truenas_hostname }}
+      }
+    }

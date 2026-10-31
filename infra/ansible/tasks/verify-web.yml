@@ -1,0 +1,37 @@
+---
+- name: Select the public URL and the local probe address
+  ansible.builtin.set_fact:
+    bikehub_public_url: "{{ 'https://' ~ bikehub_tls_server_name ~ '/' if bikehub_tls_enabled | bool else 'http://' ~ bikehub_hostname ~ '/' }}"
+    bikehub_probe_base_url: "{{ 'https://' ~ ansible_facts.default_ipv4.address if bikehub_tls_enabled | bool else 'http://127.0.0.1' }}"
+
+- name: Verify the HTTP redirect to the canonical HTTPS hostname
+  ansible.builtin.uri:
+    url: http://127.0.0.1/api/health
+    follow_redirects: none
+    status_code: 308
+  register: bikehub_redirect
+  failed_when: bikehub_redirect.location != 'https://' ~ bikehub_tls_server_name ~ '/api/health'
+  when: bikehub_tls_enabled | bool
+
+- name: Verify API health with certificate and hostname validation
+  ansible.builtin.uri:
+    url: "{{ bikehub_probe_base_url }}/api/health"
+    ca_path: "{{ bikehub_tls_directory ~ '/ca.crt' if bikehub_tls_enabled | bool else omit }}"
+    validate_certs: true
+    return_content: true
+    status_code: 200
+  register: bikehub_health
+  until: bikehub_health.status == 200
+  retries: 10
+  delay: 3
+
+- name: Verify the frontend through nginx
+  ansible.builtin.uri:
+    url: "{{ bikehub_probe_base_url }}/"
+    ca_path: "{{ bikehub_tls_directory ~ '/ca.crt' if bikehub_tls_enabled | bool else omit }}"
+    validate_certs: true
+    return_content: true
+    status_code: 200
+  register: bikehub_frontend
+  failed_when: >-
+    'id="root"' not in bikehub_frontend.content

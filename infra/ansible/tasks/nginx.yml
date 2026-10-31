@@ -1,0 +1,40 @@
+---
+- name: Prepare nginx runtime directories and the configuration validator
+  ansible.builtin.import_tasks: nginx-runtime.yml
+
+- name: Configure the website certificate
+  ansible.builtin.import_tasks: tls.yml
+  when: bikehub_tls_enabled | bool
+
+- name: Configure the host nginx reverse proxy
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/nginx.conf.j2"
+    dest: /etc/nginx/conf.d/bikehub.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/local/sbin/validate-bikehub-nginx %s"
+  register: bikehub_nginx_config
+
+- name: Disable Debian's default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  register: bikehub_nginx_default
+
+- name: Validate nginx configuration
+  ansible.builtin.command:
+    argv: [nginx, -t]
+  changed_when: false
+
+- name: Enable nginx
+  ansible.builtin.service:
+    name: nginx
+    enabled: true
+    state: started
+
+- name: Reload nginx for changed configuration or certificate
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+  when: bikehub_nginx_config.changed or bikehub_nginx_default.changed or (bikehub_tls_certificate.changed | default(false))

@@ -19,10 +19,14 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: bikehub-api
+{% if bikehub_database_enabled | bool %}
+      annotations:
+        bikehub.io/database-secret-version: {{ bikehub_database_secret_version.stdout | to_json }}
+{% endif %}
     spec:
       containers:
         - name: api
-          image: {{ bikehub_image }}
+          image: {{ bikehub_selected_image }}
           imagePullPolicy: Never
           ports:
             - name: http
@@ -35,23 +39,28 @@ spec:
               value: "false"
             - name: Database__MigrationsEnabled
               value: "false"
+{% if bikehub_database_enabled | bool %}
             - name: ConnectionStrings__BikeHub
               valueFrom:
                 secretKeyRef:
                   name: bikehub-database
                   key: connection-string
+{% endif %}
           startupProbe:
-            tcpSocket:
+            httpGet:
+              path: /api/health
               port: http
             periodSeconds: 5
             failureThreshold: 60
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /api/health
               port: http
             periodSeconds: 5
             failureThreshold: 3
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /api/health
               port: http
             initialDelaySeconds: 15
             periodSeconds: 10

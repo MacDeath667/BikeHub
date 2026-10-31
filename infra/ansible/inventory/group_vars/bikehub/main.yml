@@ -1,4 +1,28 @@
 ---
 bikehub_app_port: 8080
 bikehub_node_port: 30080
-bikehub_replica_count: 3
+bikehub_hostname: bikehub.local
+bikehub_replica_count: 1
+bikehub_rebuild_image: true
+bikehub_image_repository: docker.io/library/bikehub-api
+# Leave empty to tag a build by its source hash, or reuse the deployed image when not rebuilding.
+bikehub_image: ""
+bikehub_source_dir: "{{ playbook_dir }}/../../.."
+bikehub_remote_root: /opt/bikehub
+bikehub_namespace: bikehub
+bikehub_deployment: bikehub-api
+bikehub_database_enabled: true
+bikehub_database_bootstrap_enabled: true
+bikehub_migration_timeout: 300
+bikehub_migration_retention: 86400
+bikehub_truenas_hostname: truenas.local
+bikehub_truenas_ip: "{{ lookup('ansible.builtin.env', 'TRUENAS_IP') | default('192.168.0.216', true) }}"
+bikehub_k3s_channel: stable
+# One-time recovery after the VM booted with a wrong clock; normally false.
+bikehub_rotate_k3s_certificates: false
+bikehub_tls_enabled: true
+bikehub_tls_server_name: "{{ bikehub_hostname }}"
+bikehub_tls_directory: /etc/nginx/bikehub-tls
+bikehub_tls_ca_certificate: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/truenas/pki/bikehub-ca.crt"
+bikehub_tls_ca_private_key: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/truenas/pki/bikehub-ca.key"
+bikehub_tls_cache_directory: "{{ playbook_dir }}/../.local-pki"

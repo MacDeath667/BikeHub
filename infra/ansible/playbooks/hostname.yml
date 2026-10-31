@@ -1,0 +1,13 @@
+---
+- name: Publish the local BikeHub website name
+  hosts: "{{ bikehub_target_group | default('bikehub') }}"
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Configure the website mDNS alias
+      ansible.builtin.import_tasks: ../tasks/mdns.yml
+
+    - name: Report the published website name
+      ansible.builtin.debug:
+        msg: "{{ bikehub_hostname }} -> {{ ansible_facts.default_ipv4.address }}"

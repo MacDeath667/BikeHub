@@ -1,0 +1,18 @@
+[Unit]
+Description=Publish the BikeHub local website name
+Requires=avahi-daemon.service
+After=avahi-daemon.service network-online.target
+Wants=network-online.target
+PartOf=avahi-daemon.service
+
+[Service]
+Type=simple
+User=avahi
+Group=avahi
+ExecStart=/usr/bin/avahi-publish-address --no-reverse --no-fail {{ bikehub_hostname }} {{ ansible_facts.default_ipv4.address }}
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
