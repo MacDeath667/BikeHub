@@ -1,4 +1,11 @@
-﻿FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+FROM node:22-alpine AS frontend
+WORKDIR /web
+COPY Web/package.json Web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY Web/ ./
+RUN npm run build
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 USER $APP_UID
 WORKDIR /app
 EXPOSE 8080
@@ -28,4 +35,5 @@ RUN dotnet publish "BikeHub.Api.csproj" -c $BUILD_CONFIGURATION -o /app/publish 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+COPY --from=frontend /web/dist ./wwwroot
 ENTRYPOINT ["dotnet", "BikeHub.Api.dll"]
