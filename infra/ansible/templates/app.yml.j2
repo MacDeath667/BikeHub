@@ -39,6 +39,14 @@ spec:
               value: "false"
             - name: Database__MigrationsEnabled
               value: "false"
+            - name: Observability__Enabled
+              value: {{ (bikehub_observability_enabled | bool) | ternary('true', 'false') | to_json }}
+{% if bikehub_observability_enabled | bool %}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector.{{ bikehub_observability_namespace }}.svc.cluster.local:4318
+            - name: OTEL_METRIC_EXPORT_INTERVAL
+              value: "15000"
+{% endif %}
 {% if bikehub_database_enabled | bool %}
             - name: ConnectionStrings__BikeHub
               valueFrom:

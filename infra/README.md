@@ -72,6 +72,13 @@ ssh -i ~/.ssh/truenas_admin "ansible@$BIKEHUB_VM_IP" \
 
 Сам playbook проверяет готовность pod, HTTPS health API с проверкой цепочки сертификата и наличие фронтенда через nginx. Сайт доступен на **https://bikehub.local/**. HTTP перенаправляется на этот адрес с кодом 308.
 
+## Grafana, метрики, логи и трассировки
+
+Существующая Grafana на TrueNAS: [BikeHub · API](https://truenas.local:30037/d/bikehub-api).
+Данные собирают OpenTelemetry Collector, Prometheus, Loki и Tempo в отдельном namespace `bikehub-observability`.
+Локальный API использует `http://bikehub.local:30418`, серверный — внутренний Kubernetes Service.
+Установка, фильтр окружений, порты, сроки хранения и сквозная проверка описаны в [инструкции наблюдаемости](observability/README.md).
+
 ## Короткое имя сайта
 
 `bikehub.local` публикуется Avahi как дополнительное имя текущего LAN-адреса VM. Имя VM в TrueNAS и её системный hostname остаются `bikehub01`; `bikehub01.local` продолжает работать. Служба `bikehub-mdns.service` запускает `avahi-publish-address --no-reverse --no-fail` и автоматически стартует после загрузки. Отдельная обратная запись не создаётся, чтобы не конфликтовать с основным именем VM.

@@ -27,3 +27,21 @@ bikehub_tls_name: bikehub_tls
 bikehub_tls_key_path: "{{ bikehub_tls_directory }}/{{ bikehub_tls_name }}"
 bikehub_tls_certificate_path: "{{ bikehub_tls_directory }}/{{ bikehub_tls_name }}.pub"
 bikehub_tls_cache_directory: "{{ playbook_dir }}/../.local-pki"
+bikehub_observability_enabled: true
+bikehub_observability_namespace: bikehub-observability
+bikehub_observability_config_directory: "{{ playbook_dir }}/../../observability/config"
+bikehub_otlp_node_port: 30418
+bikehub_prometheus_node_port: 30900
+bikehub_loki_node_port: 31000
+bikehub_tempo_node_port: 32000
+bikehub_collector_image: otel/opentelemetry-collector-contrib:0.164.0
+bikehub_prometheus_image: prom/prometheus:v3.15.1
+bikehub_loki_image: grafana/loki:3.7.9
+bikehub_tempo_image: grafana/tempo:3.1.1
+bikehub_grafana_ssh_target: truenas_admin@truenas.local
+bikehub_grafana_ssh_identity: "{{ lookup('ansible.builtin.env', 'HOME') }}/.ssh/truenas_admin"
+bikehub_grafana_app_name: grafana
+bikehub_grafana_certificate_id: 2
+bikehub_grafana_provision_enabled: true
+bikehub_grafana_truenas_url: https://truenas.local
+bikehub_grafana_ca_certificate: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/truenas/pki/bikehub-ca.crt"

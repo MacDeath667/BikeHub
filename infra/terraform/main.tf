@@ -72,6 +72,9 @@ resource "truenas_vm" "bikehub" {
   memory     = var.vm_memory_mb
   cores      = var.vm_vcpus
   bootloader = "UEFI"
+  # Modern observability binaries require x86-64-v2 instructions hidden by
+  # QEMU's generic CUSTOM CPU. This VM stays on its existing TrueNAS host.
+  cpu_mode = "HOST-PASSTHROUGH"
   # Debian interprets the virtual hardware clock as UTC. LOCAL caused a 3-hour
   # jump at boot and K3s issued certificates before NTP corrected the clock.
   time      = "UTC"

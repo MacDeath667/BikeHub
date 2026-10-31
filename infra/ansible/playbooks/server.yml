@@ -229,6 +229,10 @@
         argv: [k3s, kubectl, rollout, status, deployment/coredns, -n, kube-system, --timeout=180s]
       changed_when: false
 
+    - name: Configure telemetry collection and storage
+      ansible.builtin.import_tasks: ../tasks/observability.yml
+      when: bikehub_observability_enabled | bool
+
     - name: Apply database credentials if provided and run migrations
       ansible.builtin.import_tasks: ../tasks/database.yml
       when: bikehub_database_enabled | bool
