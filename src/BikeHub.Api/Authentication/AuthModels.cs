@@ -7,7 +7,7 @@ public sealed class AuthOptions
 {
     public bool Enabled { get; set; }
     public string Store { get; set; } = Constants.AuthenticationStores.Postgres;
-    public string EmailProvider { get; set; } = Constants.EmailProviders.Smtp;
+    public string EmailProvider { get; set; } = Constants.EmailProviders.MailService;
     public string OtpSecret { get; set; } = string.Empty;
     public string DataProtectionPath { get; set; } = string.Empty;
     public int CodeMinutes { get; set; } = 5;
@@ -17,28 +17,6 @@ public sealed class AuthOptions
     public int MaxPerDay { get; set; } = 100;
     public int SessionDays { get; set; } = 14;
 
-}
-
-public sealed class GmailApiOptions
-{
-    public string ClientId { get; set; } = string.Empty;
-    public string ClientSecret { get; set; } = string.Empty;
-    public string RefreshToken { get; set; } = string.Empty;
-    public string FromAddress { get; set; } = string.Empty;
-    public string FromName { get; set; } = Constants.ApplicationName;
-}
-
-public sealed class SmtpOptions
-{
-    private const string DefaultHost = "smtp.gmail.com";
-
-    public string Host { get; set; } = DefaultHost;
-    public int Port { get; set; } = 587;
-    public string Security { get; set; } = Constants.SmtpSecurity.StartTls;
-    public string Username { get; set; } = string.Empty;
-    public string Password { get; set; } = string.Empty;
-    public string FromAddress { get; set; } = string.Empty;
-    public string FromName { get; set; } = Constants.ApplicationName;
 }
 
 public sealed record RequestEmailCode(

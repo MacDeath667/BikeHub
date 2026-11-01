@@ -26,14 +26,7 @@ internal static class Constants
     public static class EmailProviders
     {
         public const string Development = "Development";
-        public const string Smtp = "Smtp";
-        public const string GmailApi = "GmailApi";
-    }
-
-    public static class SmtpSecurity
-    {
-        public const string StartTls = "StartTls";
-        public const string SslOnConnect = "SslOnConnect";
+        public const string MailService = "MailService";
     }
 
     public static class Claims
@@ -47,15 +40,6 @@ internal static class Constants
     {
         public const string RequestCode = "auth-request";
         public const string VerifyCode = "auth-verify";
-    }
-
-    public static class EmailTransport
-    {
-        public const string AuthenticateStage = "authenticate";
-        public const string OAuthStage = "oauth";
-        public const string SendStage = "send";
-        public const string AuthenticationRejected = "auth_rejected";
-        public const string GmailRateLimited = "gmail_rate_limited";
     }
 
     public static class FeedTabs

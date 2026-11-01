@@ -1,0 +1,105 @@
+---
+- name: Require the mail database Secret without reading it
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "secret/{{ bikehub_mail_database_secret_name }}", -n, "{{ bikehub_namespace }}", -o, name]
+  changed_when: false
+
+- name: Read the mail transport selection
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "secret/{{ bikehub_auth_secret_name }}", -n, "{{ bikehub_namespace }}", -o, 'jsonpath={.metadata.annotations.bikehub\.io/email-provider}']
+  register: bikehub_mail_provider_annotation
+  changed_when: false
+
+- name: Select the mail service provider
+  ansible.builtin.set_fact:
+    bikehub_effective_email_provider: "{{ bikehub_mail_provider_annotation.stdout | default('Smtp', true) }}"
+
+- name: Validate the configured mail transport
+  ansible.builtin.assert:
+    that:
+      - bikehub_effective_email_provider in ['Smtp', 'GmailApi']
+
+- name: Read mail credential revisions without reading credentials
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "secret/{{ item }}", -n, "{{ bikehub_namespace }}", -o, 'jsonpath={.metadata.resourceVersion}']
+  loop: ["{{ bikehub_auth_secret_name }}", "{{ bikehub_mail_database_secret_name }}"]
+  register: bikehub_mail_credential_revisions
+  changed_when: false
+
+- name: Check whether the internal mail API key already exists
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "secret/{{ bikehub_mail_secret_name }}", -n, "{{ bikehub_namespace }}", --ignore-not-found, -o, name]
+  register: bikehub_mail_secret_check
+  changed_when: false
+
+- name: Generate the internal API key on the VM only on first setup
+  ansible.builtin.shell: |
+    set -o pipefail
+    k3s kubectl create secret generic {{ bikehub_mail_secret_name | quote }} \
+      -n {{ bikehub_namespace | quote }} \
+      --from-file=api-key=<(openssl rand -hex 32 | tr -d '\n') -o name
+  args:
+    executable: /bin/bash
+  when: bikehub_mail_secret_check.stdout | length == 0
+  no_log: true
+  changed_when: true
+
+- name: Read the internal API key revision without reading its value
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "secret/{{ bikehub_mail_secret_name }}", -n, "{{ bikehub_namespace }}", -o, 'jsonpath={.metadata.resourceVersion}']
+  register: bikehub_mail_secret_version
+  changed_when: false
+
+- name: Render the internal Kafka broker
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/mail-kafka.yml.j2"
+    dest: "{{ bikehub_remote_root }}/k8s/mail-kafka.yml"
+    mode: "0644"
+  when: bikehub_mail_kafka_enabled | bool and bikehub_mail_kafka_managed | bool
+
+- name: Start the internal Kafka broker and topic initializer
+  ansible.builtin.command:
+    argv: [k3s, kubectl, apply, -f, "{{ bikehub_remote_root }}/k8s/mail-kafka.yml"]
+  when: bikehub_mail_kafka_enabled | bool and bikehub_mail_kafka_managed | bool
+  register: bikehub_mail_kafka_apply
+  changed_when: "'configured' in bikehub_mail_kafka_apply.stdout or 'created' in bikehub_mail_kafka_apply.stdout"
+
+- name: Wait for the internal Kafka topic
+  ansible.builtin.command:
+    argv: [k3s, kubectl, wait, --for=condition=complete, "job/bikehub-mail-topic-{{ ansible_facts.date_time.epoch }}", -n, "{{ bikehub_namespace }}", --timeout=300s]
+  when: bikehub_mail_kafka_enabled | bool and bikehub_mail_kafka_managed | bool
+  changed_when: false
+
+- name: Render mail migrations
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/mail-migration-job.yml.j2"
+    dest: "{{ bikehub_remote_root }}/k8s/mail-migration-job.yml"
+    mode: "0644"
+
+- name: Start mail migrations
+  ansible.builtin.command:
+    argv: [k3s, kubectl, apply, -f, "{{ bikehub_remote_root }}/k8s/mail-migration-job.yml"]
+  register: bikehub_mail_migration_apply
+  changed_when: "'configured' in bikehub_mail_migration_apply.stdout or 'created' in bikehub_mail_migration_apply.stdout"
+
+- name: Wait for mail migrations before starting the worker
+  ansible.builtin.command:
+    argv: [k3s, kubectl, wait, --for=condition=complete, "job/bikehub-mail-migrate-{{ ansible_facts.date_time.epoch }}", -n, "{{ bikehub_namespace }}", --timeout=300s]
+  changed_when: false
+
+- name: Render the mail service
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/mail.yml.j2"
+    dest: "{{ bikehub_remote_root }}/k8s/mail.yml"
+    mode: "0644"
+
+- name: Apply the mail service
+  ansible.builtin.command:
+    argv: [k3s, kubectl, apply, -f, "{{ bikehub_remote_root }}/k8s/mail.yml"]
+  register: bikehub_mail_apply
+  changed_when: "'configured' in bikehub_mail_apply.stdout or 'created' in bikehub_mail_apply.stdout"
+
+- name: Wait for the mail service before updating the main API
+  ansible.builtin.command:
+    argv: [k3s, kubectl, rollout, status, deployment/bikehub-mail, -n, "{{ bikehub_namespace }}", --timeout=300s]
+  changed_when: false

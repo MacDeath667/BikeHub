@@ -1,105 +1,88 @@
 # Вход и подтверждение почты
 
-Первый вход и регистрация используют один сценарий: почта → шестизначный код → подтверждённый аккаунт и сессия. Пароля BikeHub нет. Повторный вход с той же почтой открывает прежний аккаунт; регистр адреса не учитывается. Имя из формы используется только при создании аккаунта. Почта не попадает в публичный профиль.
+Первый вход и регистрация: почта → шестизначный код → подтверждённый аккаунт и сессия. Пароля BikeHub нет. Повторный вход с той же почтой открывает прежний аккаунт; регистр адреса не учитывается. Имя используется только при создании аккаунта, почта не попадает в публичный профиль.
 
-## Локально, без отправки писем
+## Локальная разработка
 
 ```bash
+# API
 dotnet run --project src/BikeHub.Api --launch-profile http
-# В другом терминале
+# Фронт, в другом терминале
 npm --prefix Web ci
 npm --prefix Web run dev
 ```
 
-Откройте http://localhost:5173, нажмите «Войти», укажите тестовый адрес, например `rider@example.test`. На следующем шаге нажмите «Посмотреть тестовое письмо», затем «Вставить» и «Подтвердить и войти».
+Откройте http://localhost:5173 и войдите с тестовым адресом. На шаге кода доступны «Посмотреть тестовое письмо» и «Вставить». Development использует память; тестовое письмо доступно только браузеру, запросившему код, и только при loopback-соединении. В production тестовая почта запрещена.
 
-По умолчанию Development использует `Memory` и `Development`: аккаунты, коды и сессии сбрасываются после перезапуска API. Тестовое письмо можно получить только из того браузера, который запросил код, и только при соединении с API через loopback. Заголовок `X-Forwarded-For` не открывает этот доступ. В production тестовая почта запрещена.
+## Конфигурация
 
-## Секции конфигурации
+Основной API хранит параметры входа в `Authentication`. `Authentication:EmailProvider=Development` включает локальную тестовую почту, `MailService` — HTTP-клиент отдельного отправителя. Его подключение: `MailService:BaseUrl` и `MailService:ApiKey`.
 
-`Authentication` содержит настройки входа, лимитов, хранилища и выбор `EmailProvider`. Настройки транспортов находятся отдельно на верхнем уровне:
+У `BikeHub.Mail` транспорт выбирается через `Mail:Provider=Smtp/GmailApi`. Секции `Smtp` и `GmailApi` находятся на верхнем уровне конфигурации **почтового сервиса**. Для user-secrets применяются ключи `Smtp:Username`, `Smtp:Password`, `GmailApi:RefreshToken`; для окружения — `Smtp__Username`, `Smtp__Password`, `GmailApi__RefreshToken`.
 
-- `Smtp`: `Host`, `Port`, `Security`, `Username`, `Password`, `FromAddress`, `FromName`;
-- `GmailApi`: `ClientId`, `ClientSecret`, `RefreshToken`, `FromAddress`, `FromName`.
+При переносе прежних локальных настроек запишите SMTP/Gmail-значения в user-secrets `src/BikeHub.Mail`. Старый `Authentication:EmailProvider=Smtp/GmailApi` в user-secrets API удалите или замените на `MailService` с адресом и API-ключом сервиса. На NAS существующий `bikehub-auth` сохраняется, токены заново выдавать не нужно. Ansible подключает почтовые ключи только к `bikehub-mail`, OTP-ключ — к API. Запуск сервисов и асинхронная доставка описаны [отдельно](mail-service.md).
 
-Для user-secrets используются ключи `Smtp:Username`, `Smtp:Password`, `GmailApi:RefreshToken` и аналогичные. Для окружения — `Smtp__Username`, `Smtp__Password`, `GmailApi__RefreshToken`. Выбор провайдера остаётся в `Authentication:EmailProvider` / `Authentication__EmailProvider`.
+## Настройка SMTP
 
-При переходе существующие локальные ключи из `Authentication:Smtp:*` и `Authentication:GmailApi:*` нужно перенести в `Smtp:*` и `GmailApi:*` с сохранением значений. Повторно выдавать OAuth-токен для этого не требуется. Скрипты настройки записывают новые ключи. На сервере имена Secret и его ключей сохранены: обновлённый Ansible-шаблон передаёт их в новые переменные окружения при обычном развёртывании.
-
-## Личный Gmail для первого этапа
-
-Подходит для разработки и небольшого закрытого пилота. Письма будут приходить от вашего Gmail, и получатели увидят этот адрес.
-
-1. Включите [двухэтапную проверку Google и создайте пароль приложения](https://support.google.com/accounts/answer/185833?hl=ru) для BikeHub. При некоторых настройках аккаунта эта функция недоступна. Обычный пароль Google не подходит.
-2. Выполните из корня репозитория:
-
-   ```bash
-   python3 scripts/configure-gmail.py
-   ```
-
-3. Введите адрес и 16-символьный пароль приложения в скрытом приглашении скрипта. Перезапустите API. Теперь форма отправляет настоящее письмо; блока тестовой почты не будет.
-
-Скрипт сохраняет SMTP в **локальных .NET user-secrets**, вне репозитория, и передаёт значения в `dotnet` через stdin. Он не отправляет письмо при настройке. User-secrets — локальный конфигурационный файл, а не зашифрованное хранилище: не публикуйте и не копируйте его в образ. SMTP использует `smtp.gmail.com:587` с обязательным STARTTLS и проверкой сертификата ([параметры Google](https://support.google.com/mail/answer/7104828?hl=en)). Также поддержан режим `SslOnConnect` для провайдеров с портом 465.
-
-У личного Gmail есть [ограничения отправки](https://support.google.com/mail/answer/22839?hl=ru), включая блокировку при превышении 500 писем в день; антиспам может ограничить отправку раньше. Это не гарантия доставки. В BikeHub по умолчанию бюджет ниже — 100 запросов кода за скользящие сутки на всё приложение, включая неудачные отправки. Для массового запуска нужен почтовый провайдер с подходящими условиями.
-
-Чтобы вернуть тестовую почту:
+Для Gmail нужен [пароль приложения Google](https://support.google.com/accounts/answer/185833?hl=ru), обычный пароль аккаунта не подходит. Единая .NET CLI запрашивает пароль со скрытым вводом и проверяет TLS/AUTH без отправки письма:
 
 ```bash
-dotnet user-secrets remove Authentication:EmailProvider --project src/BikeHub.Api
+# Локальные user-secrets BikeHub.Mail
+dotnet run --project tools/BikeHub.Tools -- mail smtp --target local
+
+# Secret в существующей VM
+dotnet run --project tools/BikeHub.Tools -- mail smtp --target server
 ```
 
-Или временно переопределите провайдер переменной окружения `Authentication__EmailProvider=Development` при запуске Development.
+Используется `smtp.gmail.com:587` с обязательным STARTTLS и проверкой сертификата. При отказе настройки не сохраняются. User-secrets — локальный файл вне репозитория, а не зашифрованное хранилище. Не копируйте его в Docker-образ. Другие SMTP можно настроить через `Smtp:*`; поддерживаются `StartTls` и `SslOnConnect`.
 
-## Gmail API с OAuth2
+## Gmail OAuth2
 
-Провайдер `GmailApi` отправляет тот же код подтверждения через HTTPS Gmail API. Одноразовую привязку Google проходит только владелец ящика отправителя. Пользователи BikeHub по-прежнему входят по коду из письма.
-
-### Подготовка Google Cloud
-
-1. Создайте проект BikeHub в [Google Cloud Console](https://console.cloud.google.com/).
-2. Включите **Gmail API** в библиотеке API этого проекта.
-3. В **Google Auth platform → Branding / Audience** настройте приложение и выберите External. Для первого запуска в Testing добавьте Gmail отправителя в Test users.
-4. В **Data Access** добавьте `openid`, `https://www.googleapis.com/auth/userinfo.email`, `https://www.googleapis.com/auth/gmail.send`.
-5. В **Clients → Create client** выберите **Desktop app**, скачайте JSON. Храните его вне репозитория, например `~/Downloads/client_secret_BikeHub.json`. Скрипт отклоняет JSON из каталога репозитория и клиенты типа Web application.
-
-`gmail.send` позволяет только отправку, без чтения писем. OpenID/email нужны для проверки адреса подключённого аккаунта. Подробности: [области доступа Gmail](https://developers.google.com/workspace/gmail/api/auth/scopes), [создание Desktop-клиента](https://developers.google.com/workspace/gmail/api/quickstart/python).
-
-В режиме **Testing** refresh token с Gmail-правами истекает через **7 дней**. Для постоянного запуска настройте Production и выполните применимые требования Google к OAuth-приложению. Google отдельно описывает [исключения из верификации для персональных приложений](https://support.google.com/cloud/answer/13464323?hl=en) и [условия истечения токенов](https://developers.google.com/identity/protocols/oauth2#expiration). Токен также может быть отозван владельцем или Google; это требует повторной привязки. Настройка OAuth сама по себе не гарантирует доставку письма или отсутствие других ограничений аккаунта.
-
-### Привязка ящика на Mac
-
-Из корня проекта:
+1. Создайте проект в [Google Cloud Console](https://console.cloud.google.com/) и включите Gmail API.
+2. В Google Auth platform настройте Branding/Audience. При Testing добавьте отправителя в Test users.
+3. Добавьте scopes: `openid`, `https://www.googleapis.com/auth/userinfo.email`, `https://www.googleapis.com/auth/gmail.send`.
+4. Создайте OAuth Client типа Desktop app и скачайте JSON **вне репозитория**.
 
 ```bash
-python3 -m venv .venv-gmail
-.venv-gmail/bin/python -m pip install -r scripts/requirements-gmail-oauth.txt
-.venv-gmail/bin/python scripts/configure-gmail-oauth.py \
-  --client-json "$HOME/Downloads/client_secret_BikeHub.json"
+dotnet run --project tools/BikeHub.Tools -- mail gmail \
+  --client-json "$HOME/Downloads/BikeHub OAuth Client ID.json" \
+  --sender sender@gmail.com --target server
 ```
 
-Введите адрес **отправителя**, откройте выданную ссылку в обычном браузере на этом же Mac и подтвердите доступ для собственного OAuth-приложения. Скрипт использует официальный SDK Google, PKCE, случайный state, nonce и callback только на `127.0.0.1` со случайным портом. Google ID token проверяется по подписи, issuer, audience, nonce и подтверждённому email. Выбор другого аккаунта или отсутствие `gmail.send`/refresh token останавливает настройку.
+Для локальных user-secrets укажите `--target local`. Откройте напечатанную ссылку в браузере на том же компьютере. Используется официальный Google .NET SDK с PKCE, случайными state/nonce и callback на loopback со случайным портом. Проверяются подпись, issuer, audience и срок ID token, подтверждённый адрес, nonce, совпадение выбранного аккаунта, scope `gmail.send` и наличие refresh token. Доступ к чтению писем не запрашивается.
 
-Токены не выводятся и не пишутся в локальный `token.json`. Скрипт передаёт их в память VM по SSH stdin, проверяет обновление токена через Google и сохраняет в существующий Secret `bikehub-auth`. OTP-секрет и существующие cookie-ключи сохраняются.
+Токены не печатаются и не сохраняются в `token.json`. Для сервера CLI передаёт настройки Ansible через stdin; playbook проверяет refresh с VM перед записью Secret. Для локальной настройки используется stdin `dotnet user-secrets set`. Пароли и токены не попадают в аргументы процессов. SDK почтового сервиса обновляет access token в памяти, без файлового DataStore.
 
-После привязки:
+Для Testing учитывайте [условия истечения refresh token Google](https://developers.google.com/identity/protocols/oauth2#expiration), включая семидневный срок Gmail-грантов. Проверяйте [требования к scopes и верификации](https://developers.google.com/workspace/gmail/api/auth/scopes) перед постоянным запуском.
+
+## Серверные Secrets и развёртывание
+
+.NET CLI использует `infra/ansible/playbooks/configure-mail.yml`. Он работает в существующей VM через `ansible@192.168.0.49` и `~/.ssh/truenas_admin`. Переопределения: `--vm-address IP`, `--ssh-key PATH`. Если образ почтового сервиса ещё отсутствует, playbook сначала собирает образы без выкладки приложения.
+
+SMTP/Gmail проверяется с VM в контейнере `BikeHub.Mail --check-transport --configuration-stdin`, без отправки. Отказ не изменяет Secret. У существующего Secret читаются только revision и наличие OTP-ключа; merge patch с `resourceVersion` сохраняет его и посторонние ключи. OTP генерируется только при отсутствии. Пароли передаются через SSH stdin; playbook включает SSH pipelining и `no_log`, без промежуточных файлов конфигурации с введёнными секретами. Подключение к PostgreSQL не читается и не меняется.
+
+Ключи `bikehub-auth`: `otp-secret`; для SMTP — `smtp-username`, `smtp-password`, `smtp-from-address`; для Gmail — `gmail-client-id`, `gmail-client-secret`, `gmail-refresh-token`, `gmail-from-address`. Транспорт задаётся аннотацией `bikehub.io/email-provider`.
+
+Проверка уже настроенного транспорта без чтения значений Secret на контроллер и без отправки письма:
 
 ```bash
-bash scripts/redeploy.sh --enable-auth
-# Проверка обновления сохранённого токена с VM, без отправки письма:
-.venv-gmail/bin/python scripts/configure-gmail-oauth.py --check
+dotnet run --project tools/BikeHub.Tools -- mail check --target server
 ```
 
-Ansible выбирает транспорт по аннотации Secret `bikehub.io/email-provider`. У привязанного OAuth это `GmailApi`; у прежних Secret без аннотации — `Smtp`. Переключение не требует ручной правки Deployment. Первая выкладка поддержки Gmail API требует сборки; используйте `--no-build` только после неё.
-
-Для локальной реальной отправки вместо серверного Secret можно сохранить настройки в .NET user-secrets:
+Playbook выполняет `--check-transport` внутри работающего mail Pod с его текущим окружением. Новую конфигурацию Secrets нужно применить обычной выкладкой, прежде чем проверять её этим способом.
 
 ```bash
-.venv-gmail/bin/python scripts/configure-gmail-oauth.py \
-  --client-json "$HOME/Downloads/client_secret_BikeHub.json" --target local
+ansible-playbook -i '192.168.0.49,' -u ansible \
+  --private-key ~/.ssh/truenas_admin infra/ansible/playbooks/server.yml \
+  -e @infra/ansible/inventory/group_vars/bikehub/main.yml \
+  -e bikehub_target_group=all -e bikehub_auth_enabled=true
 ```
 
-Gmail API использует ключи Secret `gmail-client-id`, `gmail-client-secret`, `gmail-refresh-token`, `gmail-from-address`. Активный провайдер хранится отдельно как аннотация. В контейнер значения передаются через `GmailApi__*`. SDK .NET кеширует access token в памяти, обновляет его по refresh token и не использует файловый DataStore. Ошибки OAuth/API журналируются только по этапу, безопасной категории и числовому статусу, без исходного ответа Google и токенов.
+Ansible по умолчанию сохраняет текущий режим авторизации (`bikehub_auth_enabled: null`). `true` и `false` явно его меняют; на новой установке по умолчанию вход выключен.
+
+В production нужны PostgreSQL, стабильный OTP-секрет, постоянные ключи cookie, реальный почтовый транспорт, общий внутренний API-ключ и HTTPS. У основного API задаются `Authentication__Store=Postgres`, `Authentication__EmailProvider=MailService`, `MailService__BaseUrl`, `MailService__ApiKey`. Ansible хранит cookie-ключи в PVC, подключает Secrets через `secretKeyRef`, обновляет Pod по revision. При TLS на прокси указываются доверенные `ReverseProxy:KnownProxies`; прямой NodePort должен оставаться закрытым для внешнего доступа.
+
+Email-подтверждение не подтверждает номер телефона и само по себе не означает выполнения правовых требований к сервису.
 
 ## API и защита
 
@@ -115,86 +98,9 @@ Gmail API использует ключи Secret `gmail-client-id`, `gmail-clien
 
 Код одноразовый, действует 5 минут, допускает 5 неверных попыток. Повторный запрос возможен через 60 секунд, до 5 раз в час для адреса. Новый код заменяет прежний код для той же почты или браузера. Проверка и создание сессии атомарны; в БД хранятся HMAC кода и привязки браузера, а не открытый код. IP-лимиты: 10 запросов отправки и 30 проверок в минуту на процесс. Суточный бюджет и ограничения почты общие для реплик через PostgreSQL.
 
-Сессия действует 14 дней без скользящего продления, проверяется в хранилище при каждом запросе с cookie. Выход отзывает её на сервере. В production cookie имеют `Secure`, `HttpOnly`, префикс `__Host-`; применяются SameSite и CSRF. Коды и адреса не добавляются в сообщения журналирования и атрибуты метрик авторизации; ошибки SMTP журналируются только по типу исключения. Метрика `bikehub.auth.events` экспортируется в существующий OpenTelemetry Collector с результатом операции, без адресов и кодов.
+Сессия действует 14 дней без скользящего продления, проверяется в хранилище при каждом запросе с cookie. Выход отзывает её на сервере. В production cookie имеют `Secure`, `HttpOnly`, префикс `__Host-`; применяются SameSite и CSRF. Коды и адреса не добавляются в сообщения журналирования и атрибуты метрик авторизации; API журналирует тип ошибки обращения к почтовому сервису; сервис журналирует безопасную категорию ошибки транспорта. Метрика `bikehub.auth.events` экспортируется в существующий OpenTelemetry Collector с результатом операции, без адресов и кодов.
 
 Гостю доступны публичные лента, велосипеды, профили и комментарии. Запись, комментарий, реакция, подписка и вступление в сообщество требуют подтверждённой почты. `/users/me`, личные закладки и лента подписок возвращают 401 гостю. Владельца велосипеда и автора записи сервер берёт из сессии.
-
-## Сервер и TrueNAS
-
-В основном `appsettings.json` авторизация выключена: без SMTP/секретов доступно публичное чтение, запись требует входа. Не включайте Development-провайдер на сервере.
-
-Для production нужны:
-
-- `Authentication__Enabled=true`, `Authentication__Store=Postgres`, `Authentication__EmailProvider=Smtp`;
-- существующий `ConnectionStrings__BikeHub` и EF-миграция `AdoptExistingSchema` (штатный migration Job запускается перед обновлением приложения; перенос прежней схемы описан в [инструкции хранилища](persistence.md));
-- случайный `Authentication__OtpSecret` длиной не менее 32 символов, одинаковый для реплик и стабильный после перезапуска;
-- SMTP username/app password/FromAddress либо OAuth Client ID, Client secret, refresh token и FromAddress для Gmail API;
-- постоянный каталог Data Protection для ключей cookie, доступный только приложению. Потеря ключей разлогинит пользователей; ключи также нужно защищать в резервных копиях;
-- HTTPS перед API; при терминации TLS на прокси — явные IP в `ReverseProxy:KnownProxies`. API принимает только `X-Forwarded-Proto` от них, не доверяет присланным клиентом IP/Host. За текущим NodePort IP-лимит консервативно может объединять клиентов;
-- для внешнего доступа — ограничение прямого доступа к NodePort и HTTPS-прокси как единственная точка входа.
-
-Ansible подготовлен: `bikehub_auth_enabled: true` требует PostgreSQL, TLS и существующий Secret `bikehub-auth` в namespace `bikehub`. Его ключи:
-
-| Ключ Secret | Содержимое |
-| --- | --- |
-| `otp-secret` | Случайный секрет HMAC |
-| `smtp-username` | Адрес Gmail |
-| `smtp-password` | Пароль приложения Google |
-| `smtp-from-address` | Тот же адрес Gmail |
-
-### Добавление секретов на существующую VM
-
-BikeHub работает в K3s внутри VM `192.168.0.49`, поэтому секрет добавляется туда, а не через настройки Apps в TrueNAS. Из корня проекта на Mac:
-
-```bash
-python3 scripts/configure-auth-server.py
-```
-
-Скрипт запросит Gmail и пароль приложения Google с отключённым отображением ввода. Затем подключится как `ansible@192.168.0.49` с ключом `~/.ssh/truenas_admin`, проверит TLS и вход в Gmail с VM, после чего через `sudo -n k3s kubectl` создаст или обновит `bikehub/bikehub-auth`. Если Gmail отклоняет вход, Secret не изменяется. Значения идут через stdin внутри SSH, без локальных файлов и секретов в аргументах команд. OTP-секрет генерируется случайно при первом создании; существующий сохраняется при обновлении SMTP. Secret с подключением к БД не меняется. Скрипт не перезапускает приложение и не отправляет проверочное письмо.
-
-Проверить только наличие четырёх ключей, не выводя значения:
-
-```bash
-python3 scripts/configure-auth-server.py --check
-```
-
-Эта команда проверяет только наличие ключей. Проверить реальные TLS и SMTP-вход с уже сохранёнными настройками, без отправки письма:
-
-```bash
-python3 scripts/configure-auth-server.py --test-smtp
-```
-
-Если новый пароль не прошёл проверку и не был сохранён, `--test-smtp` продолжает проверять прежний Secret. Для сравнения **одного и того же свежего ввода** с Mac и с VM:
-
-```bash
-python3 scripts/configure-auth-server.py --diagnose-smtp
-```
-
-Введите логин отправителя и пароль приложения один раз. Скрипт проверит эту пару с Mac, передаст её в оперативную память VM через SSH stdin и проверит там. Он не сохраняет значения, не читает прежний Secret и не отправляет письмо. Результаты двух проверок выводятся отдельно. Отказ `535` сам по себе не позволяет установить, ошибочен ли пароль или Google применил ограничение входа; [Google описывает такие блокировки](https://support.google.com/accounts/answer/9279980?hl=ru) даже при правильных данных.
-
-При отказе выводятся только этап, числовой SMTP-код и безопасная категория. Например, `authenticate / 535 / 5.7.8` означает, что Gmail отклонил учётные данные. Проверьте, что пароль приложения создан именно в аккаунте SMTP-отправителя. Адрес получателя в форме BikeHub может быть другим. Исходные ответы SMTP, пароль и полный логин в диагностике не печатаются.
-
-API выполняет одну попытку входа через PLAIN либо LOGIN внутри обязательного проверенного TLS. После отказа он не пробует второй механизм с тем же паролем: исходный код ошибки сохраняется в обезличенном журнале вместе с этапом `connect`, `authenticate` или `send`. Это предотвращает ситуацию, когда отказ `535` скрывается за последующим разрывом соединения.
-
-Для другой VM или SSH-ключа используются `BIKEHUB_VM_IP`, `BIKEHUB_SSH_KEY` либо параметры `--vm-ip` и `--ssh-key`. Нужен уже настроенный SSH-доступ и работающий `sudo -n` для пользователя `ansible`.
-
-После успешной настройки выложите текущие исходники с авторизацией:
-
-```bash
-bash scripts/redeploy.sh --enable-auth
-```
-
-Первую выкладку выполните **со сборкой**, без `--no-build`: прежний образ ещё не содержит входа по почте. Скрипт выполнит миграции, подключит Secret, создаст постоянное хранилище ключей cookie и в конце откроет логи. После завершения rollout откройте https://bikehub.local/ и запросите код на свою почту. `Ctrl+C` останавливает только просмотр логов.
-
-Обычный `bash scripts/redeploy.sh` сохраняет уже развёрнутый режим авторизации, поэтому следующая раскатка не отключит вход. Явно отключить его можно через `--disable-auth`. Если запускаете Ansible напрямую, передавайте `-e bikehub_auth_enabled=true`: значение по умолчанию в общих vars остаётся `false` для первого безопасного запуска.
-
-При обновлении SMTP повторите настройку Secret и раскатку. Переменные окружения работающего Pod сами не обновляются из изменённого Secret ([Kubernetes](https://kubernetes.io/docs/tasks/inject-data-application/distribute-credentials-secure/)). Плейбук читает только наличие и revision Secret, подключает отдельные ключи через `secretKeyRef`, создаёт PVC `bikehub-auth-keys` и монтирует ключи cookie в `/app/data/auth/keys`. Используется UID/GID 1654 контейнера .NET. Новая revision меняет Pod template и вызывает rollout. Дисковое хранилище ключей привязано к одной VM.
-
-При ручной настройке передавайте значения через менеджер секретов или `kubectl create secret generic … --from-file=…` с закрытыми временными файлами; не через аргументы `--from-literal` с реальными значениями и не в Git. Secret хранится в Kubernetes; не выводите его через `kubectl get secret -o yaml/json` в общий журнал или чат.
-
-Аккаунты, подтверждения и сессии в production сохраняются в PostgreSQL. **Контент сообщества пока остаётся в моках:** велосипеды, записи, комментарии и реакции сбрасываются после рестарта и не синхронизируются между репликами.
-
-Размещение сервера/БД для реальных пользователей РФ и требования к обработке персональных данных ещё предстоит определить. Подтверждение почты не подтверждает номер телефона и само по себе не означает выполнение правовых требований к сервису. Этот этап не разворачивается на домашний сервер автоматически.
 
 ## Задел под SMS
 
@@ -203,14 +109,8 @@ bash scripts/redeploy.sh --enable-auth
 ## Проверка
 
 ```bash
-dotnet test tests/BikeHub.Api.Tests --disable-build-servers
-# Дополнительно с Docker: отдельная PostgreSQL 18.6, миграция, параллельные проверки кода,
-# ограничения отправки, повторное использование аккаунта, истечение и отзыв сессий.
-python3 scripts/test-auth-postgres.py
-# Проверки сохранения OTP-секрета и передачи SMTP без секретов в argv:
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/scripts
-# При запущенном локальном API с Development-почтой:
-python3 scripts/smoke-api.py
+dotnet test BikeHub.sln --disable-build-servers
+ansible-playbook -i localhost, infra/tests/configure-mail.yml
 ```
 
-Обычный запуск тестов явно пропускает PostgreSQL-тест, если `BIKEHUB_TEST_POSTGRES` не задан. Docker-скрипт создаёт одноразовый контейнер с отдельным случайным паролем, публикует порт только на loopback и удаляет контейнер в конце. Не используйте рабочую БД для интеграционного теста. Smoke-тест отказывается работать с настоящим почтовым провайдером.
+xUnit проверяет авторизацию и сквозной сценарий сообщества; Testcontainers автоматически поднимает одноразовые PostgreSQL и Kafka, применяет миграции и удаляет контейнеры. Нужен Docker. Рабочие подключения не используются. Ansible-тест с локальными заглушками проверяет сохранение OTP, генерацию отсутствующего ключа и отсутствие записи при отклонённых настройках. Реальные письма эти проверки не отправляют.

@@ -1,64 +1,167 @@
-﻿services:
+name: bikehub-local
+
+x-mail-api-key: &mail-api-key bikehub-local-mail-api-key-for-development
+
+services:
   bikehub.api:
-    image: bikehub.api
+    image: bikehub-api:local
     build:
       context: .
-      dockerfile: ./src/BikeHub.Api/Dockerfile
+      dockerfile: src/BikeHub.Api/Dockerfile
     environment:
-      "ConnectionStrings__BikeHub": "Host=postgres;Port=5432;Database=bikehub;Username=postgres_user;Password=postgres_password;"
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__BikeHub: Host=postgres;Database=bikehub_local;Username=bikehub_local;Password=bikehub_local
+      Database__BootstrapEnabled: "false"
+      Database__MigrationsEnabled: "true"
+      Authentication__Enabled: "true"
+      Authentication__Store: Postgres
+      Authentication__EmailProvider: MailService
+      Authentication__OtpSecret: bikehub-local-development-otp-key
+      Authentication__DataProtectionPath: /app/data/auth/keys
+      MailService__BaseUrl: http://mail:8080/
+      MailService__ApiKey: *mail-api-key
+      Observability__Enabled: "false"
+    volumes:
+      - auth-keys:/app/data/auth
     depends_on:
       postgres:
         condition: service_healthy
-    expose:
-      - "8080"
+      mail:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
 
   nginx:
-    image: nginx:alpine
-    container_name: bikehub
+    image: nginx:1.30.6-alpine
     ports:
-      - "8080:80"
+      - "127.0.0.1:${BIKEHUB_HTTP_PORT:-8080}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - bikehub.api
+      bikehub.api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://127.0.0.1/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   postgres:
-    image: postgres:latest
-    container_name: postgres_container
+    image: postgres:18.6
     environment:
-      POSTGRES_USER: postgres_user
-      POSTGRES_PASSWORD: postgres_password
-      POSTGRES_DB: postgres_db
-      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_USER: bikehub_local
+      POSTGRES_PASSWORD: bikehub_local
+      POSTGRES_DB: bikehub_local
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${BIKEHUB_POSTGRES_PORT:-55432}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
-    command: >
-      postgres -c max_connections=1000
-               -c shared_buffers=256MB
-               -c effective_cache_size=768MB
-               -c maintenance_work_mem=64MB
-               -c checkpoint_completion_target=0.7
-               -c wal_buffers=16MB
-               -c default_statistics_target=100
+      - postgres-data:/var/lib/postgresql
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres_user -d postgres_db" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    tty: true
-    stdin_open: true
+      test: ["CMD-SHELL", "pg_isready -U bikehub_local -d bikehub_local"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mail:
+    image: bikehub-mail:local
+    build:
+      context: .
+      dockerfile: src/BikeHub.Mail/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Mail: Host=postgres;Database=bikehub_mail;Username=bikehub_local;Password=bikehub_local
+      Database__BootstrapEnabled: "true"
+      Database__MigrationsEnabled: "true"
+      Mail__Provider: Smtp
+      Mail__ApiKey: *mail-api-key
+      Smtp__Host: mailpit
+      Smtp__Port: "1025"
+      Smtp__Security: None
+      Smtp__Username: ""
+      Smtp__Password: ""
+      Smtp__FromAddress: no-reply@bikehub.local
+      Kafka__Enabled: "true"
+      Kafka__BootstrapServers: kafka:9092
+      Kafka__Topic: bikehub.mail.send.v1
+      Observability__Enabled: "false"
+    ports:
+      - "127.0.0.1:${BIKEHUB_MAIL_PORT:-5181}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-topic:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+
+  mailpit:
+    image: axllent/mailpit:v1.32.0
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: "1000"
+    ports:
+      - "127.0.0.1:${BIKEHUB_MAILPIT_PORT:-8025}:8025"
+      - "127.0.0.1:${BIKEHUB_SMTP_PORT:-11025}:1025"
+    volumes:
+      - mailpit-data:/data
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  kafka:
+    image: apache/kafka:4.0.2
+    hostname: kafka
+    ports:
+      - "127.0.0.1:${BIKEHUB_KAFKA_PORT:-59092}:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://127.0.0.1:${BIKEHUB_KAFKA_PORT:-59092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx256m
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
+  kafka-topic:
+    image: apache/kafka:4.0.2
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/opt/kafka/bin/kafka-topics.sh"]
+    command: ["--bootstrap-server", "kafka:9092", "--create", "--if-not-exists", "--topic", "bikehub.mail.send.v1", "--partitions", "3", "--replication-factor", "1", "--config", "retention.ms=3600000"]
 
 volumes:
-  pgdata:
-    driver: local
+  postgres-data:
+  auth-keys:
+  mailpit-data:
+  kafka-data:

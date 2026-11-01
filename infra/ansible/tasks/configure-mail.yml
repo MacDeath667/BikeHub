@@ -1,0 +1,107 @@
+---
+- name: Validate the credential target
+  ansible.builtin.assert:
+    that:
+      - bikehub_namespace is match('^[a-z0-9][a-z0-9-]*$')
+      - bikehub_auth_secret_name is match('^[a-z0-9][a-z0-9-]*$')
+
+- name: Check the configured transport inside the running mail container
+  ansible.builtin.command:
+    argv: [k3s, kubectl, exec, deployment/bikehub-mail, -n, "{{ bikehub_namespace }}", --container=mail, --, dotnet, BikeHub.Mail.dll, --check-transport]
+  changed_when: false
+  when: bikehub_mail_check_only | default(false) | bool
+
+- name: Validate new credentials before modifying Secrets
+  when: not (bikehub_mail_check_only | default(false) | bool)
+  block:
+    - name: Validate submitted configuration
+      ansible.builtin.assert:
+        that:
+          - bikehub_mail_configuration is mapping
+          - bikehub_mail_configuration['Mail:Provider'] in ['Smtp', 'GmailApi']
+      no_log: true
+
+    - name: Select a deployed or explicitly configured mail image
+      ansible.builtin.command:
+        argv: [k3s, kubectl, get, deployment/bikehub-mail, -n, "{{ bikehub_namespace }}", --ignore-not-found, -o, 'jsonpath={.spec.template.spec.containers[0].image}']
+      register: mail_current_image
+      changed_when: false
+
+    - name: Select the credential validation image
+      ansible.builtin.set_fact:
+        bikehub_selected_mail_image: "{{ bikehub_mail_image if bikehub_mail_image | length > 0 else mail_current_image.stdout }}"
+
+    - name: Build service images for the first configuration without deploying
+      ansible.builtin.include_tasks: ../tasks/source.yml
+      vars:
+        bikehub_rebuild_image: true
+      when: bikehub_selected_mail_image | length == 0
+
+    - name: Test submitted settings from the VM without sending mail
+      ansible.builtin.command:
+        argv: [docker, run, --rm, --interactive, --network, host, "{{ bikehub_selected_mail_image }}", --check-transport, --configuration-stdin]
+        stdin: "{{ bikehub_mail_configuration | to_json }}"
+      register: mail_probe
+      failed_when: false
+      changed_when: false
+      no_log: true
+
+    - name: Report the safe validation result and stop on rejection
+      ansible.builtin.assert:
+        that: mail_probe.rc == 0
+        fail_msg: "Transport validation failed. No Secret was changed. Inspect transport connectivity and credentials; raw diagnostics are hidden."
+
+    - name: Read only Secret revision and OTP-key presence
+      ansible.builtin.command:
+        argv:
+          - k3s
+          - kubectl
+          - get
+          - secret
+          - "{{ bikehub_auth_secret_name }}"
+          - -n
+          - "{{ bikehub_namespace }}"
+          - --ignore-not-found
+          - -o
+          - '{% raw %}go-template={"revision":"{{.metadata.resourceVersion}}","otp":{{if .data}}{{if index .data "otp-secret"}}true{{else}}false{{end}}{{else}}false{{end}}}{% endraw %}'
+      register: mail_secret_metadata
+      changed_when: false
+
+    - name: Prepare Secret metadata and transport-specific keys
+      ansible.builtin.set_fact:
+        mail_previous_state: "{{ (mail_secret_metadata.stdout | from_json) if mail_secret_metadata.stdout | length > 0 else {'revision': '', 'otp': false} }}"
+        mail_transport_keys: "{{ {'GmailApi:ClientId': 'gmail-client-id', 'GmailApi:ClientSecret': 'gmail-client-secret', 'GmailApi:RefreshToken': 'gmail-refresh-token', 'GmailApi:FromAddress': 'gmail-from-address'} if bikehub_mail_configuration['Mail:Provider'] == 'GmailApi' else {'Smtp:Username': 'smtp-username', 'Smtp:Password': 'smtp-password', 'Smtp:FromAddress': 'smtp-from-address'} }}"
+        mail_secret_data: {}
+      no_log: true
+
+    - name: Map validated transport credentials to existing Secret keys
+      ansible.builtin.set_fact:
+        mail_secret_data: "{{ mail_secret_data | combine({item.value: bikehub_mail_configuration[item.key]}) }}"
+      loop: "{{ mail_transport_keys | dict2items }}"
+      no_log: true
+
+    - name: Generate an OTP key only when one is missing
+      ansible.builtin.set_fact:
+        mail_secret_data: "{{ mail_secret_data | combine({'otp-secret': lookup('ansible.builtin.password', '/dev/null', length=64, chars=['hexdigits']) | lower}) }}"
+      when: not (mail_previous_state.otp | bool)
+      no_log: true
+
+    - name: Patch credentials without replacing OTP or unrelated keys
+      ansible.builtin.command:
+        argv: [k3s, kubectl, patch, secret, "{{ bikehub_auth_secret_name }}", -n, "{{ bikehub_namespace }}", --type=merge, --patch-file=/dev/stdin, -o, name]
+        stdin: "{{ {'metadata': {'resourceVersion': mail_previous_state.revision, 'annotations': {'bikehub.io/email-provider': bikehub_mail_configuration['Mail:Provider']}}, 'stringData': mail_secret_data} | to_json }}"
+      when: mail_previous_state.revision | length > 0
+      no_log: true
+      changed_when: true
+
+    - name: Create the credential Secret on first configuration
+      ansible.builtin.command:
+        argv: [k3s, kubectl, create, -f, -, -o, name]
+        stdin: "{{ {'apiVersion': 'v1', 'kind': 'Secret', 'type': 'Opaque', 'metadata': {'name': bikehub_auth_secret_name, 'namespace': bikehub_namespace, 'annotations': {'bikehub.io/email-provider': bikehub_mail_configuration['Mail:Provider']}}, 'stringData': mail_secret_data} | to_json }}"
+      when: mail_previous_state.revision | length == 0
+      no_log: true
+      changed_when: true
+
+    - name: Report configuration without exposing values
+      ansible.builtin.debug:
+        msg: "Mail credentials validated on the VM and saved. Existing OTP and unrelated Secret keys preserved. No email was sent."

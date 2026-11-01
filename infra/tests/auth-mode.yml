@@ -1,0 +1,116 @@
+---
+- name: Verify deployment authentication mode without connecting to a VM
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    bikehub_database_enabled: true
+    bikehub_tls_enabled: true
+    bikehub_mail_enabled: true
+    bikehub_namespace: bikehub
+    bikehub_deployment: bikehub-api
+  tasks:
+    - name: Allocate fake K3s metadata
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: bikehub-auth-mode-test-
+      register: fixture
+
+    - name: Exercise the actual mode-selection tasks
+      environment:
+        BIKEHUB_TEST_ROOT: "{{ fixture.path }}"
+      block:
+        - name: Create a metadata-only K3s stub
+          ansible.builtin.copy:
+            dest: "{{ fixture.path }}/k3s"
+            mode: "0700"
+            content: |
+              #!/usr/bin/env bash
+              cat "$BIKEHUB_TEST_ROOT/mode"
+
+        - name: Select the stub
+          ansible.builtin.set_fact:
+            bikehub_k3s_path: "{{ fixture.path }}/k3s"
+            bikehub_auth_enabled: null
+
+        - name: Model deployed authentication as enabled
+          ansible.builtin.copy:
+            dest: "{{ fixture.path }}/mode"
+            content: "true"
+
+        - name: Resolve enabled mode
+          ansible.builtin.include_tasks: ../ansible/tasks/auth-mode.yml
+
+        - name: Require enabled mode to remain enabled
+          ansible.builtin.assert:
+            that: bikehub_auth_enabled | bool
+
+        - name: Reset the override
+          ansible.builtin.set_fact:
+            bikehub_auth_enabled: null
+
+        - name: Model deployed authentication as disabled
+          ansible.builtin.copy:
+            dest: "{{ fixture.path }}/mode"
+            content: "false"
+
+        - name: Resolve disabled mode
+          ansible.builtin.include_tasks: ../ansible/tasks/auth-mode.yml
+
+        - name: Require disabled mode to remain disabled
+          ansible.builtin.assert:
+            that: not (bikehub_auth_enabled | bool)
+
+        - name: Reset the override for a new installation
+          ansible.builtin.set_fact:
+            bikehub_auth_enabled: null
+
+        - name: Model an absent deployment flag
+          ansible.builtin.copy:
+            dest: "{{ fixture.path }}/mode"
+            content: ""
+
+        - name: Resolve a new installation
+          ansible.builtin.include_tasks: ../ansible/tasks/auth-mode.yml
+
+        - name: Require a new installation to remain disabled
+          ansible.builtin.assert:
+            that: not (bikehub_auth_enabled | bool)
+
+        - name: Model an ambiguous deployed flag
+          ansible.builtin.copy:
+            dest: "{{ fixture.path }}/mode"
+            content: unexpected
+
+        - name: Clear the explicit override
+          ansible.builtin.set_fact:
+            bikehub_auth_enabled: null
+
+        - name: Require ambiguous metadata to abort
+          block:
+            - name: Try resolving an invalid flag
+              ansible.builtin.include_tasks: ../ansible/tasks/auth-mode.yml
+          rescue:
+            - name: Record the expected failure
+              ansible.builtin.set_fact:
+                rejected: true
+
+        - name: Require rejection
+          ansible.builtin.assert:
+            that: rejected | default(false)
+
+        - name: Select an explicit override
+          ansible.builtin.set_fact:
+            bikehub_auth_enabled: true
+
+        - name: Apply an override without reading ambiguous metadata
+          ansible.builtin.include_tasks: ../ansible/tasks/auth-mode.yml
+
+        - name: Require explicit mode to win
+          ansible.builtin.assert:
+            that: bikehub_auth_enabled | bool
+      always:
+        - name: Remove only the isolated stub
+          ansible.builtin.file:
+            path: "{{ fixture.path }}"
+            state: absent

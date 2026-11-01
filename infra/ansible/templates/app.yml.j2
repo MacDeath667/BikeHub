@@ -26,6 +26,7 @@ spec:
 {% endif %}
 {% if bikehub_auth_enabled | bool %}
         bikehub.io/auth-secret-version: {{ bikehub_auth_secret_version.stdout | to_json }}
+        bikehub.io/mail-secret-version: {{ bikehub_mail_secret_version.stdout | to_json }}
 {% endif %}
 {% endif %}
     spec:
@@ -61,11 +62,17 @@ spec:
             - name: Authentication__Store
               value: Postgres
             - name: Authentication__EmailProvider
-              value: {{ bikehub_effective_email_provider | to_json }}
+              value: MailService
+            - name: MailService__BaseUrl
+              value: http://bikehub-mail:8080/
+            - name: MailService__ApiKey
+              valueFrom:
+                secretKeyRef:
+                  name: {{ bikehub_mail_secret_name }}
+                  key: api-key
             - name: Authentication__DataProtectionPath
               value: /app/data/auth/keys
-{% set transport_keys = [('GmailApi__ClientId', 'gmail-client-id'), ('GmailApi__ClientSecret', 'gmail-client-secret'), ('GmailApi__RefreshToken', 'gmail-refresh-token'), ('GmailApi__FromAddress', 'gmail-from-address')] if bikehub_effective_email_provider == 'GmailApi' else [('Smtp__Username', 'smtp-username'), ('Smtp__Password', 'smtp-password'), ('Smtp__FromAddress', 'smtp-from-address')] %}
-{% for setting, key in [('Authentication__OtpSecret', 'otp-secret')] + transport_keys %}
+{% for setting, key in [('Authentication__OtpSecret', 'otp-secret')] %}
             - name: {{ setting }}
               valueFrom:
                 secretKeyRef:

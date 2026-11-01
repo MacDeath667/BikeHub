@@ -18,11 +18,10 @@
       <ProjectReference Include="..\BikeHub.Application\BikeHub.Application.csproj" />
       <ProjectReference Include="..\BikeHub.Dal\BikeHub.Dal.csproj" />
       <ProjectReference Include="..\BikeHub.Domain\BikeHub.Domain.csproj" />
+      <ProjectReference Include="../BikeHub.Mail.Contracts/BikeHub.Mail.Contracts.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Google.Apis.Gmail.v1" Version="1.77.0.4295" />
-      <PackageReference Include="MailKit" Version="4.18.2" />
       <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.20.1" />
       <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.20.1" />
       <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.20.1" />

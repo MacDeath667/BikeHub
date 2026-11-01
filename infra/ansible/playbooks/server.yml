@@ -11,7 +11,12 @@
           - ansible_host | default('') | length > 0
           - bikehub_remote_root is match('^/opt/[A-Za-z0-9_-]+$')
           - bikehub_replica_count | int > 0
-          - not (bikehub_auth_enabled | bool) or (bikehub_database_enabled | bool and bikehub_tls_enabled | bool)
+          - bikehub_auth_enabled is none or bikehub_auth_enabled | bool == false or (bikehub_database_enabled | bool and bikehub_tls_enabled | bool and bikehub_mail_enabled | bool)
+          - bikehub_mail_secret_name is match('^[a-z0-9][a-z0-9-]*$')
+          - bikehub_mail_database_secret_name is match('^[a-z0-9][a-z0-9-]*$')
+          - bikehub_mail_topic is match('^[A-Za-z0-9._-]+$')
+          - bikehub_mail_image | length == 0 or bikehub_mail_image is match('^[A-Za-z0-9./_:@-]+$')
+          - bikehub_mail_image_repository is match('^[A-Za-z0-9./_:-]+$')
           - bikehub_auth_secret_name is match('^[a-z0-9][a-z0-9-]*$')
           - bikehub_auth_key_claim is match('^[a-z0-9][a-z0-9-]*$')
           - bikehub_app_port | int > 0 and bikehub_app_port | int < 65536
@@ -30,6 +35,9 @@
 
     - name: Gather guest facts
       ansible.builtin.setup:
+
+    - name: Resolve authentication mode while preserving the deployed setting
+      ansible.builtin.import_tasks: ../tasks/auth-mode.yml
 
     - name: Select a unique migration Job name
       ansible.builtin.set_fact:
@@ -243,6 +251,10 @@
     - name: Check authentication prerequisites without reading credentials
       ansible.builtin.import_tasks: ../tasks/authentication.yml
       when: bikehub_auth_enabled | bool
+
+    - name: Deploy the mail service before updating its API client
+      ansible.builtin.import_tasks: ../tasks/mail.yml
+      when: bikehub_mail_enabled | bool
 
     - name: Render the application with current Secret revisions
       ansible.builtin.template:

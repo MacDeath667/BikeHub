@@ -19,7 +19,7 @@ public sealed class PersistenceTestDatabase : IDbContextFactory<BikeHubDbContext
 
     public static async Task<PersistenceTestDatabase> CreateAsync()
     {
-        var database = new PersistenceTestDatabase(Environment.GetEnvironmentVariable("BIKEHUB_TEST_POSTGRES")!);
+        var database = new PersistenceTestDatabase(BikeHub.Testing.PostgresFixture.ConnectionString);
         try
         {
             await using var create = database.admin.CreateCommand($"CREATE SCHEMA {database.schema}");

@@ -1,4 +1,4 @@
-"""Runs on TrueNAS through provision-grafana.py, using supported middleware APIs."""
+"""TrueNAS 25.10 API adapter, executed by Ansible with public provisioning JSON on stdin."""
 
 import json
 from pathlib import Path

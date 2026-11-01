@@ -12,7 +12,6 @@ public sealed class EmailAuthenticationService(IAuthenticationStore store, IVeri
     private const string CodeRequestedEvent = "code_requested";
     private const string CodeRejectedEvent = "code_rejected";
     private const string EmailVerifiedEvent = "email_verified";
-    private const string TransportFailureLog = "Verification email delivery failed ({FailureType}; stage={Stage}; reason={Reason}; smtpStatus={SmtpStatus}; enhancedStatus={EnhancedStatus})";
     private const string DeliveryFailureLog = "Verification email delivery failed ({FailureType})";
 
     public async Task<EmailCodeResponse?> RequestAsync(string email, string? name, string binding,
@@ -37,16 +36,8 @@ public sealed class EmailAuthenticationService(IAuthenticationStore store, IVeri
         catch (Exception error) when (error is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             await store.SetDeliveredAsync(id, false, cancellationToken);
-            // SMTP exceptions may contain addresses or message contents. Do not export them to logs.
-            if (error is EmailTransportException transport)
-            {
-                logger.LogWarning(TransportFailureLog,
-                    transport.FailureType, transport.Stage, transport.Reason, transport.SmtpStatus, transport.EnhancedStatus);
-            }
-            else
-            {
-                logger.LogWarning(DeliveryFailureLog, error.GetType().Name);
-            }
+            // Never log response bodies, addresses or codes from the mail service.
+            logger.LogWarning(DeliveryFailureLog, error.GetType().Name);
 
             AuthTelemetry.Record(DeliveryFailedEvent);
             throw new EmailDeliveryException();
