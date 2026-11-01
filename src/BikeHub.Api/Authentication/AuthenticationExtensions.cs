@@ -19,11 +19,11 @@ public static class AuthenticationExtensions
                 settings.ResendSeconds is < 1 or > 3600 || settings.SessionDays is < 1 or > 30 ||
                 settings.MaxPerEmailHour is < 1 or > 20 || settings.MaxPerDay is < 1 or > 10_000)
                 throw new InvalidOperationException("Authentication limits are invalid.");
-            if (settings.Store is not ("Memory" or "Postgres") || settings.EmailProvider is not ("Development" or "Smtp"))
+            if (settings.Store is not ("Memory" or "Postgres") || settings.EmailProvider is not ("Development" or "Smtp" or "GmailApi"))
                 throw new InvalidOperationException("Select a supported authentication store and email provider.");
             if (!development && (settings.Store != "Postgres" || settings.EmailProvider == "Development" ||
                                  settings.OtpSecret.Length < 32 || !Path.IsPathFullyQualified(settings.DataProtectionPath)))
-                throw new InvalidOperationException("Production authentication requires PostgreSQL, real SMTP, a 32-character or longer OTP secret and an absolute persistent Data Protection path.");
+                throw new InvalidOperationException("Production authentication requires PostgreSQL, a real email transport, a 32-character or longer OTP secret and an absolute persistent Data Protection path.");
             if (settings.Store == "Postgres" && string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("BikeHub")))
                 throw new InvalidOperationException("Configure ConnectionStrings:BikeHub for authentication storage.");
             if (settings.EmailProvider == "Smtp" && (string.IsNullOrWhiteSpace(settings.Smtp.Host) ||
@@ -31,6 +31,11 @@ public static class AuthenticationExtensions
                 string.IsNullOrWhiteSpace(settings.Smtp.Username) || string.IsNullOrWhiteSpace(settings.Smtp.Password) ||
                 OtpSecurity.NormalizeEmail(settings.Smtp.FromAddress) is null))
                 throw new InvalidOperationException("Configure a valid SMTP host, port, TLS mode, username, app password and sender address.");
+            if (settings.EmailProvider == "GmailApi" && (string.IsNullOrWhiteSpace(settings.GmailApi.ClientId) ||
+                !settings.GmailApi.ClientId.EndsWith(".apps.googleusercontent.com", StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(settings.GmailApi.ClientSecret) || string.IsNullOrWhiteSpace(settings.GmailApi.RefreshToken) ||
+                OtpSecurity.NormalizeEmail(settings.GmailApi.FromAddress) is null))
+                throw new InvalidOperationException("Configure a Google OAuth client, refresh token and sender address for Gmail API.");
         }
         builder.Services.Configure<AuthOptions>(section);
         builder.Services.AddSingleton(TimeProvider.System);
@@ -40,9 +45,13 @@ public static class AuthenticationExtensions
             settings.Enabled && settings.Store == "Postgres"
                 ? new PostgresAuthenticationStore(builder.Configuration.GetConnectionString("BikeHub")!)
                 : new InMemoryAuthenticationStore());
-        builder.Services.AddSingleton<IVerificationEmailSender>(services => settings.EmailProvider == "Development"
-            ? ActivatorUtilities.CreateInstance<DevelopmentEmailSender>(services)
-            : ActivatorUtilities.CreateInstance<SmtpVerificationEmailSender>(services));
+        builder.Services.AddSingleton<Google.Apis.Http.IHttpClientFactory, Google.Apis.Http.HttpClientFactory>();
+        builder.Services.AddSingleton<IVerificationEmailSender>(services => settings.EmailProvider switch
+        {
+            "Development" => ActivatorUtilities.CreateInstance<DevelopmentEmailSender>(services),
+            "GmailApi" => ActivatorUtilities.CreateInstance<GmailApiVerificationEmailSender>(services),
+            _ => ActivatorUtilities.CreateInstance<SmtpVerificationEmailSender>(services)
+        });
         builder.Services.AddSingleton<ISmsSender, TestSmsSender>();
         builder.Services.AddScoped<EmailAuthenticationService>();
         builder.Services.AddScoped<SessionCookieEvents>();

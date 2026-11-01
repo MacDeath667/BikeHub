@@ -7,12 +7,42 @@ import smtplib
 import ssl
 import subprocess
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 
 REQUIRED_KEYS = ("otp-secret", "smtp-username", "smtp-password", "smtp-from-address")
+GMAIL_KEYS = ("gmail-client-id", "gmail-client-secret", "gmail-refresh-token", "gmail-from-address")
+GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 
 
 class ConfigurationError(Exception):
     pass
+
+
+def check_gmail_oauth(credentials, opener=urllib.request.urlopen):
+    """Refresh a token from this host without sending mail or returning token values."""
+    request = urllib.request.Request("https://oauth2.googleapis.com/token", method="POST",
+        data=urllib.parse.urlencode({"grant_type": "refresh_token", "client_id": credentials["gmail-client-id"],
+             "client_secret": credentials["gmail-client-secret"], "refresh_token": credentials["gmail-refresh-token"]}).encode(),
+        headers={"Content-Type": "application/x-www-form-urlencoded"})
+    try:
+        with opener(request, timeout=15) as response:
+            token = json.loads(response.read(1_048_576))
+        if not isinstance(token, dict) or not isinstance(token.get("scope", ""), str):
+            return {"ok": False, "kind": "oauth_protocol_error"}
+        if not token.get("access_token") or GMAIL_SCOPE not in token.get("scope", "").split():
+            return {"ok": False, "kind": "gmail_scope_missing"}
+        return {"ok": True, "kind": "accepted"}
+    except urllib.error.HTTPError as error:
+        try:
+            reason = json.loads(error.read(65_536)).get("error")
+        except (ValueError, AttributeError):
+            reason = None
+        safe = reason if reason in ("invalid_grant", "invalid_client", "access_denied", "invalid_scope") else "oauth_rejected"
+        return {"ok": False, "kind": safe, "status": error.code}
+    except (OSError, ValueError):
+        return {"ok": False, "kind": "oauth_connection_error"}
 
 
 def check_smtp(email, password, smtp_factory=None):
@@ -47,14 +77,14 @@ def check_smtp(email, password, smtp_factory=None):
             client.close()
 
 
-def configure(payload, run=subprocess.run, probe_smtp=check_smtp):
+def configure(payload, run=subprocess.run, probe_smtp=check_smtp, probe_gmail=check_gmail_oauth):
     namespace = payload["namespace"]
     name = payload["name"]
     for value in (namespace, name):
         if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", value):
             raise ConfigurationError("Invalid namespace or Secret name.")
     action = payload.get("action")
-    if action not in ("check", "test-smtp", "test-input", "configure"):
+    if action not in ("check", "test-smtp", "test-input", "configure", "configure-gmail", "check-gmail"):
         raise ConfigurationError("Unsupported operation.")
     if action == "test-input":
         email = payload.get("email", "").strip().lower()
@@ -74,11 +104,42 @@ def configure(payload, run=subprocess.run, probe_smtp=check_smtp):
         return result.stdout.strip()
 
     # Read only key presence and metadata; never return existing credential values.
-    fields = [f'"{key}":{{{{if .data}}}}{{{{if index .data "{key}"}}}}true{{{{else}}}}false{{{{end}}}}{{{{else}}}}false{{{{end}}}}' for key in REQUIRED_KEYS]
+    fields = [f'"{key}":{{{{if .data}}}}{{{{if index .data "{key}"}}}}true{{{{else}}}}false{{{{end}}}}{{{{else}}}}false{{{{end}}}}' for key in REQUIRED_KEYS + GMAIL_KEYS]
     template = '{"revision":"{{.metadata.resourceVersion}}","keys":{' + ','.join(fields) + '}}'
     raw = kubectl(["get", "secret", name, "--ignore-not-found", "-o", "go-template=" + template])
     state = json.loads(raw) if raw else None
     summary = {"namespace": namespace, "name": name, "present": state is not None}
+    if action in ("configure-gmail", "check-gmail"):
+        import base64
+        if action == "check-gmail":
+            if not state or not all(state["keys"].get(key) for key in GMAIL_KEYS + ("otp-secret",)):
+                return {**summary, "ready": False, "oauth": {"ok": False, "kind": "missing_configuration"}}
+            saved = json.loads(kubectl(["get", "secret", name, "-o", "json"]))["data"]
+            credentials = {key: base64.b64decode(saved[key]).decode() for key in GMAIL_KEYS}
+        else:
+            credentials = payload.get("credentials", {})
+            if any(not isinstance(credentials.get(key), str) or not 1 <= len(credentials[key]) <= 8192 or
+                   any(c in credentials[key] for c in "\r\n\0") for key in GMAIL_KEYS):
+                raise ConfigurationError("Google OAuth credentials are missing or malformed.")
+            if not credentials["gmail-client-id"].endswith(".apps.googleusercontent.com") or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", credentials["gmail-from-address"]):
+                raise ConfigurationError("Expected a Google OAuth client and verified sender address.")
+        oauth = probe_gmail(credentials)
+        if action == "check-gmail" or not oauth["ok"]:
+            return {**summary, "ready": oauth["ok"], "updated": False, "oauth": oauth}
+        data = {key: credentials[key] for key in GMAIL_KEYS}
+        generated = not state or not state["keys"].get("otp-secret")
+        if generated:
+            data["otp-secret"] = secrets.token_hex(32)
+        metadata = {"annotations": {"bikehub.io/email-provider": "GmailApi"}}
+        if state:
+            metadata["resourceVersion"] = state["revision"]
+            kubectl(["patch", "secret", name, "--type=merge", "--patch-file=/dev/stdin", "-o", "name"],
+                    {"metadata": metadata, "stringData": data})
+        else:
+            metadata.update(name=name, namespace=namespace)
+            kubectl(["create", "-f", "-", "-o", "name"], {
+                "apiVersion": "v1", "kind": "Secret", "type": "Opaque", "metadata": metadata, "stringData": data})
+        return {**summary, "present": True, "ready": True, "updated": True, "otpGenerated": generated, "oauth": oauth}
     if action == "check":
         return {**summary, "ready": bool(state and all(state["keys"].get(k) for k in REQUIRED_KEYS)),
                 "keys": state["keys"] if state else {key: False for key in REQUIRED_KEYS}}
@@ -107,11 +168,11 @@ def configure(payload, run=subprocess.run, probe_smtp=check_smtp):
     if state:
         # A merge patch keeps unrelated keys and the existing OTP secret. RV prevents a lost update.
         kubectl(["patch", "secret", name, "--type=merge", "--patch-file=/dev/stdin", "-o", "name"],
-                {"metadata": {"resourceVersion": state["revision"]}, "stringData": data})
+                {"metadata": {"resourceVersion": state["revision"], "annotations": {"bikehub.io/email-provider": "Smtp"}}, "stringData": data})
     else:
         kubectl(["create", "-f", "-", "-o", "name"], {
             "apiVersion": "v1", "kind": "Secret", "type": "Opaque",
-            "metadata": {"name": name, "namespace": namespace}, "stringData": data})
+            "metadata": {"name": name, "namespace": namespace, "annotations": {"bikehub.io/email-provider": "Smtp"}}, "stringData": data})
     return {**summary, "present": True, "ready": True, "otpGenerated": generated, "updated": True, "smtp": smtp}
 
 

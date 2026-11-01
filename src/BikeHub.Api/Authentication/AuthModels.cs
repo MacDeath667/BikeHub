@@ -17,6 +17,16 @@ public sealed class AuthOptions
     public int MaxPerDay { get; set; } = 100;
     public int SessionDays { get; set; } = 14;
     public SmtpOptions Smtp { get; set; } = new();
+    public GmailApiOptions GmailApi { get; set; } = new();
+}
+
+public sealed class GmailApiOptions
+{
+    public string ClientId { get; set; } = "";
+    public string ClientSecret { get; set; } = "";
+    public string RefreshToken { get; set; } = "";
+    public string FromAddress { get; set; } = "";
+    public string FromName { get; set; } = "BikeHub";
 }
 
 public sealed class SmtpOptions

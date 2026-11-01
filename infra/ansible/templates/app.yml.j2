@@ -61,10 +61,11 @@ spec:
             - name: Authentication__Store
               value: Postgres
             - name: Authentication__EmailProvider
-              value: Smtp
+              value: {{ bikehub_effective_email_provider | to_json }}
             - name: Authentication__DataProtectionPath
               value: /app/data/auth/keys
-{% for setting, key in [('OtpSecret', 'otp-secret'), ('Smtp__Username', 'smtp-username'), ('Smtp__Password', 'smtp-password'), ('Smtp__FromAddress', 'smtp-from-address')] %}
+{% set transport_keys = [('GmailApi__ClientId', 'gmail-client-id'), ('GmailApi__ClientSecret', 'gmail-client-secret'), ('GmailApi__RefreshToken', 'gmail-refresh-token'), ('GmailApi__FromAddress', 'gmail-from-address')] if bikehub_effective_email_provider == 'GmailApi' else [('Smtp__Username', 'smtp-username'), ('Smtp__Password', 'smtp-password'), ('Smtp__FromAddress', 'smtp-from-address')] %}
+{% for setting, key in [('OtpSecret', 'otp-secret')] + transport_keys %}
             - name: Authentication__{{ setting }}
               valueFrom:
                 secretKeyRef:

@@ -1,8 +1,6 @@
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using Microsoft.Extensions.Options;
-using MimeKit;
-using MimeKit.Utils;
 
 namespace BikeHub.Api.Authentication;
 
@@ -11,17 +9,7 @@ public sealed class SmtpVerificationEmailSender(IOptions<AuthOptions> configurat
     public async Task SendAsync(VerificationMessage message, CancellationToken cancellationToken)
     {
         var options = configuration.Value.Smtp;
-        var mail = new MimeMessage();
-        mail.From.Add(new MailboxAddress(options.FromName, options.FromAddress));
-        mail.To.Add(MailboxAddress.Parse(message.Destination));
-        mail.MessageId = MimeUtils.GenerateMessageId(options.FromAddress.Split('@')[1]);
-        mail.Subject = "Код для входа в BikeHub";
-        mail.Body = new TextPart("plain")
-        {
-            Text = $"Код для входа в BikeHub: {message.Code}\n\n" +
-                   $"Код действует {message.ValidMinutes} минут и подходит только для того браузера, где вы запросили вход.\n\n" +
-                   "Если вы не запрашивали вход, проигнорируйте это письмо."
-        };
+        using var mail = VerificationEmail.Create(options.FromAddress, options.FromName, message);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(15));
         using var client = new SmtpClient { Timeout = 10_000 };

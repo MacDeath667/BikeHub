@@ -40,6 +40,56 @@ dotnet user-secrets remove Authentication:EmailProvider --project src/BikeHub.Ap
 
 Или временно переопределите провайдер переменной окружения `Authentication__EmailProvider=Development` при запуске Development.
 
+## Gmail API с OAuth2
+
+Провайдер `GmailApi` отправляет тот же код подтверждения через HTTPS Gmail API. Одноразовую привязку Google проходит только владелец ящика отправителя. Пользователи BikeHub по-прежнему входят по коду из письма.
+
+### Подготовка Google Cloud
+
+1. Создайте проект BikeHub в [Google Cloud Console](https://console.cloud.google.com/).
+2. Включите **Gmail API** в библиотеке API этого проекта.
+3. В **Google Auth platform → Branding / Audience** настройте приложение и выберите External. Для первого запуска в Testing добавьте Gmail отправителя в Test users.
+4. В **Data Access** добавьте `openid`, `https://www.googleapis.com/auth/userinfo.email`, `https://www.googleapis.com/auth/gmail.send`.
+5. В **Clients → Create client** выберите **Desktop app**, скачайте JSON. Храните его вне репозитория, например `~/Downloads/client_secret_BikeHub.json`. Скрипт отклоняет JSON из каталога репозитория и клиенты типа Web application.
+
+`gmail.send` позволяет только отправку, без чтения писем. OpenID/email нужны для проверки адреса подключённого аккаунта. Подробности: [области доступа Gmail](https://developers.google.com/workspace/gmail/api/auth/scopes), [создание Desktop-клиента](https://developers.google.com/workspace/gmail/api/quickstart/python).
+
+В режиме **Testing** refresh token с Gmail-правами истекает через **7 дней**. Для постоянного запуска настройте Production и выполните применимые требования Google к OAuth-приложению. Google отдельно описывает [исключения из верификации для персональных приложений](https://support.google.com/cloud/answer/13464323?hl=en) и [условия истечения токенов](https://developers.google.com/identity/protocols/oauth2#expiration). Токен также может быть отозван владельцем или Google; это требует повторной привязки. Настройка OAuth сама по себе не гарантирует доставку письма или отсутствие других ограничений аккаунта.
+
+### Привязка ящика на Mac
+
+Из корня проекта:
+
+```bash
+python3 -m venv .venv-gmail
+.venv-gmail/bin/python -m pip install -r scripts/requirements-gmail-oauth.txt
+.venv-gmail/bin/python scripts/configure-gmail-oauth.py \
+  --client-json "$HOME/Downloads/client_secret_BikeHub.json"
+```
+
+Введите адрес **отправителя**, откройте выданную ссылку в обычном браузере на этом же Mac и подтвердите доступ для собственного OAuth-приложения. Скрипт использует официальный SDK Google, PKCE, случайный state, nonce и callback только на `127.0.0.1` со случайным портом. Google ID token проверяется по подписи, issuer, audience, nonce и подтверждённому email. Выбор другого аккаунта или отсутствие `gmail.send`/refresh token останавливает настройку.
+
+Токены не выводятся и не пишутся в локальный `token.json`. Скрипт передаёт их в память VM по SSH stdin, проверяет обновление токена через Google и сохраняет в существующий Secret `bikehub-auth`. OTP-секрет и существующие cookie-ключи сохраняются.
+
+После привязки:
+
+```bash
+bash scripts/redeploy.sh --enable-auth
+# Проверка обновления сохранённого токена с VM, без отправки письма:
+.venv-gmail/bin/python scripts/configure-gmail-oauth.py --check
+```
+
+Ansible выбирает транспорт по аннотации Secret `bikehub.io/email-provider`. У привязанного OAuth это `GmailApi`; у прежних Secret без аннотации — `Smtp`. Переключение не требует ручной правки Deployment. Первая выкладка поддержки Gmail API требует сборки; используйте `--no-build` только после неё.
+
+Для локальной реальной отправки вместо серверного Secret можно сохранить настройки в .NET user-secrets:
+
+```bash
+.venv-gmail/bin/python scripts/configure-gmail-oauth.py \
+  --client-json "$HOME/Downloads/client_secret_BikeHub.json" --target local
+```
+
+Gmail API использует ключи Secret `gmail-client-id`, `gmail-client-secret`, `gmail-refresh-token`, `gmail-from-address`. Активный провайдер хранится отдельно как аннотация. В контейнер значения передаются через `Authentication__GmailApi__*`. SDK .NET кеширует access token в памяти, обновляет его по refresh token и не использует файловый DataStore. Ошибки OAuth/API журналируются только по этапу, безопасной категории и числовому статусу, без исходного ответа Google и токенов.
+
 ## API и защита
 
 | Метод | Путь | Поведение |
@@ -67,7 +117,7 @@ dotnet user-secrets remove Authentication:EmailProvider --project src/BikeHub.Ap
 - `Authentication__Enabled=true`, `Authentication__Store=Postgres`, `Authentication__EmailProvider=Smtp`;
 - существующий `ConnectionStrings__BikeHub` и миграция `003_email_authentication.sql` (штатный migration Job запускается перед обновлением приложения);
 - случайный `Authentication__OtpSecret` длиной не менее 32 символов, одинаковый для реплик и стабильный после перезапуска;
-- SMTP username, app password и FromAddress;
+- SMTP username/app password/FromAddress либо OAuth Client ID, Client secret, refresh token и FromAddress для Gmail API;
 - постоянный каталог Data Protection для ключей cookie, доступный только приложению. Потеря ключей разлогинит пользователей; ключи также нужно защищать в резервных копиях;
 - HTTPS перед API; при терминации TLS на прокси — явные IP в `ReverseProxy:KnownProxies`. API принимает только `X-Forwarded-Proto` от них, не доверяет присланным клиентом IP/Host. За текущим NodePort IP-лимит консервативно может объединять клиентов;
 - для внешнего доступа — ограничение прямого доступа к NodePort и HTTPS-прокси как единственная точка входа.

@@ -1,8 +1,24 @@
 ---
-- name: Require the separately managed SMTP and OTP Secret
+- name: Require the separately managed email and OTP Secret
   ansible.builtin.command:
     argv: [k3s, kubectl, get, "secret/{{ bikehub_auth_secret_name }}", -n, "{{ bikehub_namespace }}", -o, name]
   changed_when: false
+
+- name: Read the email transport selection without reading credentials
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "secret/{{ bikehub_auth_secret_name }}", -n, "{{ bikehub_namespace }}", -o, 'jsonpath={.metadata.annotations.bikehub\.io/email-provider}']
+  register: bikehub_mail_provider_annotation
+  changed_when: false
+
+- name: Select the configured email provider
+  ansible.builtin.set_fact:
+    bikehub_effective_email_provider: "{{ bikehub_mail_provider_annotation.stdout | default('Smtp', true) }}"
+
+- name: Validate the selected email provider
+  ansible.builtin.assert:
+    that:
+      - bikehub_effective_email_provider in ['Smtp', 'GmailApi']
+    fail_msg: Configure the email provider through the BikeHub setup scripts.
 
 - name: Read the authentication Secret revision without exposing its contents
   ansible.builtin.command:
