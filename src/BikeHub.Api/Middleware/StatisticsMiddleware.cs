@@ -6,6 +6,8 @@ public sealed class StatisticsMiddleware(
     RequestDelegate next,
     ILogger<StatisticsMiddleware> logger)
 {
+    private const string RequestCompletedLog = "HTTP {Method} {Path} -> {StatusCode} in {ElapsedMs} ms";
+
     public async Task InvokeAsync(HttpContext context)
     {
         if (context.Request.Path == "/api/health")
@@ -25,7 +27,7 @@ public sealed class StatisticsMiddleware(
             var elapsed = Stopwatch.GetElapsedTime(started);
 
             logger.LogInformation(
-                "HTTP {Method} {Path} -> {StatusCode} in {ElapsedMs} ms",
+                RequestCompletedLog,
                 context.Request.Method,
                 context.Request.Path,
                 context.Response.StatusCode,

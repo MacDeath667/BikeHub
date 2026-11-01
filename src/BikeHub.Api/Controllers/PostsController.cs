@@ -8,6 +8,8 @@ namespace BikeHub.Api.Controllers;
 [Route("api/posts")]
 public sealed class PostsController(IPostService service) : ControllerBase
 {
+    private const string InvalidBikeTitle = "Выберите велосипед из своего гаража.";
+
     [HttpGet("{id:guid}")]
     public ActionResult<PostDto> Get(Guid id) => service.GetPost(id) is { } post ? Ok(post) : NotFound();
 
@@ -17,7 +19,7 @@ public sealed class PostsController(IPostService service) : ControllerBase
     {
         var post = service.CreatePost(request);
         return post is null
-            ? Problem(statusCode: 400, title: "Выберите велосипед из своего гаража.")
+            ? Problem(statusCode: StatusCodes.Status400BadRequest, title: InvalidBikeTitle)
             : CreatedAtAction(nameof(Get), new { id = post.Id }, post);
     }
 

@@ -56,7 +56,10 @@ public sealed class EmailAuthenticationTests
         using var logout = await AuthTestClient.Post(browser, "/api/auth/logout");
         app.Clock.Advance(TimeSpan.FromSeconds(61));
         var (next, response) = await AuthTestClient.Login(browser, "alice@example.test");
-        using (response) Assert.Equal(original, next.User!.Id);
+        using (response)
+        {
+            Assert.Equal(original, next.User!.Id);
+        }
     }
 
     [Fact]
@@ -249,7 +252,13 @@ public sealed class EmailAuthenticationTests
             proxy.DefaultRequestHeaders.Add("X-Test-Remote", "untrusted");
             Assert.Equal(HttpStatusCode.InternalServerError, (await proxy.GetAsync("/api/auth/session")).StatusCode);
         }
-        finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
     }
 
     [Fact]

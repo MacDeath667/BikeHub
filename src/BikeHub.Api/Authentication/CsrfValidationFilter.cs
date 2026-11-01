@@ -6,17 +6,23 @@ namespace BikeHub.Api.Authentication;
 
 public sealed class CsrfValidationFilter(IAntiforgery antiforgery) : IAsyncAuthorizationFilter, IOrderedFilter
 {
+    private const string InvalidTokenTitle = "Обновите страницу и попробуйте снова.";
+
     public int Order => 1000;
 
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
         var method = context.HttpContext.Request.Method;
-        if (HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method) || HttpMethods.IsTrace(method)) return;
+        if (HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method) || HttpMethods.IsTrace(method))
+        {
+            return;
+        }
+
         try { await antiforgery.ValidateRequestAsync(context.HttpContext); }
         catch (AntiforgeryValidationException)
         {
             context.Result = new BadRequestObjectResult(new ProblemDetails
-            { Status = 400, Title = "Обновите страницу и попробуйте снова." });
+            { Status = StatusCodes.Status400BadRequest, Title = InvalidTokenTitle });
         }
     }
 }

@@ -6,10 +6,10 @@ namespace BikeHub.Api.Authentication;
 public sealed class AuthOptions
 {
     public bool Enabled { get; set; }
-    public string Store { get; set; } = "Postgres";
-    public string EmailProvider { get; set; } = "Smtp";
-    public string OtpSecret { get; set; } = "";
-    public string DataProtectionPath { get; set; } = "";
+    public string Store { get; set; } = Constants.AuthenticationStores.Postgres;
+    public string EmailProvider { get; set; } = Constants.EmailProviders.Smtp;
+    public string OtpSecret { get; set; } = string.Empty;
+    public string DataProtectionPath { get; set; } = string.Empty;
     public int CodeMinutes { get; set; } = 5;
     public int ResendSeconds { get; set; } = 60;
     public int MaxAttempts { get; set; } = 5;
@@ -22,27 +22,29 @@ public sealed class AuthOptions
 
 public sealed class GmailApiOptions
 {
-    public string ClientId { get; set; } = "";
-    public string ClientSecret { get; set; } = "";
-    public string RefreshToken { get; set; } = "";
-    public string FromAddress { get; set; } = "";
-    public string FromName { get; set; } = "BikeHub";
+    public string ClientId { get; set; } = string.Empty;
+    public string ClientSecret { get; set; } = string.Empty;
+    public string RefreshToken { get; set; } = string.Empty;
+    public string FromAddress { get; set; } = string.Empty;
+    public string FromName { get; set; } = Constants.ApplicationName;
 }
 
 public sealed class SmtpOptions
 {
-    public string Host { get; set; } = "smtp.gmail.com";
+    private const string DefaultHost = "smtp.gmail.com";
+
+    public string Host { get; set; } = DefaultHost;
     public int Port { get; set; } = 587;
-    public string Security { get; set; } = "StartTls";
-    public string Username { get; set; } = "";
-    public string Password { get; set; } = "";
-    public string FromAddress { get; set; } = "";
-    public string FromName { get; set; } = "BikeHub";
+    public string Security { get; set; } = Constants.SmtpSecurity.StartTls;
+    public string Username { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+    public string FromAddress { get; set; } = string.Empty;
+    public string FromName { get; set; } = Constants.ApplicationName;
 }
 
 public sealed record RequestEmailCode(
-    [Required, EmailAddress, StringLength(254)] string Email,
-    [StringLength(60, MinimumLength = 2)] string? Name);
+    [Required, EmailAddress, StringLength(Constants.MaximumEmailLength)] string Email,
+    [StringLength(60, MinimumLength = Constants.MinimumDisplayNameLength)] string? Name);
 
 public sealed record VerifyEmailCode(
     Guid ChallengeId,

@@ -17,7 +17,7 @@ def include(path):
 
 def package(source, destination):
     source = source.resolve()
-    required = [source / name for name in ("src", "Web", ".dockerignore")]
+    required = [source / name for name in ("src", "Web", ".dockerignore", ".editorconfig", "Directory.Build.props")]
     for path in required:
         if not path.exists():
             raise ValueError(f"Missing Docker context input: {path}")

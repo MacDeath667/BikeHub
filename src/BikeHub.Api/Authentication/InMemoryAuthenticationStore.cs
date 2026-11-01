@@ -16,10 +16,16 @@ public sealed class InMemoryAuthenticationStore : IAuthenticationStore
             if (recent.Any(c => c.CreatedAt > challenge.CreatedAt.AddSeconds(-limits.ResendSeconds)) ||
                 recent.Count(c => c.CreatedAt > challenge.CreatedAt.AddHours(-1)) >= limits.MaxPerEmailHour ||
                 challenges.Values.Count(c => c.CreatedAt > challenge.CreatedAt.AddDays(-1)) >= limits.MaxPerDay)
+            {
                 return Task.FromResult(false);
+            }
+
             foreach (var previous in challenges.Values.Where(c => !c.Consumed &&
                          (c.Email == challenge.Email || c.BindingHash == challenge.BindingHash)).ToList())
+            {
                 challenges[previous.Id] = previous with { Consumed = true };
+            }
+
             challenges.Add(challenge.Id, challenge);
             return Task.FromResult(true);
         }
@@ -30,7 +36,10 @@ public sealed class InMemoryAuthenticationStore : IAuthenticationStore
         lock (gate)
         {
             if (challenges.TryGetValue(id, out var value))
+            {
                 challenges[id] = value with { Delivered = delivered, Consumed = value.Consumed || !delivered };
+            }
+
             return Task.CompletedTask;
         }
     }
@@ -42,9 +51,15 @@ public sealed class InMemoryAuthenticationStore : IAuthenticationStore
         {
             if (!challenges.TryGetValue(id, out var value) || value.Consumed || !value.Delivered ||
                 value.ExpiresAt <= now || !OtpSecurity.EqualsHash(value.BindingHash, bindingHash))
+            {
                 return Task.FromResult(new ConfirmationResult(null, ConfirmationFailure.Invalid));
+            }
+
             if (value.Attempts >= maxAttempts)
+            {
                 return Task.FromResult(new ConfirmationResult(null, ConfirmationFailure.TooManyAttempts));
+            }
+
             value = value with { Attempts = value.Attempts + 1 };
             if (!OtpSecurity.EqualsHash(value.CodeHash, codeHash))
             {
@@ -67,17 +82,26 @@ public sealed class InMemoryAuthenticationStore : IAuthenticationStore
     public Task<AuthSession?> GetSessionAsync(Guid id, DateTimeOffset now, CancellationToken cancellationToken)
     {
         lock (gate)
+        {
             return Task.FromResult(sessions.TryGetValue(id, out var value) && value.ExpiresAt > now ? value : null);
+        }
     }
 
     public Task<AuthAccount?> GetAccountAsync(Guid id, CancellationToken cancellationToken)
     {
-        lock (gate) return Task.FromResult(accounts.Values.FirstOrDefault(a => a.Id == id));
+        lock (gate)
+        {
+            return Task.FromResult(accounts.Values.FirstOrDefault(a => a.Id == id));
+        }
     }
 
     public Task RevokeSessionAsync(Guid id, CancellationToken cancellationToken)
     {
-        lock (gate) sessions.Remove(id);
+        lock (gate)
+        {
+            sessions.Remove(id);
+        }
+
         return Task.CompletedTask;
     }
 
@@ -86,9 +110,14 @@ public sealed class InMemoryAuthenticationStore : IAuthenticationStore
         lock (gate)
         {
             foreach (var id in challenges.Values.Where(c => c.CreatedAt < now.AddDays(-1)).Select(c => c.Id).ToList())
+            {
                 challenges.Remove(id);
+            }
+
             foreach (var id in sessions.Values.Where(s => s.ExpiresAt <= now).Select(s => s.Id).ToList())
+            {
                 sessions.Remove(id);
+            }
         }
         return Task.CompletedTask;
     }
