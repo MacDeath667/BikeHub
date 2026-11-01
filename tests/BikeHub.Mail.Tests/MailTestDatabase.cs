@@ -29,12 +29,16 @@ public sealed class MailTestDatabase : IDbContextFactory<MailDbContext>, IAsyncD
         await create.ExecuteNonQueryAsync();
         database.ConnectionString = new NpgsqlConnectionStringBuilder(database.admin) { Database = database.name }.ConnectionString;
         await using var context = database.CreateDbContext();
-        await context.Database.MigrateAsync();
+        await MailDatabase.MigrateAsync(context);
         return database;
     }
 
-    public MailDbContext CreateDbContext() => new(new DbContextOptionsBuilder<MailDbContext>().UseNpgsql(ConnectionString,
-        postgres => postgres.MigrationsHistoryTable("__EFMigrationsHistory", "mail")).Options);
+    public MailDbContext CreateDbContext()
+    {
+        var options = new DbContextOptionsBuilder<MailDbContext>();
+        MailDatabase.Configure(options, ConnectionString);
+        return new(options.Options);
+    }
 
     public async ValueTask DisposeAsync()
     {

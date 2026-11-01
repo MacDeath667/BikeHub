@@ -11,6 +11,9 @@ public sealed class BikeHubDbContextFactory : IDesignTimeDbContextFactory<BikeHu
     public BikeHubDbContext CreateDbContext(string[] args)
     {
         var connectionString = Environment.GetEnvironmentVariable(ConnectionStringVariable) ?? DesignTimeConnectionString;
-        return new(new DbContextOptionsBuilder<BikeHubDbContext>().UseNpgsql(connectionString).Options);
+        var options = new DbContextOptionsBuilder<BikeHubDbContext>();
+        DatabaseSchema.Configure(options, connectionString,
+            Environment.GetEnvironmentVariable("Database__Schema") ?? DatabaseSchema.Default);
+        return new(options.Options);
     }
 }

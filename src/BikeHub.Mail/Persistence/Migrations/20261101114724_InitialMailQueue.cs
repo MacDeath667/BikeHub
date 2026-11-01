@@ -7,8 +7,7 @@ namespace BikeHub.Mail.Persistence.Migrations;
 public partial class InitialMailQueue : Migration
 {
     private const string SchemaSql = """
-        CREATE SCHEMA IF NOT EXISTS mail;
-        CREATE TABLE IF NOT EXISTS mail.messages (
+        CREATE TABLE IF NOT EXISTS messages (
             id uuid NOT NULL CONSTRAINT "PK_messages" PRIMARY KEY,
             fingerprint varchar(64) NOT NULL,
             destination text NULL, subject text NULL, text_body text NULL,
@@ -16,8 +15,8 @@ public partial class InitialMailQueue : Migration
             created_at timestamptz NOT NULL, updated_at timestamptz NOT NULL,
             not_before timestamptz NOT NULL, failure_reason text NULL
         );
-        CREATE INDEX IF NOT EXISTS "IX_messages_status_not_before" ON mail.messages (status, not_before);
-        CREATE TABLE IF NOT EXISTS mail.kafka_rejections (
+        CREATE INDEX IF NOT EXISTS "IX_messages_status_not_before" ON messages (status, not_before);
+        CREATE TABLE IF NOT EXISTS kafka_rejections (
             topic text NOT NULL, partition integer NOT NULL, "offset" bigint NOT NULL,
             reason text NOT NULL, created_at timestamptz NOT NULL,
             CONSTRAINT "PK_kafka_rejections" PRIMARY KEY (topic, partition, "offset")

@@ -1,0 +1,16 @@
+---
+- name: Deploy staging beside BikeHub on the existing VM
+  hosts: "{{ bikehub_target_group | default('bikehub') }}"
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../inventory/group_vars/bikehub/main.yml
+  vars:
+    bikehub_image_deployment: "{{ bikehub_staging_prefix }}-api"
+    bikehub_mail_image_deployment: "{{ bikehub_staging_prefix }}-mail"
+  tasks:
+    - name: Build and import API and mail images without updating production deployments
+      ansible.builtin.import_tasks: ../tasks/source.yml
+
+    - name: Deploy the staging instance
+      ansible.builtin.import_tasks: ../tasks/staging.yml

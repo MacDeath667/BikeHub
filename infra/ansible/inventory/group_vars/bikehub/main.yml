@@ -16,6 +16,14 @@ bikehub_mail_kafka_enabled: true
 bikehub_mail_kafka_managed: true
 bikehub_mail_kafka_servers: bikehub-kafka:9092
 bikehub_mail_topic: bikehub.mail.send.v1
+bikehub_staging_enabled: true
+bikehub_staging_hostname: bikehub-staging.local
+bikehub_staging_prefix: bikehub-staging
+bikehub_staging_schema: staging
+bikehub_staging_node_port: 30081
+bikehub_staging_mailpit_node_port: 30082
+bikehub_staging_root: /opt/bikehub-staging
+bikehub_staging_mailpit_image: axllent/mailpit:v1.32.0
 bikehub_kafka_image: apache/kafka:4.0.2
 bikehub_source_dir: "{{ playbook_dir }}/../../.."
 bikehub_remote_root: /opt/bikehub

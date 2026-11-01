@@ -43,6 +43,8 @@ ansible-playbook -i '192.168.0.49,' -u ansible \
 
 Playbook собирает фронт и API в существующей VM, обновляет сбор телеметрии, применяет миграции перед обновлением API и проверяет готовность сайта. `bikehub_auth_enabled=true` оставляет вход включённым; почтовые настройки берутся из существующего Secret. Сайт: [https://bikehub.local/](https://bikehub.local/). Подробности — в [инструкции TrueNAS](infra/README.md).
 
+Рядом автоматически разворачивается staging: [сайт](https://bikehub-staging.local/) и [Mailpit с кодами входа](https://bikehub-staging.local/mailpit/). Он использует схему `staging` в существующей PostgreSQL, собственные Kafka и ключи сессий. Для выкладки только основного инстанса добавьте `-e bikehub_staging_enabled=false`. Обновление только staging — через `infra/ansible/playbooks/staging.yml`; [команда и детали](infra/README.md#staging-рядом-с-основным-инстансом).
+
 ```bash
 ssh -i ~/.ssh/truenas_admin ansible@192.168.0.49 \
   'sudo -n k3s kubectl logs -n bikehub deployment/bikehub-api --container=api --tail=200 --follow'

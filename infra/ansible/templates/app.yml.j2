@@ -1,10 +1,11 @@
+{% set prefix = bikehub_resource_prefix | default('bikehub') %}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ bikehub_deployment }}
   namespace: {{ bikehub_namespace }}
   labels:
-    app.kubernetes.io/name: bikehub-api
+    app.kubernetes.io/name: {{ prefix }}-api
 spec:
   replicas: {{ bikehub_replica_count }}
   strategy:
@@ -14,11 +15,11 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app.kubernetes.io/name: bikehub-api
+      app.kubernetes.io/name: {{ prefix }}-api
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: bikehub-api
+        app.kubernetes.io/name: {{ prefix }}-api
 {% if bikehub_database_enabled | bool or bikehub_auth_enabled | bool %}
       annotations:
 {% if bikehub_database_enabled | bool %}
@@ -47,7 +48,7 @@ spec:
               protocol: TCP
           env:
             - name: ASPNETCORE_ENVIRONMENT
-              value: Production
+              value: {{ bikehub_environment | default('Production') | to_json }}
 {% if bikehub_tls_enabled | bool %}
             - name: ReverseProxy__KnownProxies__0
               value: {{ ansible_facts.default_ipv4.address | to_json }}
@@ -64,7 +65,7 @@ spec:
             - name: Authentication__EmailProvider
               value: MailService
             - name: MailService__BaseUrl
-              value: http://bikehub-mail:8080/
+              value: http://{{ prefix }}-mail:8080/
             - name: MailService__ApiKey
               valueFrom:
                 secretKeyRef:
@@ -82,6 +83,10 @@ spec:
 {% endif %}
             - name: ASPNETCORE_URLS
               value: http://+:{{ bikehub_app_port }}
+            - name: Database__Schema
+              value: {{ bikehub_database_schema | default('public') | to_json }}
+            - name: Observability__Environment
+              value: {{ bikehub_observability_environment | default('Production') | to_json }}
             - name: Database__BootstrapEnabled
               value: "false"
             - name: Database__MigrationsEnabled
@@ -98,7 +103,7 @@ spec:
             - name: ConnectionStrings__BikeHub
               valueFrom:
                 secretKeyRef:
-                  name: bikehub-database
+                  name: {{ bikehub_database_secret_name | default('bikehub-database') }}
                   key: connection-string
 {% endif %}
 {% if bikehub_auth_enabled | bool %}
@@ -142,12 +147,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: bikehub-api
+  name: {{ prefix }}-api
   namespace: {{ bikehub_namespace }}
 spec:
   type: NodePort
   selector:
-    app.kubernetes.io/name: bikehub-api
+    app.kubernetes.io/name: {{ prefix }}-api
   ports:
     - name: http
       port: {{ bikehub_app_port }}

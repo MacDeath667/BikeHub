@@ -20,7 +20,7 @@ public sealed class EfPersistenceTests
         await new DatabaseMigrator(database).MigrateAsync(default);
         await new DatabaseMigrator(database).MigrateAsync(default);
         await using var context = database.CreateDbContext();
-        Assert.Single(await context.Database.GetAppliedMigrationsAsync());
+        Assert.Equal(2, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.False(context.Database.HasPendingModelChanges());
         Assert.Empty(await context.Bikes.ToListAsync());
         Assert.Empty(await context.Accounts.ToListAsync());
@@ -39,7 +39,7 @@ public sealed class EfPersistenceTests
         await context.SaveChangesAsync();
         await Assert.ThrowsAsync<NotSupportedException>(() => context.GetService<IMigrator>().MigrateAsync("0"));
         Assert.True(await context.Bikes.AnyAsync(x => x.Id == bike.Id));
-        Assert.Single(await context.Database.GetAppliedMigrationsAsync());
+        Assert.Equal(2, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public sealed class EfPersistenceTests
             """);
         await new DatabaseMigrator(database).MigrateAsync(default);
         context.ChangeTracker.Clear();
-        Assert.Single(await context.Database.GetAppliedMigrationsAsync());
+        Assert.Equal(2, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal("Keep me", (await context.Bikes.SingleAsync()).Description);
         Assert.Equal("+79990000000", (await context.Accounts.SingleAsync()).PhoneNumber);
         Assert.Equal(2, (await context.EmailChallenges.SingleAsync()).Attempts);

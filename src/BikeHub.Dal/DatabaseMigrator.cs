@@ -9,6 +9,7 @@ public sealed class DatabaseMigrator(IDbContextFactory<BikeHubDbContext> context
     public async Task MigrateAsync(CancellationToken cancellationToken)
     {
         await using var context = await contexts.CreateDbContextAsync(cancellationToken);
+        await DatabaseSchema.EnsureAsync(context, cancellationToken);
         await context.Database.MigrateAsync(cancellationToken);
     }
 }

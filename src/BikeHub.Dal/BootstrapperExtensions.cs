@@ -10,7 +10,8 @@ public static class BootstrapperExtensions
     public static IHostApplicationBuilder AddBikeHubDatabase(this IHostApplicationBuilder builder)
     {
         builder.Services.AddDbContextFactory<BikeHubDbContext>(options =>
-            options.UseNpgsql(builder.Configuration.GetConnectionString(Constants.ConnectionStringName).Protect()));
+            DatabaseSchema.Configure(options, builder.Configuration.GetConnectionString(Constants.ConnectionStringName).Protect(),
+                builder.Configuration[DatabaseSchema.ConfigurationKey] ?? DatabaseSchema.Default));
         builder.Services.AddSingleton<DatabaseMigrator>();
         builder.Services.AddSingleton<DatabaseBootstrapper>();
         return builder;

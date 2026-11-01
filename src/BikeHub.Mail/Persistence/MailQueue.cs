@@ -37,7 +37,7 @@ public sealed class MailQueue(IDbContextFactory<MailDbContext> contexts, TimePro
         await using var context = await contexts.CreateDbContextAsync(cancellationToken);
         // One INSERT is the arbitration point across HTTP, Kafka, replicas and process restarts.
         var inserted = await context.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO mail.messages
+            INSERT INTO messages
                 (id, fingerprint, destination, subject, text_body, expires_at, status, attempts, created_at, updated_at, not_before)
             VALUES ({request.MessageId}, {fingerprint}, {(expired ? null : request.Destination)},
                 {(expired ? null : request.Subject)}, {(expired ? null : request.TextBody)}, {request.ExpiresAt},
@@ -64,7 +64,7 @@ public sealed class MailQueue(IDbContextFactory<MailDbContext> contexts, TimePro
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         var now = clock.GetUtcNow();
         var messages = await context.Messages.FromSqlInterpolated($"""
-            SELECT * FROM mail.messages
+            SELECT * FROM messages
             WHERE status = {(int)DeliveryStatus.Queued} AND not_before <= {now}
             ORDER BY created_at, id LIMIT 1 FOR UPDATE SKIP LOCKED
             """).ToListAsync(cancellationToken);
@@ -119,7 +119,7 @@ public sealed class MailQueue(IDbContextFactory<MailDbContext> contexts, TimePro
         var now = clock.GetUtcNow();
         // Do not persist the raw Kafka body, email address or OTP in the rejection journal.
         await context.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO mail.kafka_rejections (topic, partition, "offset", reason, created_at)
+            INSERT INTO kafka_rejections (topic, partition, "offset", reason, created_at)
             VALUES ({topic}, {partition}, {offset}, {reason}, {now})
             ON CONFLICT DO NOTHING
             """, cancellationToken);

@@ -89,7 +89,7 @@
           - k3s
           - kubectl
           - get
-          - "deployment/{{ bikehub_deployment }}"
+          - "deployment/{{ bikehub_image_deployment | default(bikehub_deployment) }}"
           - -n
           - "{{ bikehub_namespace }}"
           - -o
@@ -111,7 +111,7 @@
 
     - name: Read the deployed mail image when skipping builds
       ansible.builtin.command:
-        argv: [k3s, kubectl, get, deployment/bikehub-mail, -n, "{{ bikehub_namespace }}", -o, 'jsonpath={.spec.template.spec.containers[0].image}']
+        argv: [k3s, kubectl, get, "deployment/{{ bikehub_mail_image_deployment | default('bikehub-mail') }}", -n, "{{ bikehub_namespace }}", -o, 'jsonpath={.spec.template.spec.containers[0].image}']
       when: bikehub_mail_enabled | bool and bikehub_mail_image | length == 0
       register: bikehub_current_mail_image
       changed_when: false

@@ -1,0 +1,89 @@
+---
+- name: Verify staging manifests without connecting to the NAS
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../ansible/inventory/group_vars/bikehub/main.yml
+  vars:
+    ansible_facts:
+      default_ipv4: { address: 192.0.2.10 }
+      cni0: { ipv4: { address: 10.42.0.1 } }
+      date_time: { epoch: '1234567890' }
+    bikehub_selected_image: bikehub-api:test
+    bikehub_selected_mail_image: bikehub-mail:test
+    bikehub_auth_enabled: true
+    bikehub_effective_email_provider: GmailApi
+    bikehub_database_secret_version: { stdout: '10' }
+    bikehub_auth_secret_version: { stdout: '11' }
+    bikehub_mail_secret_version: { stdout: '12' }
+    bikehub_mail_credential_revisions: { results: [{ stdout: '10' }, { stdout: '11' }] }
+    bikehub_staging_database_version: { stdout: '10' }
+    bikehub_staging_key_version: { stdout: '20' }
+    templates: "{{ playbook_dir }}/../ansible/templates"
+  tasks:
+    - name: Render production and staging using the actual deployment templates
+      ansible.builtin.set_fact:
+        production: "{{ (lookup('ansible.builtin.template', templates ~ '/app.yml.j2') ~ '\n---\n' ~ lookup('ansible.builtin.template', templates ~ '/mail.yml.j2') ~ '\n---\n' ~ lookup('ansible.builtin.template', templates ~ '/mail-kafka.yml.j2')) | from_yaml_all | list }}"
+        staging: "{{ (lookup('ansible.builtin.template', templates ~ '/staging-app.yml.j2') ~ '\n---\n' ~ lookup('ansible.builtin.template', templates ~ '/staging-kafka.yml.j2') ~ '\n---\n' ~ lookup('ansible.builtin.template', templates ~ '/staging-mailpit.yml.j2')) | from_yaml_all | list }}"
+        migration: "{{ lookup('ansible.builtin.template', templates ~ '/staging-migration-job.yml.j2') | from_yaml }}"
+        nginx: "{{ lookup('ansible.builtin.template', templates ~ '/staging-nginx.conf.j2') }}"
+
+    - name: Select deployments and resource names
+      ansible.builtin.set_fact:
+        api: "{{ (staging | selectattr('metadata.name', 'equalto', 'bikehub-staging-api') | selectattr('kind', 'equalto', 'Deployment') | first).spec.template }}"
+        mail: "{{ (staging | selectattr('metadata.name', 'equalto', 'bikehub-staging-mail') | selectattr('kind', 'equalto', 'Deployment') | first).spec.template }}"
+        prod_api: "{{ (production | selectattr('metadata.name', 'equalto', 'bikehub-api') | selectattr('kind', 'equalto', 'Deployment') | first).spec.template }}"
+        prod_mail: "{{ (production | selectattr('metadata.name', 'equalto', 'bikehub-mail') | selectattr('kind', 'equalto', 'Deployment') | first).spec.template }}"
+
+    - name: Index literal environment settings
+      ansible.builtin.set_fact:
+        api_env: "{{ api.spec.containers[0].env | selectattr('value', 'defined') | items2dict(key_name='name', value_name='value') }}"
+        mail_env: "{{ mail.spec.containers[0].env | selectattr('value', 'defined') | items2dict(key_name='name', value_name='value') }}"
+        prod_api_env: "{{ prod_api.spec.containers[0].env | selectattr('value', 'defined') | items2dict(key_name='name', value_name='value') }}"
+        prod_mail_env: "{{ prod_mail.spec.containers[0].env | selectattr('value', 'defined') | items2dict(key_name='name', value_name='value') }}"
+
+    - name: Require separate resources, schemas, session keys, Kafka and mail capture
+      ansible.builtin.assert:
+        that:
+          - production | map(attribute='metadata.name') | intersect(staging | map(attribute='metadata.name')) | length == 0
+          - staging | map(attribute='metadata.namespace') | unique | list == ['bikehub']
+          - staging | selectattr('kind', 'equalto', 'Deployment') | length == 3
+          - staging | selectattr('kind', 'equalto', 'Service') | length == 5
+          - (staging | selectattr('kind', 'equalto', 'Service') | selectattr('metadata.name', 'equalto', 'bikehub-staging-api') | first).spec.ports[0].nodePort == 30081
+          - (staging | selectattr('kind', 'equalto', 'Service') | selectattr('metadata.name', 'equalto', 'bikehub-staging-mail') | first).spec.type == 'ClusterIP'
+          - api_env.Database__Schema == 'staging'
+          - mail_env.Database__Schema == 'staging'
+          - api_env.Authentication__Store == 'Postgres'
+          - api_env.Authentication__EmailProvider == 'MailService'
+          - api_env.MailService__BaseUrl == 'http://bikehub-staging-mail:8080/'
+          - api_env.Observability__Environment == 'Staging'
+          - mail_env.Observability__Environment == 'Staging'
+          - api.spec.volumes[0].persistentVolumeClaim.claimName == 'bikehub-staging-auth-keys'
+          - api.metadata.labels['app.kubernetes.io/name'] == 'bikehub-staging-api'
+          - mail.metadata.labels['app.kubernetes.io/name'] == 'bikehub-staging-mail'
+          - mail_env.ASPNETCORE_ENVIRONMENT == 'Development'
+          - mail_env.Mail__Provider == 'Smtp'
+          - mail_env.Smtp__Host == 'bikehub-staging-mailpit'
+          - mail_env.Smtp__Security == 'None'
+          - mail_env.Smtp__Username == ''
+          - mail_env.Smtp__Password == ''
+          - mail_env.Kafka__BootstrapServers == 'bikehub-staging-kafka:9092'
+          - mail_env.Kafka__Topic == 'bikehub.staging.mail.send.v1'
+          - mail.spec.containers[0].env | map(attribute='name') | select('match', '^GmailApi__') | length == 0
+          - prod_api_env.ASPNETCORE_ENVIRONMENT == 'Production'
+          - prod_api_env.Database__Schema == 'public'
+          - prod_mail_env.Database__Schema == 'mail'
+          - prod_mail_env.Mail__Provider == 'GmailApi'
+          - prod_mail.spec.containers[0].env | map(attribute='name') | select('match', '^GmailApi__') | length == 4
+          - migration.spec.template.spec.initContainers[0].env[0].value == 'staging'
+          - migration.spec.template.spec.containers[0].env[0].value == 'staging'
+          - migration.spec.template.spec.initContainers[0].env[2].valueFrom.secretKeyRef.name == 'bikehub-database'
+          - nginx is not search('default_server|bikehub_tls[.]pub')
+          - "'server_name bikehub-staging.local;' in nginx"
+
+    - name: Require secret references without copying credentials into manifests
+      ansible.builtin.assert:
+        that:
+          - item.valueFrom.secretKeyRef.name in ['bikehub-staging', 'bikehub-database']
+      loop: "{{ (api.spec.containers[0].env + mail.spec.containers[0].env) | selectattr('valueFrom', 'defined') | list }}"

@@ -1,11 +1,12 @@
+{% set prefix = bikehub_resource_prefix | default('bikehub') %}
 apiVersion: v1
 kind: Service
 metadata:
-  name: bikehub-kafka
+  name: {{ prefix }}-kafka
   namespace: {{ bikehub_namespace }}
 spec:
   selector:
-    app.kubernetes.io/name: bikehub-kafka
+    app.kubernetes.io/name: {{ prefix }}-kafka
   ports:
     - { name: kafka, port: 9092, targetPort: 9092 }
     - { name: controller, port: 9093, targetPort: 9093 }
@@ -13,18 +14,18 @@ spec:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: bikehub-kafka
+  name: {{ prefix }}-kafka
   namespace: {{ bikehub_namespace }}
 spec:
-  serviceName: bikehub-kafka
+  serviceName: {{ prefix }}-kafka
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: bikehub-kafka
+      app.kubernetes.io/name: {{ prefix }}-kafka
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: bikehub-kafka
+        app.kubernetes.io/name: {{ prefix }}-kafka
     spec:
       securityContext:
         fsGroup: 1000
@@ -38,7 +39,7 @@ spec:
             - { name: KAFKA_NODE_ID, value: "1" }
             - { name: KAFKA_PROCESS_ROLES, value: "broker,controller" }
             - { name: KAFKA_LISTENERS, value: "PLAINTEXT://:9092,CONTROLLER://:9093" }
-            - { name: KAFKA_ADVERTISED_LISTENERS, value: "PLAINTEXT://bikehub-kafka:9092" }
+            - { name: KAFKA_ADVERTISED_LISTENERS, value: "PLAINTEXT://{{ prefix }}-kafka:9092" }
             - { name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP, value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT" }
             - { name: KAFKA_INTER_BROKER_LISTENER_NAME, value: PLAINTEXT }
             - { name: KAFKA_CONTROLLER_LISTENER_NAMES, value: CONTROLLER }
@@ -75,7 +76,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: bikehub-mail-topic-{{ ansible_facts.date_time.epoch }}
+  name: {{ prefix }}-mail-topic-{{ ansible_facts.date_time.epoch }}
   namespace: {{ bikehub_namespace }}
 spec:
   backoffLimit: 10
@@ -87,17 +88,17 @@ spec:
         - name: topic
           image: {{ bikehub_kafka_image }}
           command: ["/opt/kafka/bin/kafka-topics.sh"]
-          args: ["--bootstrap-server", "bikehub-kafka:9092", "--create", "--if-not-exists", "--topic", {{ bikehub_mail_topic | to_json }}, "--partitions", "3", "--replication-factor", "1", "--config", "retention.ms=3600000"]
+          args: ["--bootstrap-server", "{{ prefix }}-kafka:9092", "--create", "--if-not-exists", "--topic", {{ bikehub_mail_topic | to_json }}, "--partitions", "3", "--replication-factor", "1", "--config", "retention.ms=3600000"]
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: bikehub-kafka-internal
+  name: {{ prefix }}-kafka-internal
   namespace: {{ bikehub_namespace }}
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: bikehub-kafka
+      app.kubernetes.io/name: {{ prefix }}-kafka
   policyTypes: [Ingress]
   ingress:
     - from:

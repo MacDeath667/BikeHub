@@ -17,7 +17,6 @@ namespace BikeHub.Mail.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasDefaultSchema("mail")
                 .HasAnnotation("ProductVersion", "10.0.8")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
@@ -48,7 +47,7 @@ namespace BikeHub.Mail.Persistence.Migrations
 
                     b.HasKey("Topic", "Partition", "Offset");
 
-                    b.ToTable("kafka_rejections", "mail");
+                    b.ToTable("kafka_rejections", (string)null);
                 });
 
             modelBuilder.Entity("BikeHub.Mail.Persistence.MailMessage", b =>
@@ -107,7 +106,7 @@ namespace BikeHub.Mail.Persistence.Migrations
 
                     b.HasIndex("Status", "NotBefore");
 
-                    b.ToTable("messages", "mail");
+                    b.ToTable("messages", (string)null);
                 });
 #pragma warning restore 612, 618
         }

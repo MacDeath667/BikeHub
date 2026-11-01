@@ -13,7 +13,7 @@ public static class Program
           mail gmail --client-json PATH --sender EMAIL --target local|server
           mail smtp --target local|server
           mail check --target server
-          observability --api-url URL --vm-address IP [--environment Development|Production] [--ca-certificate PATH]
+          observability --api-url URL --vm-address IP [--environment Development|Staging|Production] [--ca-certificate PATH]
         Server options: --vm-address IP --ssh-key PATH.
         Passwords and tokens are passed via stdin, never command arguments.
         """;

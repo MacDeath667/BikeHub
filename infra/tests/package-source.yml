@@ -14,7 +14,7 @@
       block:
         - name: Select fixture as the source tree
           ansible.builtin.set_fact:
-            bikehub_source_dir: "{{ fixture.path }}"
+            bikehub_source_dir: "{{ fixture.path }}/infra/.."
 
         - name: Create source and excluded fixture directories
           ansible.builtin.file:
@@ -48,7 +48,7 @@
               - "'Web/package.json' in members.stdout_lines"
               - "'src/BikeHub.Api/Program.cs' in members.stdout_lines"
               - "'.editorconfig' in members.stdout_lines"
-              - members.stdout is not search('node_modules|/obj/|/dist/|[.]env|infra/')
+              - members.stdout is not search('node_modules|/obj/|/dist/|[.]env|infra/|[.][.]/')
 
         - name: Change only file timestamps
           ansible.builtin.file:

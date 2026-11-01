@@ -17,7 +17,7 @@ public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options)
         var bikes = modelBuilder.Entity<Bike>();
         bikes.ToTable("bikes");
         bikes.HasKey(x => x.Id).HasName("bikes_pkey");
-        bikes.Property(x => x.Id).HasDefaultValueSql("public.uuidv7()");
+        bikes.Property(x => x.Id).HasDefaultValueSql("uuidv7()");
         bikes.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
         bikes.HasIndex(x => x.OwnerId).HasDatabaseName("ix_bikes_owner_id");
 

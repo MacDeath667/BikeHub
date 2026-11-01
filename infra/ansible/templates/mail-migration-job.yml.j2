@@ -15,6 +15,8 @@ spec:
           imagePullPolicy: Never
           args: ["--migrate-only"]
           env:
+            - name: Database__Schema
+              value: {{ bikehub_mail_database_schema | default('mail') | to_json }}
             - name: ConnectionStrings__Mail
               valueFrom:
                 secretKeyRef:

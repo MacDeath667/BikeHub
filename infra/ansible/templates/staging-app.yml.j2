@@ -1,0 +1,34 @@
+{# Keep the same application manifests as production; scope all instance settings here. #}
+{% with bikehub_resource_prefix=bikehub_staging_prefix,
+        bikehub_deployment=bikehub_staging_prefix ~ '-api',
+        bikehub_environment='Development',
+        bikehub_observability_environment='Staging',
+        bikehub_replica_count=1,
+        bikehub_auth_enabled=true,
+        bikehub_database_enabled=true,
+        bikehub_tls_enabled=true,
+        bikehub_database_schema=bikehub_staging_schema,
+        bikehub_mail_database_schema=bikehub_staging_schema,
+        bikehub_database_secret_name='bikehub-database',
+        bikehub_mail_database_secret_name='bikehub-database',
+        bikehub_auth_secret_name=bikehub_staging_prefix,
+        bikehub_mail_secret_name=bikehub_staging_prefix,
+        bikehub_auth_key_claim=bikehub_staging_prefix ~ '-auth-keys',
+        bikehub_node_port=bikehub_staging_node_port,
+        bikehub_mailpit_enabled=true,
+        bikehub_effective_email_provider='Smtp',
+        bikehub_mail_kafka_enabled=true,
+        bikehub_mail_kafka_servers=bikehub_staging_prefix ~ '-kafka:9092',
+        bikehub_mail_topic='bikehub.staging.mail.send.v1',
+        bikehub_database_secret_version=bikehub_staging_database_version,
+        bikehub_auth_secret_version=bikehub_staging_key_version,
+        bikehub_mail_secret_version=bikehub_staging_key_version,
+        bikehub_mail_credential_revisions={'results': [bikehub_staging_database_version, bikehub_staging_key_version]} %}
+{% include 'app.yml.j2' %}
+
+---
+{% include 'mail.yml.j2' %}
+
+---
+{% include 'auth-keys.yml.j2' %}
+{% endwith %}

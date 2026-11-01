@@ -288,3 +288,7 @@
           image: "{{ bikehub_selected_image }}"
           replicas: "{{ bikehub_replica_count }}"
           api: "{{ bikehub_health.json }}"
+
+    - name: Deploy the companion staging instance
+      ansible.builtin.include_tasks: ../tasks/staging.yml
+      when: bikehub_staging_enabled | bool

@@ -1,9 +1,14 @@
 ---
+- name: Select the website alias instance
+  ansible.builtin.set_fact:
+    bikehub_mdns_hostname: "{{ bikehub_mdns_instance.hostname | default(bikehub_hostname) }}"
+    bikehub_mdns_service_name: "{{ bikehub_mdns_instance.service | default('bikehub-mdns') }}"
+
 - name: Validate the local website hostname
   ansible.builtin.assert:
     that:
-      - bikehub_hostname is match('^[A-Za-z0-9][A-Za-z0-9-]*[.]local$')
-    fail_msg: Set bikehub_hostname to a single hostname under .local.
+      - bikehub_mdns_hostname is match('^[A-Za-z0-9][A-Za-z0-9-]*[.]local$')
+    fail_msg: Set bikehub_mdns_hostname to a single hostname under .local.
 
 - name: Install the mDNS publisher and resolver
   ansible.builtin.apt:
@@ -34,7 +39,7 @@
 - name: Install the persistent website alias publisher
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/bikehub-mdns.service.j2"
-    dest: /etc/systemd/system/bikehub-mdns.service
+    dest: /etc/systemd/system/{{ bikehub_mdns_service_name }}.service
     owner: root
     group: root
     mode: "0644"
@@ -42,14 +47,14 @@
 
 - name: Enable the website name publisher at boot
   ansible.builtin.systemd_service:
-    name: bikehub-mdns
+    name: "{{ bikehub_mdns_service_name }}"
     daemon_reload: "{{ bikehub_mdns_unit.changed }}"
     enabled: true
     state: "{{ 'restarted' if bikehub_mdns_unit.changed else 'started' }}"
 
 - name: Verify the published local name
   ansible.builtin.command:
-    argv: [avahi-resolve-host-name, -4, "{{ bikehub_hostname }}"]
+    argv: [avahi-resolve-host-name, -4, "{{ bikehub_mdns_hostname }}"]
   register: bikehub_mdns_resolution
   until: bikehub_mdns_resolution.rc == 0 and ansible_facts.default_ipv4.address in bikehub_mdns_resolution.stdout
   retries: 5

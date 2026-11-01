@@ -1,0 +1,176 @@
+---
+- name: Validate staging isolation before applying any resources
+  ansible.builtin.assert:
+    that:
+      - bikehub_staging_prefix is match('^[a-z][a-z0-9-]{1,30}$')
+      - bikehub_staging_prefix != 'bikehub'
+      - bikehub_staging_prefix ~ '-api' != bikehub_deployment
+      - bikehub_staging_hostname is match('^[A-Za-z0-9][A-Za-z0-9-]*[.]local$')
+      - bikehub_staging_hostname != bikehub_hostname
+      - bikehub_staging_schema == 'staging'
+      - bikehub_staging_root is match('^/opt/[A-Za-z0-9_-]+$')
+      - bikehub_staging_root != bikehub_remote_root
+      - bikehub_staging_node_port | int >= 30000 and bikehub_staging_node_port | int <= 32767
+      - bikehub_staging_mailpit_node_port | int >= 30000 and bikehub_staging_mailpit_node_port | int <= 32767
+      - bikehub_staging_node_port | int != bikehub_staging_mailpit_node_port | int
+      - bikehub_staging_node_port | int not in [bikehub_node_port | int, bikehub_otlp_node_port | int, bikehub_prometheus_node_port | int, bikehub_loki_node_port | int, bikehub_tempo_node_port | int]
+      - bikehub_staging_mailpit_node_port | int not in [bikehub_node_port | int, bikehub_otlp_node_port | int, bikehub_prometheus_node_port | int, bikehub_loki_node_port | int, bikehub_tempo_node_port | int]
+      - bikehub_selected_image | length > 0
+      - bikehub_selected_mail_image | length > 0
+    fail_msg: Staging requires separate resource names, hostname, paths and ports, and the staging database schema.
+
+- name: Read only the shared database Secret revision
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, secret/bikehub-database, -n, "{{ bikehub_namespace }}", -o, 'jsonpath={.metadata.resourceVersion}']
+  register: bikehub_staging_database_version
+  changed_when: false
+
+- name: Create the staging manifest directory
+  ansible.builtin.file:
+    path: "{{ bikehub_staging_root }}/k8s"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Check for separate staging keys
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "secret/{{ bikehub_staging_prefix }}", -n, "{{ bikehub_namespace }}", --ignore-not-found, -o, name]
+  register: bikehub_staging_existing_keys
+  changed_when: false
+
+- name: Generate staging OTP and internal API keys on the VM only once
+  ansible.builtin.shell: |
+    set -o pipefail
+    k3s kubectl create secret generic {{ bikehub_staging_prefix | quote }} \
+      -n {{ bikehub_namespace | quote }} \
+      --from-file=api-key=<(openssl rand -hex 32 | tr -d '\n') \
+      --from-file=otp-secret=<(openssl rand -hex 32 | tr -d '\n') -o name
+  args:
+    executable: /bin/bash
+  when: bikehub_staging_existing_keys.stdout | length == 0
+  no_log: true
+  changed_when: true
+
+- name: Read only the staging key revision
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "secret/{{ bikehub_staging_prefix }}", -n, "{{ bikehub_namespace }}", -o, 'jsonpath={.metadata.resourceVersion}']
+  register: bikehub_staging_key_version
+  changed_when: false
+
+- name: Render Kafka, Mailpit, migrations and application manifests
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/{{ item }}.j2"
+    dest: "{{ bikehub_staging_root }}/k8s/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [staging-kafka.yml, staging-mailpit.yml, staging-migration-job.yml, staging-app.yml]
+
+- name: Start the staging broker, topic and mail capture service
+  ansible.builtin.command:
+    argv: [k3s, kubectl, apply, -f, "{{ bikehub_staging_root }}/k8s/{{ item }}"]
+  loop: [staging-kafka.yml, staging-mailpit.yml]
+  register: bikehub_staging_infra
+  changed_when: "'configured' in bikehub_staging_infra.stdout or 'created' in bikehub_staging_infra.stdout"
+
+- name: Wait for the staging Kafka topic
+  ansible.builtin.command:
+    argv: [k3s, kubectl, wait, --for=condition=complete, "job/{{ bikehub_staging_prefix }}-mail-topic-{{ ansible_facts.date_time.epoch }}", -n, "{{ bikehub_namespace }}", --timeout=300s]
+  changed_when: false
+
+- name: Apply API and mail migrations sequentially in the staging schema
+  ansible.builtin.command:
+    argv: [k3s, kubectl, apply, -f, "{{ bikehub_staging_root }}/k8s/staging-migration-job.yml"]
+  register: bikehub_staging_migrate
+  changed_when: "'configured' in bikehub_staging_migrate.stdout or 'created' in bikehub_staging_migrate.stdout"
+
+- name: Wait for both staging migration runners
+  ansible.builtin.command:
+    argv: [k3s, kubectl, wait, --for=condition=complete, "job/{{ bikehub_staging_prefix }}-migrate-{{ ansible_facts.date_time.epoch }}", -n, "{{ bikehub_namespace }}", "--timeout={{ bikehub_migration_timeout }}s"]
+  changed_when: false
+
+- name: Deploy the staging application with its own cookie key volume
+  ansible.builtin.command:
+    argv: [k3s, kubectl, apply, -f, "{{ bikehub_staging_root }}/k8s/staging-app.yml"]
+  register: bikehub_staging_app
+  changed_when: "'configured' in bikehub_staging_app.stdout or 'created' in bikehub_staging_app.stdout"
+
+- name: Wait for staging services
+  ansible.builtin.command:
+    argv: [k3s, kubectl, rollout, status, "deployment/{{ bikehub_staging_prefix }}-{{ item }}", -n, "{{ bikehub_namespace }}", --timeout=300s]
+  loop: [mailpit, mail, api]
+  changed_when: false
+
+- name: Publish the separate staging hostname
+  ansible.builtin.include_tasks: mdns.yml
+  vars:
+    bikehub_mdns_instance:
+      hostname: "{{ bikehub_staging_hostname }}"
+      service: "{{ bikehub_staging_prefix }}-mdns"
+
+- name: Create the separate staging certificate without replacing the production certificate
+  ansible.builtin.include_tasks: tls.yml
+  vars:
+    bikehub_tls_instance:
+      server_name: "{{ bikehub_staging_hostname }}"
+      name: "{{ bikehub_staging_prefix }}_tls"
+      directory: "/etc/nginx/{{ bikehub_staging_prefix }}-tls"
+      key_path: "/etc/nginx/{{ bikehub_staging_prefix }}-tls/{{ bikehub_staging_prefix }}_tls"
+      certificate_path: "/etc/nginx/{{ bikehub_staging_prefix }}-tls/{{ bikehub_staging_prefix }}_tls.pub"
+
+- name: Prepare the nginx configuration validator
+  ansible.builtin.import_tasks: nginx-runtime.yml
+
+- name: Add the staging virtual host alongside production
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/staging-nginx.conf.j2"
+    dest: "/etc/nginx/conf.d/{{ bikehub_staging_prefix }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/local/sbin/validate-bikehub-nginx %s"
+  register: bikehub_staging_nginx
+
+- name: Validate both nginx virtual hosts together
+  ansible.builtin.command:
+    argv: [nginx, -t]
+  changed_when: false
+
+- name: Reload nginx after staging configuration or certificate changes
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+  when: bikehub_staging_nginx.changed or bikehub_tls_certificate_result.changed
+
+- name: Verify staging HTTPS, the frontend and Mailpit through the virtual host
+  ansible.builtin.command:
+    argv:
+      - curl
+      - --fail
+      - --silent
+      - --show-error
+      - --connect-timeout
+      - '5'
+      - --max-time
+      - '15'
+      - --noproxy
+      - '*'
+      - --resolve
+      - "{{ bikehub_staging_hostname }}:443:{{ ansible_facts.default_ipv4.address }}"
+      - --cacert
+      - "/etc/nginx/{{ bikehub_staging_prefix }}-tls/{{ bikehub_staging_prefix }}_tls.pub"
+      - "https://{{ bikehub_staging_hostname }}{{ item }}"
+  loop: [/api/health, /, /mailpit/]
+  register: bikehub_staging_web
+  until: bikehub_staging_web.rc == 0
+  retries: 10
+  delay: 3
+  changed_when: false
+
+- name: Report staging endpoints
+  ansible.builtin.debug:
+    msg:
+      site: "https://{{ bikehub_staging_hostname }}/"
+      mailpit: "https://{{ bikehub_staging_hostname }}/mailpit/"
+      database_schema: "{{ bikehub_staging_schema }}"
