@@ -1,0 +1,38 @@
+---
+- name: Check K3s before reading the current authentication mode
+  ansible.builtin.stat:
+    path: "{{ bikehub_k3s_path | default('/usr/local/bin/k3s') }}"
+  register: bikehub_auth_k3s
+  when: bikehub_auth_enabled is none
+
+- name: Read only the deployed authentication flag
+  ansible.builtin.command:
+    argv:
+      - "{{ bikehub_k3s_path | default('/usr/local/bin/k3s') }}"
+      - kubectl
+      - get
+      - "deployment/{{ bikehub_deployment }}"
+      - -n
+      - "{{ bikehub_namespace }}"
+      - --ignore-not-found
+      - -o
+      - 'jsonpath={.spec.template.spec.containers[0].env[?(@.name=="Authentication__Enabled")].value}'
+  register: bikehub_deployed_auth
+  changed_when: false
+  when: bikehub_auth_enabled is none and bikehub_auth_k3s.stat.exists
+
+- name: Require an unambiguous deployed authentication mode
+  ansible.builtin.assert:
+    that: bikehub_deployed_auth.stdout | default('') in ['', 'true', 'false']
+    fail_msg: Cannot determine the current authentication mode; set bikehub_auth_enabled explicitly.
+  when: bikehub_auth_enabled is none
+
+- name: Preserve authentication or disable it on a new installation
+  ansible.builtin.set_fact:
+    bikehub_auth_enabled: "{{ bikehub_deployed_auth.stdout | default('') == 'true' }}"
+  when: bikehub_auth_enabled is none
+
+- name: Validate prerequisites after resolving authentication mode
+  ansible.builtin.assert:
+    that:
+      - not (bikehub_auth_enabled | bool) or (bikehub_database_enabled | bool and bikehub_tls_enabled | bool and bikehub_mail_enabled | bool)

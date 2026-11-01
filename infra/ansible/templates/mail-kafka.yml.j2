@@ -1,0 +1,107 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bikehub-kafka
+  namespace: {{ bikehub_namespace }}
+spec:
+  selector:
+    app.kubernetes.io/name: bikehub-kafka
+  ports:
+    - { name: kafka, port: 9092, targetPort: 9092 }
+    - { name: controller, port: 9093, targetPort: 9093 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: bikehub-kafka
+  namespace: {{ bikehub_namespace }}
+spec:
+  serviceName: bikehub-kafka
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: bikehub-kafka
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: bikehub-kafka
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: kafka
+          image: {{ bikehub_kafka_image }}
+          ports:
+            - { name: kafka, containerPort: 9092 }
+            - { name: controller, containerPort: 9093 }
+          env:
+            - { name: KAFKA_NODE_ID, value: "1" }
+            - { name: KAFKA_PROCESS_ROLES, value: "broker,controller" }
+            - { name: KAFKA_LISTENERS, value: "PLAINTEXT://:9092,CONTROLLER://:9093" }
+            - { name: KAFKA_ADVERTISED_LISTENERS, value: "PLAINTEXT://bikehub-kafka:9092" }
+            - { name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP, value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT" }
+            - { name: KAFKA_INTER_BROKER_LISTENER_NAME, value: PLAINTEXT }
+            - { name: KAFKA_CONTROLLER_LISTENER_NAMES, value: CONTROLLER }
+            - { name: KAFKA_CONTROLLER_QUORUM_VOTERS, value: "1@localhost:9093" }
+            - { name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR, value: "1" }
+            - { name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR, value: "1" }
+            - { name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR, value: "1" }
+            - { name: KAFKA_AUTO_CREATE_TOPICS_ENABLE, value: "false" }
+            - { name: KAFKA_LOG_RETENTION_HOURS, value: "1" }
+            - { name: KAFKA_LOG_DIRS, value: /var/lib/kafka/data }
+            - { name: KAFKA_HEAP_OPTS, value: "-Xms256m -Xmx256m" }
+            - { name: CLUSTER_ID, value: MkU3OEVBNTcwNTJENDM2Qk }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/kafka/data }
+          startupProbe:
+            tcpSocket: { port: kafka }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket: { port: kafka }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 384Mi }
+            limits: { cpu: "1", memory: 768Mi }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bikehub-mail-topic-{{ ansible_facts.date_time.epoch }}
+  namespace: {{ bikehub_namespace }}
+spec:
+  backoffLimit: 10
+  ttlSecondsAfterFinished: {{ bikehub_migration_retention }}
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: topic
+          image: {{ bikehub_kafka_image }}
+          command: ["/opt/kafka/bin/kafka-topics.sh"]
+          args: ["--bootstrap-server", "bikehub-kafka:9092", "--create", "--if-not-exists", "--topic", {{ bikehub_mail_topic | to_json }}, "--partitions", "3", "--replication-factor", "1", "--config", "retention.ms=3600000"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bikehub-kafka-internal
+  namespace: {{ bikehub_namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: bikehub-kafka
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - { protocol: TCP, port: 9092 }
+        - { protocol: TCP, port: 9093 }

@@ -1,0 +1,84 @@
+---
+- name: Check required Docker context inputs
+  ansible.builtin.stat:
+    path: "{{ bikehub_source_dir }}/{{ item }}"
+    checksum_algorithm: sha256
+  loop: [src, Web, .dockerignore, .editorconfig, Directory.Build.props]
+  delegate_to: localhost
+  become: false
+  register: bikehub_source_inputs
+
+- name: Require the application, frontend and build configuration
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - not item.stat.islnk
+    fail_msg: "Missing or symlinked Docker context input: {{ item.item }}"
+  loop: "{{ bikehub_source_inputs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Inventory source files and their content hashes
+  ansible.builtin.find:
+    paths: ["{{ bikehub_source_dir }}/src", "{{ bikehub_source_dir }}/Web"]
+    recurse: true
+    hidden: true
+    follow: false
+    file_type: any
+    get_checksum: false
+  delegate_to: localhost
+  become: false
+  register: bikehub_source_inventory
+
+- name: Select source files without generated content or secrets
+  ansible.builtin.set_fact:
+    bikehub_source_entries: >-
+      {{ (bikehub_source_inventory.files +
+          (bikehub_source_inputs.results | map(attribute='stat') | list))
+         | rejectattr('path', 'search', '/(bin|obj|node_modules|dist|wwwroot|__pycache__|[.]git|[.]idea|[.]vs)(/|$)|/[.]env[^/]*($|/)|[.](user|pyc|tsbuildinfo|pfx|p12)$|/[.]DS_Store$')
+         | sort(attribute='path') | list }}
+
+- name: Reject symlinks in the selected build context
+  ansible.builtin.assert:
+    that:
+      - bikehub_source_entries | selectattr('islnk') | list | length == 0
+    fail_msg: Source symlinks are not supported in the Docker context.
+
+- name: Hash only selected regular files
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+    checksum_algorithm: sha256
+  loop: "{{ bikehub_source_entries | selectattr('isreg') | list }}"
+  loop_control:
+    label: "{{ item.path | relpath(bikehub_source_dir) }}"
+  delegate_to: localhost
+  become: false
+  register: bikehub_source_checksums
+
+- name: Select regular files with their content digests
+  ansible.builtin.set_fact:
+    bikehub_source_files: "{{ bikehub_source_checksums.results | map(attribute='stat') | list }}"
+
+- name: Hash relative paths and checksums rather than archive timestamps
+  ansible.builtin.set_fact:
+    bikehub_source_digest: >-
+      {{ ((bikehub_source_files | map(attribute='path') | map('regex_replace', '^' ~ (bikehub_source_dir | regex_escape) ~ '/', '') | list)
+          | zip(bikehub_source_files | map(attribute='checksum') | list) | list | to_json) | hash('sha256') }}
+
+- name: Create the temporary source archive
+  ansible.builtin.tempfile:
+    state: file
+    suffix: .tar.gz
+  delegate_to: localhost
+  become: false
+  register: bikehub_source_archive
+
+- name: Archive only selected Docker context files
+  community.general.archive:
+    path: "{{ bikehub_source_files | map(attribute='path') | list }}"
+    dest: "{{ bikehub_source_archive.path }}"
+    format: gz
+    force_archive: true
+    mode: "0600"
+  delegate_to: localhost
+  become: false

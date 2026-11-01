@@ -1,0 +1,137 @@
+---
+- name: Verify secret preservation with fake Kubernetes and transport commands
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - ../ansible/inventory/group_vars/bikehub/main.yml
+  vars:
+    bikehub_mail_check_only: false
+    bikehub_mail_image: mail:test
+    bikehub_mail_configuration:
+      Mail:Provider: Smtp
+      Smtp:Username: sender@example.test
+      Smtp:Password: fake-private-test-password
+      Smtp:FromAddress: sender@example.test
+  tasks:
+    - name: Allocate isolated command stubs
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: bikehub-secret-test-
+      register: fixture
+
+    - name: Exercise the actual secret configuration tasks
+      environment:
+        PATH: "{{ fixture.path }}:{{ lookup('ansible.builtin.env', 'PATH') }}"
+        BIKEHUB_TEST_ROOT: "{{ fixture.path }}"
+      block:
+        - name: Install fake Kubernetes command
+          ansible.builtin.copy:
+            dest: "{{ fixture.path }}/k3s"
+            mode: "0700"
+            content: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              printf '%s\n' "$*" >> "$BIKEHUB_TEST_ROOT/arguments"
+              case "$*" in
+                *'get deployment/bikehub-mail'*) printf 'mail:test' ;;
+                *'get secret bikehub-auth'*) cat "$BIKEHUB_TEST_ROOT/metadata" ;;
+                *'patch secret'*|*'create -f -'*) cat > "$BIKEHUB_TEST_ROOT/payload" ;;
+                *) exit 2 ;;
+              esac
+
+        - name: Install a fake probe that never connects or sends mail
+          ansible.builtin.copy:
+            dest: "{{ fixture.path }}/docker"
+            mode: "0700"
+            content: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              printf '%s\n' "$*" >> "$BIKEHUB_TEST_ROOT/arguments"
+              cat > /dev/null
+              if [[ -f "$BIKEHUB_TEST_ROOT/reject" ]]; then
+                printf '{"Ok":false,"Reason":"auth_rejected"}'
+                exit 1
+              fi
+              printf '{"Ok":true,"Reason":"accepted"}'
+
+        - name: Model an existing Secret with a stable OTP key
+          ansible.builtin.copy:
+            dest: "{{ fixture.path }}/metadata"
+            content: '{"revision":"12","otp":true}'
+
+        - name: Update transport credentials through real tasks
+          ansible.builtin.include_tasks: ../ansible/tasks/configure-mail.yml
+
+        - name: Read the test patch
+          ansible.builtin.slurp:
+            src: "{{ fixture.path }}/payload"
+          register: payload
+
+        - name: Assert existing OTP and unrelated keys were not included in the patch
+          ansible.builtin.assert:
+            that:
+              - (payload.content | b64decode | from_json).metadata.resourceVersion == '12'
+              - "'otp-secret' not in (payload.content | b64decode | from_json).stringData"
+              - (payload.content | b64decode | from_json).stringData['smtp-password'] == 'fake-private-test-password'
+
+        - name: Simulate a missing OTP key
+          ansible.builtin.copy:
+            dest: "{{ fixture.path }}/metadata"
+            content: '{"revision":"13","otp":false}'
+
+        - name: Initialize only the missing OTP key
+          ansible.builtin.include_tasks: ../ansible/tasks/configure-mail.yml
+
+        - name: Read the initialization patch
+          ansible.builtin.slurp:
+            src: "{{ fixture.path }}/payload"
+          register: payload
+
+        - name: Require a generated key and optimistic concurrency check
+          ansible.builtin.assert:
+            that:
+              - (payload.content | b64decode | from_json).stringData['otp-secret'] | length == 64
+              - (payload.content | b64decode | from_json).metadata.resourceVersion == '13'
+
+        - name: Clear the fake patch and reject the next probe
+          ansible.builtin.file:
+            path: "{{ fixture.path }}/payload"
+            state: absent
+
+        - name: Enable rejection
+          ansible.builtin.copy:
+            dest: "{{ fixture.path }}/reject"
+            content: reject
+
+        - name: Require failed validation to stop before writing
+          block:
+            - name: Try rejected credentials
+              ansible.builtin.include_tasks: ../ansible/tasks/configure-mail.yml
+          rescue:
+            - name: Record the expected rejection
+              ansible.builtin.set_fact:
+                rejected: true
+
+        - name: Inspect whether any patch was submitted
+          ansible.builtin.stat:
+            path: "{{ fixture.path }}/payload"
+          register: after_rejection
+
+        - name: Inspect only fake process arguments
+          ansible.builtin.slurp:
+            src: "{{ fixture.path }}/arguments"
+          register: arguments
+
+        - name: Assert no writes after rejection and no credentials in process arguments
+          ansible.builtin.assert:
+            that:
+              - rejected | default(false)
+              - not after_rejection.stat.exists
+              - "'fake-private-test-password' not in (arguments.content | b64decode)"
+              - "'sender@example.test' not in (arguments.content | b64decode)"
+      always:
+        - name: Remove only the isolated fake state
+          ansible.builtin.file:
+            path: "{{ fixture.path }}"
+            state: absent

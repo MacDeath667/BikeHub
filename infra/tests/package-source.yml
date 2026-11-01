@@ -1,0 +1,74 @@
+---
+- name: Verify the source archive without connecting to a VM
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Allocate an isolated fixture
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: bikehub-package-test-
+      register: fixture
+
+    - name: Exercise archive contents and content hashing
+      block:
+        - name: Select fixture as the source tree
+          ansible.builtin.set_fact:
+            bikehub_source_dir: "{{ fixture.path }}"
+
+        - name: Create source and excluded fixture directories
+          ansible.builtin.file:
+            path: "{{ fixture.path }}/{{ item }}"
+            state: directory
+          loop: [src/BikeHub.Api, src/BikeHub.Api/obj, Web/src, Web/node_modules, Web/dist, infra]
+
+        - name: Write source and excluded fixture files
+          ansible.builtin.copy:
+            dest: "{{ fixture.path }}/{{ item }}"
+            content: fixture
+          loop: [.dockerignore, .editorconfig, Directory.Build.props, src/BikeHub.Api/Program.cs, src/BikeHub.Api/obj/cache, Web/package.json, Web/src/main.tsx, Web/.env.local, Web/node_modules/private, Web/dist/index.html, infra/vault.yml]
+
+        - name: Package fixture with the actual deployment tasks
+          ansible.builtin.include_tasks: ../ansible/tasks/package-source.yml
+
+        - name: Remember the first content digest
+          ansible.builtin.set_fact:
+            first_digest: "{{ bikehub_source_digest }}"
+            first_archive: "{{ bikehub_source_archive.path }}"
+
+        - name: List archive members
+          ansible.builtin.command:
+            argv: [tar, -tzf, "{{ bikehub_source_archive.path }}"]
+          register: members
+          changed_when: false
+
+        - name: Check source paths and exclusions
+          ansible.builtin.assert:
+            that:
+              - "'Web/package.json' in members.stdout_lines"
+              - "'src/BikeHub.Api/Program.cs' in members.stdout_lines"
+              - "'.editorconfig' in members.stdout_lines"
+              - members.stdout is not search('node_modules|/obj/|/dist/|[.]env|infra/')
+
+        - name: Change only file timestamps
+          ansible.builtin.file:
+            path: "{{ fixture.path }}/Web/package.json"
+            state: touch
+
+        - name: Package the timestamp-only change
+          ansible.builtin.include_tasks: ../ansible/tasks/package-source.yml
+
+        - name: Require a stable content digest
+          ansible.builtin.assert:
+            that: bikehub_source_digest == first_digest
+      always:
+        - name: Remove test archives
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop: "{{ [first_archive | default(''), bikehub_source_archive.path | default('')] | reject('equalto', '') | list }}"
+
+        - name: Remove only the isolated fixture
+          ansible.builtin.file:
+            path: "{{ fixture.path }}"
+            state: absent

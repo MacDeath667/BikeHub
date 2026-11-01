@@ -33,10 +33,10 @@ dotnet ef migrations add ChangeName --project src/BikeHub.Dal
 dotnet run --project src/BikeHub.Api --no-launch-profile -- --migrate-only
 ```
 
-Тесты с одноразовым локальным PostgreSQL:
+Тесты с одноразовым локальным PostgreSQL (Testcontainers сам запускает контейнер, нужен Docker):
 
 ```bash
-python3 scripts/test-auth-postgres.py
+dotnet test BikeHub.sln --disable-build-servers
 ```
 
 Проверяются новая и существующая схемы, повторное выполнение raw SQL, сохранение данных и старого журнала, совпадение snapshot с моделью, EF-обработчики велосипедов, одноразовость кодов и конкурентные лимиты. Оригинальные SQL-скрипты DbUp сохранены только как тестовые fixtures.

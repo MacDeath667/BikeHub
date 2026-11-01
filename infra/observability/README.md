@@ -36,24 +36,16 @@ Observability__Enabled=false \
 
 ## Развёртывание
 
-Обновить Grafana, пересобрать API и фронт, дождаться выкладки и сразу смотреть логи:
+Сборка API, фронта и почтового сервиса выполняется обычным [Ansible deploy](../README.md#обновление-приложения-в-существующей-vm). Укажите `-e bikehub_auth_enabled=true`, чтобы сохранить включённый вход. Для применения конфигурации с текущими образами добавьте `-e bikehub_rebuild_image=false`.
+
+Логи API:
 
 ```sh
-./scripts/redeploy.sh
+ssh -i ~/.ssh/truenas_admin ansible@192.168.0.49 \
+  'sudo -n k3s kubectl logs -n bikehub deployment/bikehub-api --container=api --tail=200 --follow'
 ```
 
-Скрипт работает из любого каталога, если указать путь к нему. По умолчанию подключается к `192.168.0.49` ключом `~/.ssh/truenas_admin`; их можно переопределить через `BIKEHUB_VM_IP` и `BIKEHUB_SSH_KEY` (ключ VM). Настройки доступа к NAS для provisioning Grafana остаются в `group_vars/bikehub/main.yml`.
-
-Только открыть логи или повторно применить настройки с текущим образом:
-
-```sh
-./scripts/redeploy.sh --logs-only
-./scripts/redeploy.sh --no-build
-```
-
-Скрипт сохраняет текущий режим авторизации. Для первой выкладки входа по почте сначала [настройте SMTP Secret](../../docs/authentication.md#добавление-секретов-на-существующую-vm), затем запустите `bash scripts/redeploy.sh --enable-auth` со сборкой.
-
-В конце скрипт показывает последние 200 строк stdout/stderr контейнера API и продолжает выводить новые. `Ctrl+C` завершает просмотр логов. Те же логи доступны на дашборде в панели «Логи API»; для VM выберите окружение `Production`.
+`Ctrl+C` завершает просмотр логов. Те же данные доступны на дашборде в панели «Логи API»; для VM выберите окружение `Production`.
 
 Для отдельного обновления наблюдаемости без выкладки приложения запустите из корня репозитория:
 
@@ -66,7 +58,7 @@ ansible-playbook -i "$BIKEHUB_VM_IP," -u ansible \
   -e bikehub_target_group=all
 ```
 
-Playbook разворачивает сервисы в отдельном namespace `bikehub-observability`, затем обновляет provisioning существующей Grafana через SSH и API TrueNAS. Используется `truenas_admin@truenas.local`; права должны разрешать управление приложением Grafana и запись трёх публичных файлов конфигурации. Пароль Grafana и постоянный API-токен не требуются. Для файловой загрузки используется одноразовый токен TrueNAS со сроком 30 секунд; он остаётся внутри NAS и не сохраняется.
+Playbook разворачивает сервисы в отдельном namespace `bikehub-observability`, затем обновляет provisioning существующей Grafana через SSH и API TrueNAS. Используется `truenas_admin@truenas.local`; права должны разрешать управление приложением Grafana и запись трёх публичных файлов конфигурации. Шаблоны datasource/provider формируются в Ansible. Единственный оставшийся Python-файл `truenas-provision.py` — адаптер файловой загрузки и app API TrueNAS 25.10; он запускается Ansible непосредственно на NAS с публичной конфигурацией через stdin. Пароль Grafana и постоянный API-токен не требуются. Для файловой загрузки используется одноразовый токен TrueNAS со сроком 30 секунд; он остаётся внутри NAS и не сохраняется.
 
 Файлы Grafana находятся в её существующем постоянном томе:
 
@@ -77,7 +69,7 @@ Playbook разворачивает сервисы в отдельном namespa
   dashboards-json/bikehub-api.json
 ```
 
-`GF_PATHS_PROVISIONING` указывает на этот каталог. Если Grafana уже настроена на другой каталог provisioning, скрипт остановится: конфигурации нужно объединить явно. Скрипт меняет только источники `bikehub-prometheus`, `bikehub-loki`, `bikehub-tempo`, папку BikeHub и дашборд `bikehub-api`. Повторный запуск с теми же файлами не перезапускает Grafana. Дашборд и источники редактируются в Git.
+`GF_PATHS_PROVISIONING` указывает на этот каталог. Если Grafana уже настроена на другой каталог provisioning, настройка остановится: конфигурации нужно объединить явно. Playbook меняет только источники `bikehub-prometheus`, `bikehub-loki`, `bikehub-tempo`, папку BikeHub и дашборд `bikehub-api`. Повторный запуск с теми же файлами не перезапускает Grafana. Дашборд и источники редактируются в Git.
 
 Для Grafana выбран существующий сертификат TrueNAS с ID `2`, покрывающий `truenas.local`. Прежний `truenas_default` с ID `1` выпущен для `localhost` и не подходит этому адресу. Параметр `bikehub_grafana_certificate_id` можно заменить на другой подходящий сертификат. API TrueNAS и Grafana проверяются по существующему публичному CA `~/.config/truenas/pki/bikehub-ca.crt`; закрытый ключ CA не нужен. Сертификат самого сайта BikeHub — отдельная пара `bikehub_tls`.
 
@@ -101,15 +93,15 @@ NodePort предназначены для домашней сети; аутен
 С запущенным локальным API:
 
 ```sh
-python3 scripts/smoke-api.py
-python3 scripts/smoke-observability.py
+dotnet run --project tools/BikeHub.Tools -- observability \
+  --api-url http://127.0.0.1:5179 --vm-address 192.168.0.49
 ```
 
 Проверка развёрнутого API:
 
 ```sh
-python3 scripts/smoke-observability.py \
-  --api-url https://bikehub.local --environment Production \
+dotnet run --project tools/BikeHub.Tools -- observability \
+  --api-url https://bikehub.local --vm-address 192.168.0.49 --environment Production \
   --ca-certificate infra/ansible/.local-pki/bikehub_tls.pub
 ```
 

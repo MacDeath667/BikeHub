@@ -7,35 +7,8 @@
     - name: Deploy the telemetry services
       ansible.builtin.import_tasks: ../tasks/observability.yml
 
-    - name: Provision the existing TrueNAS Grafana with BikeHub sources and dashboard
-      ansible.builtin.command:
-        argv:
-          - "{{ ansible_playbook_python }}"
-          - "{{ playbook_dir }}/../../observability/provision-grafana.py"
-          - --ssh-target
-          - "{{ bikehub_grafana_ssh_target }}"
-          - --ssh-identity
-          - "{{ bikehub_grafana_ssh_identity }}"
-          - --truenas-url
-          - "{{ bikehub_grafana_truenas_url }}"
-          - --ca-certificate
-          - "{{ bikehub_grafana_ca_certificate }}"
-          - --grafana-app
-          - "{{ bikehub_grafana_app_name }}"
-          - --certificate-id
-          - "{{ bikehub_grafana_certificate_id | string }}"
-          - --vm-address
-          - "{{ ansible_facts.default_ipv4.address }}"
-          - --prometheus-port
-          - "{{ bikehub_prometheus_node_port | string }}"
-          - --loki-port
-          - "{{ bikehub_loki_node_port | string }}"
-          - --tempo-port
-          - "{{ bikehub_tempo_node_port | string }}"
-      delegate_to: localhost
-      become: false
-      register: bikehub_grafana_provision
-      changed_when: (bikehub_grafana_provision.stdout | from_json).changed
+    - name: Provision Grafana through Ansible templates and the TrueNAS API
+      ansible.builtin.include_tasks: ../tasks/grafana.yml
       when: bikehub_grafana_provision_enabled | bool
 
     - name: Report the development OTLP endpoint

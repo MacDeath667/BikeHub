@@ -1,0 +1,22 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bikehub-mail-migrate-{{ ansible_facts.date_time.epoch }}
+  namespace: {{ bikehub_namespace }}
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: {{ bikehub_migration_retention }}
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migration
+          image: {{ bikehub_selected_mail_image }}
+          imagePullPolicy: Never
+          args: ["--migrate-only"]
+          env:
+            - name: ConnectionStrings__Mail
+              valueFrom:
+                secretKeyRef:
+                  name: {{ bikehub_mail_database_secret_name }}
+                  key: connection-string

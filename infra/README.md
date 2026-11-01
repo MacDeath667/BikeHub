@@ -2,6 +2,8 @@
 
 Terraform управляет существующей Debian VM на TrueNAS; Ansible собирает API и фронт, импортирует образ в K3s и настраивает nginx. Данные внешнего PostgreSQL и его сервис Ansible не пересоздаёт.
 
+Почта работает отдельным Deployment `bikehub-mail` с HTTP API и Kafka consumer. Штатная выкладка собирает второй образ, поднимает внутренний Kafka с PVC, применяет почтовую миграцию и ждёт готовности сервиса перед обновлением API. Существующие Gmail/SMTP и OTP Secrets сохраняются. Настройки, запуск и идемпотентность — в [инструкции почтового сервиса](../docs/mail-service.md).
+
 ## Текущий сервер
 
 - TrueNAS 25.10.6: `truenas.local`, `192.168.0.216`.
@@ -11,7 +13,7 @@ Terraform управляет существующей Debian VM на TrueNAS; An
 - Адрес VM на момент настройки: `192.168.0.49`. Имя сайта — `bikehub.local`; собственное имя VM `bikehub01.local` также сохраняется.
 - Часы VM в TrueNAS должны быть **UTC** (`time = "UTC"`). Debian использует UTC для аппаратных часов.
 
-Перед подключением можно проверить адрес через `python3 -c 'import socket; print(socket.gethostbyname("bikehub01.local"))'`. Для постоянного адреса закрепите текущий MAC в DHCP роутера.
+Перед подключением можно проверить адрес через `ping bikehub01.local`. Для постоянного адреса закрепите текущий MAC в DHCP роутера.
 
 ## Обновление приложения в существующей VM
 
@@ -20,7 +22,8 @@ Terraform управляет существующей Debian VM на TrueNAS; An
 ```sh
 export BIKEHUB_VM_IP=192.168.0.49
 ansible-playbook -i infra/ansible/inventory/hosts.yml \
-  infra/ansible/playbooks/server.yml --ask-vault-pass
+  infra/ansible/playbooks/server.yml --ask-vault-pass \
+  -e bikehub_auth_enabled=true
 ```
 
 `vault.yml` в inventory зашифрован и игнорируется Git. Если в нём передан `bikehub_database_connection_string`, playbook обновит Kubernetes Secret. Если строка подключения не передана, используется **существующий** `bikehub-database`; содержимое Secret на контроллер не копируется. На первом развёртывании Secret нужно предоставить.
@@ -32,10 +35,12 @@ ansible-playbook -i "$BIKEHUB_VM_IP," -u ansible \
   --private-key ~/.ssh/truenas_admin \
   infra/ansible/playbooks/server.yml \
   -e @infra/ansible/inventory/group_vars/bikehub/main.yml \
-  -e bikehub_target_group=all
+  -e bikehub_target_group=all -e bikehub_auth_enabled=true
 ```
 
-Сборка упаковывает только `.dockerignore`, `src` и `Web`, без `bin`, `obj`, `node_modules`, `dist`, `.env*`, Terraform state и Vault. Хеш исходников входит в тег образа; новая сборка меняет Deployment и запускает rollout. Временный архив удаляется. Источники собираются в `/opt/bikehub/build`, Kubernetes manifests — в `/opt/bikehub/k8s`.
+Ansible упаковывает `src`, `Web`, `.dockerignore`, `.editorconfig` и `Directory.Build.props` через `community.general.archive`, без `bin`, `obj`, `node_modules`, `dist`, `.env*`, Terraform state и Vault. Стабильный хеш относительных путей и содержимого входит в тег образа; timestamps на него не влияют. Временный архив удаляется. Источники собираются в `/opt/bikehub/build`, Kubernetes manifests — в `/opt/bikehub/k8s`.
+
+По умолчанию `bikehub_auth_enabled: null`: playbook читает только флаг из текущего Deployment и сохраняет его; на новой установке вход выключен. Неоднозначное значение прерывает выкладку. Явные `true`/`false` переопределяют режим. В примерах для текущего сервера вход явно включён; используется существующий `bikehub-auth` Secret и сохранённые ключи cookie.
 
 Повторное применение настроек без пересборки:
 
@@ -44,7 +49,8 @@ ansible-playbook -i "$BIKEHUB_VM_IP," -u ansible \
   --private-key ~/.ssh/truenas_admin \
   infra/ansible/playbooks/server.yml \
   -e @infra/ansible/inventory/group_vars/bikehub/main.yml \
-  -e bikehub_target_group=all -e bikehub_rebuild_image=false
+  -e bikehub_target_group=all -e bikehub_auth_enabled=true \
+  -e bikehub_rebuild_image=false
 ```
 
 Будет использован образ из действующего Deployment. Можно явно передать `-e bikehub_image=docker.io/library/bikehub-api:build-<hash>`, если он уже импортирован в K3s.
@@ -202,7 +208,9 @@ terraform -chdir=infra/terraform fmt -check
 terraform -chdir=infra/terraform validate
 ansible-playbook -i infra/ansible/inventory/hosts.yml \
   infra/ansible/playbooks/server.yml --syntax-check
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s infra/tests -v
+ansible-playbook -i localhost, infra/tests/package-source.yml
+ansible-playbook -i localhost, infra/tests/configure-mail.yml
+ansible-playbook -i localhost, infra/tests/auth-mode.yml
 bash -n infra/terraform/terraform-apply.sh
 ```
 

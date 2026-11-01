@@ -1,0 +1,10 @@
+---
+- name: Validate and configure mail credentials on the existing VM
+  hosts: "{{ bikehub_target_group | default('bikehub') }}"
+  become: true
+  gather_facts: false
+  vars:
+    ansible_ssh_pipelining: true
+  tasks:
+    - name: Configure the mail transport and preserve existing authentication keys
+      ansible.builtin.import_tasks: ../tasks/configure-mail.yml

@@ -8,12 +8,12 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace BikeHub.Api.Tests;
 
 [CollectionDefinition("Postgres persistence")]
-public sealed class PostgresPersistenceCollection { }
+public sealed class PostgresPersistenceCollection : ICollectionFixture<BikeHub.Testing.PostgresFixture> { }
 
 [Collection("Postgres persistence")]
 public sealed class EfPersistenceTests
 {
-    [PostgresFact]
+    [Fact]
     public async Task Fresh_schema_migrates_repeatedly_and_matches_the_model()
     {
         await using var database = await PersistenceTestDatabase.CreateAsync();
@@ -28,7 +28,7 @@ public sealed class EfPersistenceTests
         Assert.Empty(await context.Sessions.ToListAsync());
     }
 
-    [PostgresFact]
+    [Fact]
     public async Task Baseline_rollback_cannot_delete_adopted_tables()
     {
         await using var database = await PersistenceTestDatabase.CreateAsync();
@@ -42,7 +42,7 @@ public sealed class EfPersistenceTests
         Assert.Single(await context.Database.GetAppliedMigrationsAsync());
     }
 
-    [PostgresFact]
+    [Fact]
     public async Task Ef_adopts_populated_DbUp_schema_and_raw_sql_can_be_replayed_without_losing_data()
     {
         await using var database = await PersistenceTestDatabase.CreateAsync();
@@ -112,7 +112,7 @@ public sealed class EfPersistenceTests
         Assert.Equal(1, await context.Accounts.CountAsync());
     }
 
-    [PostgresFact]
+    [Fact]
     public async Task Partial_legacy_schema_is_completed_without_recreating_existing_tables()
     {
         await using var database = await PersistenceTestDatabase.CreateAsync();
@@ -129,7 +129,7 @@ public sealed class EfPersistenceTests
         Assert.Empty(await context.Accounts.ToListAsync());
     }
 
-    [PostgresFact]
+    [Fact]
     public async Task Bike_handlers_persist_and_read_using_ef()
     {
         await using var database = await PersistenceTestDatabase.CreateAsync();
@@ -147,7 +147,7 @@ public sealed class EfPersistenceTests
         Assert.Equal("Persisted", result.Description);
     }
 
-    [PostgresFact]
+    [Fact]
     public async Task Parallel_issuance_obeys_global_and_per_email_limits()
     {
         await using var database = await PersistenceTestDatabase.CreateAsync();
@@ -165,7 +165,7 @@ public sealed class EfPersistenceTests
         Assert.Equal(1, sameEmail.Count(x => x));
     }
 
-    [PostgresFact]
+    [Fact]
     public async Task Distinct_valid_legacy_challenges_for_one_email_create_one_account()
     {
         await using var database = await PersistenceTestDatabase.CreateAsync();

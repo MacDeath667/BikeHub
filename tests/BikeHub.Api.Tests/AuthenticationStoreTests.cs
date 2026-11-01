@@ -4,24 +4,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BikeHub.Api.Tests;
 
-public sealed class PostgresFactAttribute : FactAttribute
-{
-    public PostgresFactAttribute()
-    {
-        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("BIKEHUB_TEST_POSTGRES")))
-        {
-            Skip = "Run python3 scripts/test-auth-postgres.py to start an isolated PostgreSQL container.";
-        }
-    }
-}
-
 [Collection("Postgres persistence")]
 public sealed class AuthenticationStoreTests
 {
     [Fact]
     public Task Memory_store_obeys_the_authentication_contract() => VerifyContract(new InMemoryAuthenticationStore());
 
-    [PostgresFact]
+    [Fact]
     public async Task Postgres_migration_and_store_obey_the_authentication_contract()
     {
         await using var database = await PersistenceTestDatabase.CreateAsync();

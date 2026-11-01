@@ -13,18 +13,18 @@ var builder = WebApplication.CreateBuilder(
 var bootstrapEnabled = builder.Configuration.GetValue(Program.DatabaseBootstrapEnabledKey, true);
 var migrationsEnabled = builder.Configuration.GetValue(Program.DatabaseMigrationsEnabledKey, true);
 builder.AddBikeHubDatabase();
-builder.Services.AddControllers(options => options.Filters.Add<CsrfValidationFilter>());
-builder.Services.AddSingleton<MockCommunityStore>();
-builder.Services.AddScoped<IFeedService, MockFeedService>();
-builder.Services.AddScoped<IBikeService, MockBikeService>();
-builder.Services.AddScoped<IPostService, MockPostService>();
-builder.Services.AddScoped<IUserService, MockUserService>();
-builder.Services.AddScoped<ICommunityService, MockCommunityService>();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 
 if (!migrationsOnly)
 {
+    builder.Services.AddControllers(options => options.Filters.Add<CsrfValidationFilter>());
+    builder.Services.AddSingleton<MockCommunityStore>();
+    builder.Services.AddScoped<IFeedService, MockFeedService>();
+    builder.Services.AddScoped<IBikeService, MockBikeService>();
+    builder.Services.AddScoped<IPostService, MockPostService>();
+    builder.Services.AddScoped<IUserService, MockUserService>();
+    builder.Services.AddScoped<ICommunityService, MockCommunityService>();
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen();
     builder.AddBikeHubAuthentication();
     builder.AddBikeHubReverseProxy();
     builder.AddBikeHubObservability();
@@ -40,7 +40,7 @@ if (!migrationsOnly)
 app.UseMiddleware<StatisticsMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-if (app.Environment.IsDevelopment())
+if (!migrationsOnly && app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();

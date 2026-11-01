@@ -9,3 +9,5 @@ src/BikeHub.Api/wwwroot/
 .venv-gmail/
 **/client_secret*.json
 **/gmail-oauth*.json
+.local/
+__pycache__/

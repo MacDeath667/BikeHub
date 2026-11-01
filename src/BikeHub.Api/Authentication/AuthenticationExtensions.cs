@@ -9,15 +9,11 @@ namespace BikeHub.Api.Authentication;
 public static class AuthenticationExtensions
 {
     private const string ConfigurationSection = "Authentication";
-    private const string SmtpConfigurationSection = "Smtp";
-    private const string GmailApiConfigurationSection = "GmailApi";
-    private const string GoogleClientIdSuffix = ".apps.googleusercontent.com";
     private const string AuthenticationLimitsMessage = "Authentication limits are invalid.";
     private const string UnsupportedAuthenticationMessage = "Select a supported authentication store and email provider.";
     private const string ProductionConfigurationMessage = "Production authentication requires PostgreSQL, a real email transport, a 32-character or longer OTP secret and an absolute persistent Data Protection path.";
     private const string ConnectionStringMessage = "Configure ConnectionStrings:BikeHub for authentication storage.";
-    private const string SmtpConfigurationMessage = "Configure a valid SMTP host, port, TLS mode, username, app password and sender address.";
-    private const string GmailConfigurationMessage = "Configure a Google OAuth client, refresh token and sender address for Gmail API.";
+    private const string MailServiceConfigurationMessage = "Configure a valid MailService:BaseUrl and a 32-character or longer MailService:ApiKey.";
     private const string AuthCookieName = "BikeHub.Auth";
     private const string SecureAuthCookieName = "__Host-BikeHub.Auth";
     private const string CsrfHeaderName = "X-CSRF-TOKEN";
@@ -29,11 +25,8 @@ public static class AuthenticationExtensions
     public static WebApplicationBuilder AddBikeHubAuthentication(this WebApplicationBuilder builder)
     {
         var section = builder.Configuration.GetSection(ConfigurationSection);
-        var smtpSection = builder.Configuration.GetSection(SmtpConfigurationSection);
-        var gmailApiSection = builder.Configuration.GetSection(GmailApiConfigurationSection);
-        var smtpOptions = smtpSection.Get<SmtpOptions>() ?? new();
         var authOptions = section.Get<AuthOptions>() ?? new();
-        var gmailApiOptions = gmailApiSection.Get<GmailApiOptions>() ?? new();
+        var mailOptions = builder.Configuration.GetSection("MailService").Get<MailServiceOptions>() ?? new();
         var development = builder.Environment.IsDevelopment();
         if (authOptions.Enabled)
         {
@@ -45,7 +38,7 @@ public static class AuthenticationExtensions
             }
 
             if (authOptions.Store is not (Constants.AuthenticationStores.Memory or Constants.AuthenticationStores.Postgres) ||
-                authOptions.EmailProvider is not (Constants.EmailProviders.Development or Constants.EmailProviders.Smtp or Constants.EmailProviders.GmailApi))
+                authOptions.EmailProvider is not (Constants.EmailProviders.Development or Constants.EmailProviders.MailService))
             {
                 throw new InvalidOperationException(UnsupportedAuthenticationMessage);
             }
@@ -62,25 +55,14 @@ public static class AuthenticationExtensions
                 throw new InvalidOperationException(ConnectionStringMessage);
             }
 
-            if (authOptions.EmailProvider == Constants.EmailProviders.Smtp && (string.IsNullOrWhiteSpace(smtpOptions.Host) ||
-                smtpOptions.Port is < 1 or > 65535 || smtpOptions.Security is not (Constants.SmtpSecurity.StartTls or Constants.SmtpSecurity.SslOnConnect) ||
-                string.IsNullOrWhiteSpace(smtpOptions.Username) || string.IsNullOrWhiteSpace(smtpOptions.Password) ||
-                OtpSecurity.NormalizeEmail(smtpOptions.FromAddress) is null))
+            if (authOptions.EmailProvider == Constants.EmailProviders.MailService &&
+                (!Uri.TryCreate(mailOptions.BaseUrl, UriKind.Absolute, out var endpoint) ||
+                 endpoint.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(endpoint.UserInfo) || mailOptions.ApiKey.Length < 32))
             {
-                throw new InvalidOperationException(SmtpConfigurationMessage);
-            }
-
-            if (authOptions.EmailProvider == Constants.EmailProviders.GmailApi && (string.IsNullOrWhiteSpace(gmailApiOptions.ClientId) ||
-                !gmailApiOptions.ClientId.EndsWith(GoogleClientIdSuffix, StringComparison.Ordinal) ||
-                string.IsNullOrWhiteSpace(gmailApiOptions.ClientSecret) || string.IsNullOrWhiteSpace(gmailApiOptions.RefreshToken) ||
-                OtpSecurity.NormalizeEmail(gmailApiOptions.FromAddress) is null))
-            {
-                throw new InvalidOperationException(GmailConfigurationMessage);
+                throw new InvalidOperationException(MailServiceConfigurationMessage);
             }
         }
         builder.Services.Configure<AuthOptions>(section);
-        builder.Services.Configure<SmtpOptions>(smtpSection);
-        builder.Services.Configure<GmailApiOptions>(gmailApiSection);
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<OtpSecurity>();
         builder.Services.AddSingleton<DevelopmentMessages>();
@@ -88,13 +70,15 @@ public static class AuthenticationExtensions
             authOptions.Enabled && authOptions.Store == Constants.AuthenticationStores.Postgres
                 ? new PostgresAuthenticationStore(services.GetRequiredService<IDbContextFactory<BikeHubDbContext>>())
                 : new InMemoryAuthenticationStore());
-        builder.Services.AddSingleton<Google.Apis.Http.IHttpClientFactory, Google.Apis.Http.HttpClientFactory>();
-        builder.Services.AddSingleton<IVerificationEmailSender>(services => authOptions.EmailProvider switch
+        if (authOptions.EmailProvider == Constants.EmailProviders.Development)
         {
-            Constants.EmailProviders.Development => ActivatorUtilities.CreateInstance<DevelopmentEmailSender>(services),
-            Constants.EmailProviders.GmailApi => ActivatorUtilities.CreateInstance<GmailApiVerificationEmailSender>(services),
-            _ => ActivatorUtilities.CreateInstance<SmtpVerificationEmailSender>(services)
-        });
+            builder.Services.AddSingleton<IVerificationEmailSender, DevelopmentEmailSender>();
+        }
+        else
+        {
+            builder.Services.AddHttpClient<IVerificationEmailSender, MailServiceEmailSender>(client =>
+                MailServiceEmailSender.Configure(client, mailOptions));
+        }
         builder.Services.AddSingleton<ISmsSender, TestSmsSender>();
         builder.Services.AddScoped<EmailAuthenticationService>();
         builder.Services.AddScoped<SessionCookieEvents>();
