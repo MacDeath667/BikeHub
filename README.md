@@ -41,7 +41,7 @@ ansible-playbook -i '192.168.0.49,' -u ansible \
   -e bikehub_target_group=all -e bikehub_auth_enabled=true
 ```
 
-Playbook собирает фронт и API в существующей VM, обновляет сбор телеметрии, применяет миграции перед обновлением API и проверяет готовность сайта. `bikehub_auth_enabled=true` оставляет вход включённым; почтовые настройки берутся из существующего Secret. Сайт: [https://bikehub.local/](https://bikehub.local/). Подробности — в [инструкции TrueNAS](infra/README.md).
+Playbook собирает отдельные образы фронта, API и почты в существующей VM, обновляет сбор телеметрии, применяет миграции перед обновлением API и проверяет готовность сайта. `bikehub_auth_enabled=true` оставляет вход включённым; почтовые настройки берутся из существующего Secret. Сайт: [https://bikehub.local/](https://bikehub.local/). Подробности — в [инструкции TrueNAS](infra/README.md).
 
 Рядом автоматически разворачивается staging: [сайт](https://bikehub-staging.local/) и [Mailpit с кодами входа](https://bikehub-staging.local/mailpit/). Он использует схему `staging` в существующей PostgreSQL, собственные Kafka и ключи сессий. Для выкладки только основного инстанса добавьте `-e bikehub_staging_enabled=false`. Обновление только staging — через `infra/ansible/playbooks/staging.yml`; [команда и детали](infra/README.md#staging-рядом-с-основным-инстансом).
 
@@ -155,4 +155,33 @@ docker compose down
 docker compose up -d --wait postgres kafka-topic mailpit
 ```
 
-Запуск почты вне Docker описан в [инструкции сервиса](docs/mail-service.md). Для локальной раздачи production-сборки можно скопировать содержимое `Web/dist` в `src/BikeHub.Api/wwwroot`; генерируемые файлы не коммитятся.
+Запуск почты вне Docker описан в [инструкции сервиса](docs/mail-service.md). Production-сборку фронта раздаёт отдельный контейнер `web`.
+
+## Отдельные контейнеры фронта и API
+
+`web` собирается из `Web/Dockerfile` и раздаёт статику через nginx. В API нет фронта; локальный `nginx` направляет `/api/` и `/swagger` в API, остальные запросы — в `web`.
+
+Локальный запуск с сохранением существующих volumes:
+
+```sh
+docker compose up --build --wait
+```
+
+Сайт: http://localhost:8080. Почта: http://localhost:8025.
+
+Для NAS запускайте из корня репозитория (требуются Ansible, коллекции из `infra/ansible/requirements.yml` и существующие Secrets):
+
+```sh
+# Только staging
+ansible-playbook -i '192.168.0.49,' -u ansible \
+  --private-key ~/.ssh/truenas_admin \
+  infra/ansible/playbooks/staging.yml -e bikehub_target_group=all
+
+# Только production
+ansible-playbook -i '192.168.0.49,' -u ansible \
+  --private-key ~/.ssh/truenas_admin \
+  infra/ansible/playbooks/production.yml -e bikehub_target_group=all \
+  -e bikehub_auth_enabled=true
+```
+
+Адреса: https://bikehub-staging.local/ и https://bikehub.local/. Первая выкладка после разделения требует сборки нового образа Web; `bikehub_rebuild_image=false` подходит после неё. `server.yml` по-прежнему разворачивает оба инстанса. Фронт получает отдельные Deployment/Service (`bikehub-web` и `bikehub-staging-web`); host nginx проксирует статику на NodePort 30083/30084, API — на прежние 30080/30081. Количество реплик фронта задаётся отдельно через `bikehub_web_replica_count`.

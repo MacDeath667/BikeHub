@@ -8,6 +8,8 @@
       - bikehub_staging_hostname is match('^[A-Za-z0-9][A-Za-z0-9-]*[.]local$')
       - bikehub_staging_hostname != bikehub_hostname
       - bikehub_staging_schema == 'staging'
+      - bikehub_staging_web_node_port | int >= 30000 and bikehub_staging_web_node_port | int <= 32767
+      - bikehub_staging_web_node_port | int not in [bikehub_staging_node_port | int, bikehub_staging_mailpit_node_port | int, bikehub_node_port | int, bikehub_web_node_port | int]
       - bikehub_staging_root is match('^/opt/[A-Za-z0-9_-]+$')
       - bikehub_staging_root != bikehub_remote_root
       - bikehub_staging_node_port | int >= 30000 and bikehub_staging_node_port | int <= 32767
@@ -99,7 +101,7 @@
 - name: Wait for staging services
   ansible.builtin.command:
     argv: [k3s, kubectl, rollout, status, "deployment/{{ bikehub_staging_prefix }}-{{ item }}", -n, "{{ bikehub_namespace }}", --timeout=300s]
-  loop: [mailpit, mail, api]
+  loop: [mailpit, mail, api, web]
   changed_when: false
 
 - name: Publish the separate staging hostname

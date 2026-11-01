@@ -15,6 +15,7 @@
         bikehub_mail_secret_name=bikehub_staging_prefix,
         bikehub_auth_key_claim=bikehub_staging_prefix ~ '-auth-keys',
         bikehub_node_port=bikehub_staging_node_port,
+        bikehub_web_node_port=bikehub_staging_web_node_port,
         bikehub_mailpit_enabled=true,
         bikehub_effective_email_provider='Smtp',
         bikehub_mail_kafka_enabled=true,
@@ -31,4 +32,7 @@
 
 ---
 {% include 'auth-keys.yml.j2' %}
+
+---
+{% include 'web.yml.j2' %}
 {% endwith %}

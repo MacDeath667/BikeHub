@@ -68,3 +68,9 @@ bikehub_grafana_certificate_id: 2
 bikehub_grafana_provision_enabled: true
 bikehub_grafana_truenas_url: https://truenas.local
 bikehub_grafana_ca_certificate: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/truenas/pki/bikehub-ca.crt"
+
+bikehub_web_image: ""
+bikehub_web_image_repository: docker.io/library/bikehub-web
+bikehub_web_node_port: 30083
+bikehub_staging_web_node_port: 30084
+bikehub_web_replica_count: 1

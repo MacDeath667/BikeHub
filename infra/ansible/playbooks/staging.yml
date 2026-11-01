@@ -6,6 +6,7 @@
   vars_files:
     - ../inventory/group_vars/bikehub/main.yml
   vars:
+    bikehub_web_image_deployment: "{{ bikehub_staging_prefix }}-web"
     bikehub_image_deployment: "{{ bikehub_staging_prefix }}-api"
     bikehub_mail_image_deployment: "{{ bikehub_staging_prefix }}-mail"
   tasks:

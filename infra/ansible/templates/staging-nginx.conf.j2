@@ -31,6 +31,16 @@ server {
     }
 
     location / {
+        proxy_pass http://{{ ansible_facts.default_ipv4.address }}:{{ bikehub_staging_web_node_port }};
+        proxy_set_header Host $host;
+    }
+
+    location /swagger {
+        proxy_pass http://bikehub_staging_api;
+        proxy_set_header Host $host;
+    }
+
+    location /api {
         proxy_pass http://bikehub_staging_api;
         proxy_http_version 1.1;
         proxy_set_header Connection "";

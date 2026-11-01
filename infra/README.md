@@ -1,8 +1,8 @@
 # BikeHub на TrueNAS
 
-Terraform управляет существующей Debian VM на TrueNAS; Ansible собирает API и фронт, импортирует образ в K3s и настраивает nginx. Данные внешнего PostgreSQL и его сервис Ansible не пересоздаёт.
+Terraform управляет существующей Debian VM на TrueNAS; Ansible собирает отдельные образы API, фронта и почты, импортирует их в K3s и настраивает nginx. Данные внешнего PostgreSQL и его сервис Ansible не пересоздаёт.
 
-Почта работает отдельным Deployment `bikehub-mail` с HTTP API и Kafka consumer. Штатная выкладка собирает второй образ, поднимает внутренний Kafka с PVC, применяет почтовую миграцию и ждёт готовности сервиса перед обновлением API. Существующие Gmail/SMTP и OTP Secrets сохраняются. Настройки, запуск и идемпотентность — в [инструкции почтового сервиса](../docs/mail-service.md).
+Почта работает отдельным Deployment `bikehub-mail` с HTTP API и Kafka consumer. Штатная выкладка собирает три образа, поднимает внутренний Kafka с PVC, применяет почтовую миграцию и ждёт готовности сервиса перед обновлением API. Существующие Gmail/SMTP и OTP Secrets сохраняются. Настройки, запуск и идемпотентность — в [инструкции почтового сервиса](../docs/mail-service.md).
 
 `server.yml` также разворачивает соседний staging: [описание и отдельный запуск](#staging-рядом-с-основным-инстансом). Для выкладки только основного инстанса передайте `-e bikehub_staging_enabled=false`; существующий staging эта настройка не удаляет.
 
@@ -21,7 +21,7 @@ Terraform управляет существующей Debian VM на TrueNAS; An
 
 Staging использует ту же VM, namespace `bikehub` и PostgreSQL из существующего Secret `bikehub-database`. Нового сервера и базы PostgreSQL не создаётся: «каталог» здесь — схема `staging` в той же базе, где основные таблицы лежат в `public`. API и почта staging хранят таблицы в `staging`; журналы миграций разные: `staging.__EFMigrationsHistory` и `staging.__MailMigrationsHistory`. Схема создаётся автоматически перед миграциями. Данные основного инстанса не копируются.
 
-Состав соответствует локальному Compose: API с фронтом, почтовый микросервис, отдельный Kafka с топиком `bikehub.staging.mail.send.v1` и Mailpit. Все письма остаются в Mailpit; Gmail/SMTP Secrets основного инстанса к staging не подключаются. Контейнеры запускаются в Development, а метрики, логи и трассировки получают `deployment.environment.name=Staging` для фильтрации в существующей Grafana.
+Состав соответствует локальному Compose: API, отдельный nginx с фронтом, почтовый микросервис, отдельный Kafka с топиком `bikehub.staging.mail.send.v1` и Mailpit. Все письма остаются в Mailpit; Gmail/SMTP Secrets основного инстанса к staging не подключаются. Контейнеры запускаются в Development, а метрики, логи и трассировки получают `deployment.environment.name=Staging` для фильтрации в существующей Grafana.
 
 Адреса после успешной выкладки:
 
@@ -249,3 +249,9 @@ bash -n infra/terraform/terraform-apply.sh
 ```
 
 Документация: [CoreDNS custom imports в K3s](https://docs.k3s.io/advanced#coredns-custom-configuration-imports), [ротация сертификатов K3s](https://docs.k3s.io/cli/certificate#rotating-clientserver-certificates), [ресурс TrueNAS VM](https://registry.terraform.io/providers/truenas/truenas/latest/docs/resources/vm).
+
+## Отдельный фронт и запуск инстансов
+
+Фронт — независимый nginx-контейнер из `Web/Dockerfile`, API раздаёт только API и Swagger. Host nginx направляет `/api` и `/swagger` в API, остальные запросы в Web. NodePort фронта: 30083 у production, 30084 у staging. Почтовый маршрут `/mailpit/` staging сохраняется.
+
+Только production запускается через `playbooks/production.yml`, только staging — через `playbooks/staging.yml`, оба — через `playbooks/server.yml`. [Готовые команды](../README.md#отдельные-контейнеры-фронта-и-api). После первого обновления с пересборкой можно применять конфиги с `-e bikehub_rebuild_image=false`: читаются три соответствующих Deployment. Frontend-реплики задаются `bikehub_web_replica_count`, независимо от API. Учтите, что контент API пока находится в памяти каждой реплики.

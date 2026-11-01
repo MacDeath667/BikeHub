@@ -10,6 +10,9 @@
         bikehub_selected_image: >-
           {{ bikehub_image if bikehub_image | length > 0 else
              bikehub_image_repository ~ ':build-' ~ bikehub_source_digest[:16] }}
+        bikehub_selected_web_image: >-
+          {{ bikehub_web_image if bikehub_web_image | length > 0 else
+             bikehub_web_image_repository ~ ':build-' ~ bikehub_source_digest[:16] }}
         bikehub_selected_mail_image: >-
           {{ bikehub_mail_image if bikehub_mail_image | length > 0 else
              bikehub_mail_image_repository ~ ':build-' ~ bikehub_source_digest[:16] }}
@@ -52,6 +55,20 @@
       ansible.builtin.shell: |
         set -o pipefail
         docker save {{ bikehub_selected_image | quote }} | k3s ctr images import -
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Build the independent frontend image
+      ansible.builtin.command:
+        argv: [docker, build, --tag, "{{ bikehub_selected_web_image }}", --file, Web/Dockerfile, .]
+        chdir: "{{ bikehub_remote_root }}/build"
+      changed_when: true
+
+    - name: Import the frontend image into K3s
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker save {{ bikehub_selected_web_image | quote }} | k3s ctr images import -
       args:
         executable: /bin/bash
       changed_when: true
@@ -131,5 +148,25 @@
 - name: Verify the selected image is available to the Kubernetes runtime
   ansible.builtin.command:
     argv: [k3s, crictl, inspecti, "{{ bikehub_selected_image }}"]
+  changed_when: false
+  no_log: true
+
+- name: Reuse the deployed frontend image when skipping builds
+  when: not (bikehub_rebuild_image | bool)
+  block:
+    - name: Read the frontend image
+      ansible.builtin.command:
+        argv: [k3s, kubectl, get, "deployment/{{ bikehub_web_image_deployment | default('bikehub-web') }}", -n, "{{ bikehub_namespace }}", -o, 'jsonpath={.spec.template.spec.containers[0].image}']
+      when: bikehub_web_image | length == 0
+      register: bikehub_current_web_image
+      changed_when: false
+
+    - name: Select the frontend image
+      ansible.builtin.set_fact:
+        bikehub_selected_web_image: "{{ bikehub_web_image if bikehub_web_image | length > 0 else bikehub_current_web_image.stdout }}"
+
+- name: Verify the frontend image is available to Kubernetes
+  ansible.builtin.command:
+    argv: [k3s, crictl, inspecti, "{{ bikehub_selected_web_image }}"]
   changed_when: false
   no_log: true

@@ -3,6 +3,8 @@
   hosts: "{{ bikehub_target_group | default('bikehub') }}"
   become: true
   gather_facts: false
+  vars_files:
+    - ../inventory/group_vars/bikehub/main.yml
 
   pre_tasks:
     - name: Validate target and deployment settings before connecting
@@ -256,6 +258,26 @@
       ansible.builtin.import_tasks: ../tasks/mail.yml
       when: bikehub_mail_enabled | bool
 
+    - name: Render the independent frontend
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/web.yml.j2"
+        dest: "{{ bikehub_remote_root }}/k8s/web.yml"
+        mode: "0644"
+
+    - name: Deploy the independent frontend
+      ansible.builtin.command:
+        argv: [k3s, kubectl, apply, -f, "{{ bikehub_remote_root }}/k8s/web.yml"]
+      register: bikehub_web_apply
+      changed_when: "'configured' in bikehub_web_apply.stdout or 'created' in bikehub_web_apply.stdout"
+
+    - name: Wait for the frontend
+      ansible.builtin.command:
+        argv: [k3s, kubectl, rollout, status, deployment/bikehub-web, -n, "{{ bikehub_namespace }}", --timeout=300s]
+      changed_when: false
+
+    - name: Configure nginx and the website certificate
+      ansible.builtin.import_tasks: ../tasks/nginx.yml
+
     - name: Render the application with current Secret revisions
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../templates/app.yml.j2"
@@ -275,9 +297,6 @@
         argv: [k3s, kubectl, rollout, status, "deployment/{{ bikehub_deployment }}", -n, "{{ bikehub_namespace }}", --timeout=300s]
       changed_when: false
 
-    - name: Configure nginx and the website certificate
-      ansible.builtin.import_tasks: ../tasks/nginx.yml
-
     - name: Verify the website endpoint
       ansible.builtin.import_tasks: ../tasks/verify-web.yml
 
@@ -291,4 +310,4 @@
 
     - name: Deploy the companion staging instance
       ansible.builtin.include_tasks: ../tasks/staging.yml
-      when: bikehub_staging_enabled | bool
+      when: bikehub_staging_enabled | bool and (bikehub_deploy_staging | default(true) | bool)

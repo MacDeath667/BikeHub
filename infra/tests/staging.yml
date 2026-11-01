@@ -10,6 +10,7 @@
       default_ipv4: { address: 192.0.2.10 }
       cni0: { ipv4: { address: 10.42.0.1 } }
       date_time: { epoch: '1234567890' }
+    bikehub_selected_web_image: bikehub-web:test
     bikehub_selected_image: bikehub-api:test
     bikehub_selected_mail_image: bikehub-mail:test
     bikehub_auth_enabled: true
@@ -48,10 +49,12 @@
         that:
           - production | map(attribute='metadata.name') | intersect(staging | map(attribute='metadata.name')) | length == 0
           - staging | map(attribute='metadata.namespace') | unique | list == ['bikehub']
-          - staging | selectattr('kind', 'equalto', 'Deployment') | length == 3
-          - staging | selectattr('kind', 'equalto', 'Service') | length == 5
+          - staging | selectattr('kind', 'equalto', 'Deployment') | length == 4
+          - staging | selectattr('kind', 'equalto', 'Service') | length == 6
           - (staging | selectattr('kind', 'equalto', 'Service') | selectattr('metadata.name', 'equalto', 'bikehub-staging-api') | first).spec.ports[0].nodePort == 30081
           - (staging | selectattr('kind', 'equalto', 'Service') | selectattr('metadata.name', 'equalto', 'bikehub-staging-mail') | first).spec.type == 'ClusterIP'
+          - (staging | selectattr('metadata.name', 'equalto', 'bikehub-staging-web') | selectattr('kind', 'equalto', 'Deployment') | first).spec.template.spec.containers[0].image == 'bikehub-web:test'
+          - "'192.0.2.10:30084' in nginx"
           - api_env.Database__Schema == 'staging'
           - mail_env.Database__Schema == 'staging'
           - api_env.Authentication__Store == 'Postgres'
