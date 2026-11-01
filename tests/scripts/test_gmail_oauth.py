@@ -26,6 +26,12 @@ CREDENTIALS = {"gmail-client-id": CLIENT["installed"]["client_id"], "gmail-clien
 
 
 class GmailOAuthClientTests(unittest.TestCase):
+    def test_oauth_diagnostics_never_include_raw_error_or_callback(self):
+        for error, expected in ((Warning("private-refresh-token"), "scope_changed"),
+                                (ValueError("https://localhost/?code=private-code"), "invalid_response"),
+                                (RuntimeError("private-client-secret"), "oauth_error")):
+            self.assertEqual(expected, client.safe_oauth_failure(error))
+
     def write_client(self, root, config):
         path = Path(root) / "google-client.json"
         path.write_text(json.dumps(config))

@@ -47,6 +47,20 @@ def canonical_email(value):
     return local + "@" + domain
 
 
+def safe_oauth_failure(error):
+    """Return only a fixed diagnostic label, never OAuth response text or callback URLs."""
+    known = {
+        "Warning": "scope_changed", "MismatchingStateError": "state_mismatch",
+        "MissingCodeError": "callback_without_code", "MissingTokenError": "token_missing",
+        "AccessDeniedError": "access_denied", "InvalidGrantError": "invalid_grant",
+        "InvalidClientError": "invalid_client", "InvalidScopeError": "invalid_scope",
+        "SSLError": "tls_error", "ReadTimeout": "timeout", "ConnectTimeout": "timeout",
+        "ConnectionError": "connection_error", "TransportError": "connection_error",
+        "ValueError": "invalid_response", "InvalidValue": "invalid_response",
+    }
+    return known.get(type(error).__name__, "oauth_error")
+
+
 def validated_credentials(client, credentials, claims, expected_sender, nonce):
     if not isinstance(claims, dict) or claims.get("email_verified") is not True or not isinstance(claims.get("email"), str):
         raise SetupError("Google не подтвердил адрес отправителя.")
@@ -105,10 +119,11 @@ def authorize(client, sender):
         raise
     except WSGITimeoutError:
         raise SetupError("Время ожидания Google истекло (5 минут). Запустите привязку снова и откройте новую ссылку в браузере на этом Mac.") from None
-    except Exception:
+    except Exception as error:
         message = ("Google OAuth не завершил выдачу токена. Проверьте ошибку в браузере, Test users и выбранный аккаунт."
                    if stage == "consent" else "Токен Google получен, но не прошёл проверку подписи и адреса отправителя.")
-        raise SetupError(message + " Коды и токены не выводятся.") from None
+        raise SetupError(message + " Этап=" + stage + "; причина=" + safe_oauth_failure(error) +
+                         ". Коды и токены не выводятся.") from None
     finally:
         flow.oauth2session.close()
 
