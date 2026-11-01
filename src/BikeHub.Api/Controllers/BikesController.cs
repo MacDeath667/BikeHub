@@ -1,5 +1,6 @@
 using BikeHub.Application.Community;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace BikeHub.Api.Controllers;
 
@@ -24,6 +25,7 @@ public sealed class BikesController(IBikeService service) : ControllerBase
     public ActionResult<Page<BikeDto>> ForUser(Guid ownerId, [FromQuery] PaginationQuery paging) =>
         Ok(service.GetBikes(null, null, ownerId, paging.Page, paging.PageSize));
 
+    [Authorize]
     [HttpPost]
     public ActionResult<BikeDto> Create(CreateBikeRequest request)
     {

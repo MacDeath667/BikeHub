@@ -12,7 +12,7 @@ export function PostDetail({
   notify,
 }: {
   id: string;
-  me: User;
+  me: User | null;
   notify: (s: string) => void;
 }) {
   const [post, setPost] = useState<Post | null>(null);
@@ -127,7 +127,7 @@ export function PostDetail({
         <h2>
           Обсудим?<span className="count">{post.commentsCount}</span>
         </h2>
-        <form className="comment-form" onSubmit={submit}>
+        {me ? <form className="comment-form" onSubmit={submit}>
           <Avatar user={me} small />
           <label>
             <span className="sr-only">Ваш комментарий</span>
@@ -146,7 +146,8 @@ export function PostDetail({
           >
             <Send size={18} />
           </button>
-        </form>
+        </form> : <div className="auth-comment-prompt"><p>Войдите, чтобы присоединиться к обсуждению.</p>
+          <button className="button" onClick={() => window.dispatchEvent(new Event("bikehub:auth-required"))}>Войти по почте</button></div>}
         <div className="comment-list">
           {comments.map((c) => (
             <div className="comment" key={c.id}>

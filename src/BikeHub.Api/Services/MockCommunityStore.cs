@@ -6,17 +6,21 @@ namespace BikeHub.Api.Services;
 public sealed class MockCommunityStore
 {
     internal object Gate { get; } = new();
-    internal Guid CurrentUserId { get; } = Guid.Parse("10000000-0000-0000-0000-000000000001");
+    private static readonly Guid SeedUserId = Guid.Parse("10000000-0000-0000-0000-000000000001");
     internal List<UserDto> Users { get; } = [];
     internal List<BikeDto> Bikes { get; } = [];
     internal List<PostDto> Posts { get; } = [];
     internal Dictionary<Guid, List<CommentDto>> Comments { get; } = [];
     internal List<CommunityDto> Communities { get; } = [];
+    internal HashSet<(Guid UserId, Guid TargetId)> Likes { get; } = [];
+    internal HashSet<(Guid UserId, Guid TargetId)> Bookmarks { get; } = [];
+    internal HashSet<(Guid UserId, Guid TargetId)> Following { get; } = [];
+    internal HashSet<(Guid UserId, Guid TargetId)> Memberships { get; } = [];
 
     public MockCommunityStore()
     {
         Users.AddRange([
-            new(CurrentUserId, "Александр Волков", "alexrides", "Москва", "АВ", "sage",
+            new(SeedUserId, "Александр Волков", "alexrides", "Москва", "АВ", "sage",
                 "Коллекционирую километры и хорошие истории. Гравий, кофе и дорога за горизонт.", 128, false, 0, 0),
             new(Guid.Parse("10000000-0000-0000-0000-000000000002"), "Михаил Соколов", "misha.on.wheels", "Санкт-Петербург", "МС", "sand",
                 "Выбираю дорогу подлиннее. Езжу на шоссе, собираю велосипеды и рассказываю, что из этого выходит.", 846, true, 0, 0),
@@ -71,15 +75,45 @@ public sealed class MockCommunityStore
         ]);
     }
 
-    internal UserDto Hydrate(UserDto user) => Users.First(x => x.Id == user.Id) with
+    public UserDto EnsureUser(Guid id, string name)
     {
-        BikesCount = Bikes.Count(x => x.OwnerId == user.Id),
-        PostsCount = Posts.Count(x => x.Author.Id == user.Id)
+        lock (Gate)
+        {
+            var user = Users.FirstOrDefault(x => x.Id == id);
+            if (user is null)
+            {
+                var initials = string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Take(2).Select(part => part[..1].ToUpperInvariant()));
+                user = new(id, name, "rider-" + id.ToString("N")[^16..], "", initials, "sage", "", 0, false, 0, 0);
+                Users.Add(user);
+            }
+            return Hydrate(user, id);
+        }
+    }
+
+    internal UserDto Hydrate(UserDto user, Guid? viewer)
+    {
+        var canonical = Users.First(x => x.Id == user.Id);
+        return canonical with
+        {
+            IsFollowing = viewer.HasValue && Following.Contains((viewer.Value, user.Id)),
+            Followers = canonical.Followers + Following.Count(x => x.TargetId == user.Id),
+            BikesCount = Bikes.Count(x => x.OwnerId == user.Id),
+            PostsCount = Posts.Count(x => x.Author.Id == user.Id)
+        };
+    }
+    internal BikeDto Hydrate(BikeDto bike, Guid? viewer) => bike with { Owner = Hydrate(bike.Owner, viewer) };
+    internal CommunityDto Hydrate(CommunityDto community, Guid? viewer) => community with
+    {
+        IsJoined = viewer.HasValue && Memberships.Contains((viewer.Value, community.Id)),
+        Members = community.Members + Memberships.Count(x => x.TargetId == community.Id)
     };
-    internal BikeDto Hydrate(BikeDto bike) => bike with { Owner = Hydrate(bike.Owner) };
-    internal PostDto Hydrate(PostDto post) => post with
+    internal PostDto Hydrate(PostDto post, Guid? viewer) => post with
     {
-        Author = Hydrate(post.Author), Bike = Hydrate(post.Bike),
+        Author = Hydrate(post.Author, viewer), Bike = Hydrate(post.Bike, viewer),
+        IsLiked = viewer.HasValue && Likes.Contains((viewer.Value, post.Id)),
+        IsSaved = viewer.HasValue && Bookmarks.Contains((viewer.Value, post.Id)),
+        Likes = post.Likes + Likes.Count(x => x.TargetId == post.Id),
         CommentsCount = Comments.GetValueOrDefault(post.Id)?.Count ?? 0
     };
     internal static Page<T> Paginate<T>(IEnumerable<T> source, int page, int size)

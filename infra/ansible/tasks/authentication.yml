@@ -1,0 +1,25 @@
+---
+- name: Require the separately managed SMTP and OTP Secret
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "secret/{{ bikehub_auth_secret_name }}", -n, "{{ bikehub_namespace }}", -o, name]
+  changed_when: false
+
+- name: Read the authentication Secret revision without exposing its contents
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "secret/{{ bikehub_auth_secret_name }}", -n, "{{ bikehub_namespace }}", -o, "jsonpath={.metadata.resourceVersion}"]
+  register: bikehub_auth_secret_version
+  changed_when: false
+
+- name: Render persistent storage for cookie encryption keys
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/auth-keys.yml.j2"
+    dest: "{{ bikehub_remote_root }}/k8s/auth-keys.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Preserve cookie keys across application restarts
+  ansible.builtin.command:
+    argv: [k3s, kubectl, apply, -f, "{{ bikehub_remote_root }}/k8s/auth-keys.yml"]
+  register: auth_keys_apply
+  changed_when: "'configured' in auth_keys_apply.stdout or 'created' in auth_keys_apply.stdout"

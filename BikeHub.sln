@@ -14,6 +14,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BikeHub.Application", "src\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BikeHub.Dal", "src\BikeHub.Dal\BikeHub.Dal.csproj", "{339380B8-EFF6-4B95-B52D-8C2FB2506CF3}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BikeHub.Api.Tests", "tests\BikeHub.Api.Tests\BikeHub.Api.Tests.csproj", "{3440AFC6-D39E-4829-AEDA-DD4BB706A7B4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,5 +38,9 @@ Global
 		{339380B8-EFF6-4B95-B52D-8C2FB2506CF3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{339380B8-EFF6-4B95-B52D-8C2FB2506CF3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{339380B8-EFF6-4B95-B52D-8C2FB2506CF3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3440AFC6-D39E-4829-AEDA-DD4BB706A7B4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3440AFC6-D39E-4829-AEDA-DD4BB706A7B4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3440AFC6-D39E-4829-AEDA-DD4BB706A7B4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3440AFC6-D39E-4829-AEDA-DD4BB706A7B4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

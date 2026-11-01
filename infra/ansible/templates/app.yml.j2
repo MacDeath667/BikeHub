@@ -19,11 +19,23 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: bikehub-api
-{% if bikehub_database_enabled | bool %}
+{% if bikehub_database_enabled | bool or bikehub_auth_enabled | bool %}
       annotations:
+{% if bikehub_database_enabled | bool %}
         bikehub.io/database-secret-version: {{ bikehub_database_secret_version.stdout | to_json }}
 {% endif %}
+{% if bikehub_auth_enabled | bool %}
+        bikehub.io/auth-secret-version: {{ bikehub_auth_secret_version.stdout | to_json }}
+{% endif %}
+{% endif %}
     spec:
+{% if bikehub_auth_enabled | bool %}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+{% endif %}
       containers:
         - name: api
           image: {{ bikehub_selected_image }}
@@ -33,6 +45,33 @@ spec:
               containerPort: {{ bikehub_app_port }}
               protocol: TCP
           env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Production
+{% if bikehub_tls_enabled | bool %}
+            - name: ReverseProxy__KnownProxies__0
+              value: {{ ansible_facts.default_ipv4.address | to_json }}
+{% if ansible_facts.cni0 is defined and ansible_facts.cni0.ipv4 is defined %}
+            - name: ReverseProxy__KnownProxies__1
+              value: {{ ansible_facts.cni0.ipv4.address | to_json }}
+{% endif %}
+{% endif %}
+            - name: Authentication__Enabled
+              value: {{ (bikehub_auth_enabled | bool) | ternary('true', 'false') | to_json }}
+{% if bikehub_auth_enabled | bool %}
+            - name: Authentication__Store
+              value: Postgres
+            - name: Authentication__EmailProvider
+              value: Smtp
+            - name: Authentication__DataProtectionPath
+              value: /app/data/auth/keys
+{% for setting, key in [('OtpSecret', 'otp-secret'), ('Smtp__Username', 'smtp-username'), ('Smtp__Password', 'smtp-password'), ('Smtp__FromAddress', 'smtp-from-address')] %}
+            - name: Authentication__{{ setting }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ bikehub_auth_secret_name }}
+                  key: {{ key }}
+{% endfor %}
+{% endif %}
             - name: ASPNETCORE_URLS
               value: http://+:{{ bikehub_app_port }}
             - name: Database__BootstrapEnabled
@@ -53,6 +92,11 @@ spec:
                 secretKeyRef:
                   name: bikehub-database
                   key: connection-string
+{% endif %}
+{% if bikehub_auth_enabled | bool %}
+          volumeMounts:
+            - name: auth-keys
+              mountPath: /app/data/auth
 {% endif %}
           startupProbe:
             httpGet:
@@ -80,6 +124,12 @@ spec:
             limits:
               cpu: "1"
               memory: 512Mi
+{% if bikehub_auth_enabled | bool %}
+      volumes:
+        - name: auth-keys
+          persistentVolumeClaim:
+            claimName: {{ bikehub_auth_key_claim }}
+{% endif %}
 ---
 apiVersion: v1
 kind: Service
