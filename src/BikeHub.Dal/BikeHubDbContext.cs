@@ -1,6 +1,7 @@
 using System.Text.Json;
 using BikeHub.Dal.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace BikeHub.Dal;
 
@@ -30,7 +31,8 @@ public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options)
         accounts.Property(x => x.Id).ValueGeneratedNever();
         accounts.HasAlternateKey(x => x.Email).HasName("auth_accounts_email_key");
         accounts.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
-        accounts.HasIndex(x => x.PhoneE164).IsUnique().HasDatabaseName("ix_auth_accounts_phone")
+        accounts.Property(x => x.PhoneNumber).HasColumnName("phone_e164");
+        accounts.HasIndex(x => x.PhoneNumber).IsUnique().HasDatabaseName("ix_auth_accounts_phone")
             .HasFilter("phone_e164 IS NOT NULL");
 
         var challenges = modelBuilder.Entity<EmailChallengeEntity>();
@@ -65,7 +67,10 @@ public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options)
         {
             foreach (var property in entity.GetProperties())
             {
-                property.SetColumnName(JsonNamingPolicy.SnakeCaseLower.ConvertName(property.Name));
+                if (property.FindAnnotation(RelationalAnnotationNames.ColumnName) is null)
+                {
+                    property.SetColumnName(JsonNamingPolicy.SnakeCaseLower.ConvertName(property.Name));
+                }
             }
         }
     }

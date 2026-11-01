@@ -65,7 +65,7 @@ public sealed class EfPersistenceTests
             Email = "existing@example.test",
             DisplayName = "Existing rider",
             EmailConfirmedAt = now,
-            PhoneE164 = "+79990000000",
+            PhoneNumber = "+79990000000",
             PhoneConfirmedAt = now,
             CreatedAt = now
         };
@@ -102,7 +102,7 @@ public sealed class EfPersistenceTests
         context.ChangeTracker.Clear();
         Assert.Single(await context.Database.GetAppliedMigrationsAsync());
         Assert.Equal("Keep me", (await context.Bikes.SingleAsync()).Description);
-        Assert.Equal("+79990000000", (await context.Accounts.SingleAsync()).PhoneE164);
+        Assert.Equal("+79990000000", (await context.Accounts.SingleAsync()).PhoneNumber);
         Assert.Equal(2, (await context.EmailChallenges.SingleAsync()).Attempts);
         Assert.Equal(1, await context.Database.SqlQueryRaw<int>("SELECT count(*)::int AS \"Value\" FROM schemaversions").SingleAsync());
         var store = new PostgresAuthenticationStore(database);
