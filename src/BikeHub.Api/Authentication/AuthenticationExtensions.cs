@@ -1,6 +1,5 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 
 namespace BikeHub.Api.Authentication;
