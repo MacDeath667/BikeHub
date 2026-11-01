@@ -54,8 +54,15 @@ def configure(payload, run=subprocess.run, probe_smtp=check_smtp):
         if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", value):
             raise ConfigurationError("Invalid namespace or Secret name.")
     action = payload.get("action")
-    if action not in ("check", "test-smtp", "configure"):
+    if action not in ("check", "test-smtp", "test-input", "configure"):
         raise ConfigurationError("Unsupported operation.")
+    if action == "test-input":
+        email = payload.get("email", "").strip().lower()
+        password = payload.get("password", "").replace(" ", "")
+        if not re.fullmatch(r"[^\s@]+@(gmail|googlemail)\.com", email) or not re.fullmatch(r"[A-Za-z]{16}", password):
+            raise ConfigurationError("Expected a personal Gmail address and a 16-character app password.")
+        smtp = probe_smtp(email, password)
+        return {"namespace": namespace, "name": name, "ready": smtp["ok"], "updated": False, "smtp": smtp}
 
     def kubectl(arguments, body=None):
         result = run(["k3s", "kubectl", "--request-timeout=20s", "-n", namespace, *arguments],

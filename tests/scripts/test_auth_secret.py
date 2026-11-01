@@ -109,6 +109,18 @@ class AuthenticationSecretTests(unittest.TestCase):
         self.assertFalse(result["smtp"]["ok"])
         self.assertEqual("missing_configuration", result["smtp"]["kind"])
 
+    def test_fresh_input_diagnostic_never_reads_or_writes_kubernetes(self):
+        def forbidden_kubectl(*args, **kwargs):
+            self.fail("Fresh input diagnostic must not use Kubernetes")
+        observed = []
+        def probe(email, password):
+            observed.append((email, password))
+            return {"ok": False, "status": 535, "kind": "auth_rejected"}
+        result = secret.configure({**self.payload, "action": "test-input"}, run=forbidden_kubectl, probe_smtp=probe)
+        self.assertEqual([(self.payload["email"], self.payload["password"])], observed)
+        self.assertFalse(result["updated"])
+        self.assertFalse(result["smtp"]["ok"])
+
 
 class FakeSMTP:
     def __init__(self, failure=None):
