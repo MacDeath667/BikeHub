@@ -29,7 +29,11 @@ public sealed class EmailAuthenticationService(IAuthenticationStore store, IVeri
         {
             await store.SetDeliveredAsync(id, false, cancellationToken);
             // SMTP exceptions may contain addresses or message contents. Do not export them to logs.
-            logger.LogWarning("Verification email delivery failed ({FailureType})", error.GetType().Name);
+            if (error is EmailTransportException transport)
+                logger.LogWarning("Verification email delivery failed ({FailureType}; stage={Stage}; reason={Reason}; smtpStatus={SmtpStatus}; enhancedStatus={EnhancedStatus})",
+                    transport.FailureType, transport.Stage, transport.Reason, transport.SmtpStatus, transport.EnhancedStatus);
+            else
+                logger.LogWarning("Verification email delivery failed ({FailureType})", error.GetType().Name);
             AuthTelemetry.Record("delivery_failed");
             throw new EmailDeliveryException();
         }

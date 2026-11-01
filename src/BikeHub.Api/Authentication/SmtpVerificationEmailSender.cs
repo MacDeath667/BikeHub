@@ -25,13 +25,29 @@ public sealed class SmtpVerificationEmailSender(IOptions<AuthOptions> configurat
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(15));
         using var client = new SmtpClient { Timeout = 10_000 };
-        await client.ConnectAsync(options.Host, options.Port,
-            options.Security == "SslOnConnect" ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls, timeout.Token);
-        client.AuthenticationMechanisms.Remove("XOAUTH2");
-        await client.AuthenticateAsync(options.Username, options.Password, timeout.Token);
-        await client.SendAsync(mail, timeout.Token);
+        var stage = "connect";
+        try
+        {
+            await client.ConnectAsync(options.Host, options.Port,
+                options.Security == "SslOnConnect" ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls, timeout.Token);
+            stage = "authenticate";
+            // One password attempt over verified TLS. Automatic fallback can hide a 535 rejection
+            // behind a disconnect while trying a second mechanism with the same credentials.
+            await client.AuthenticateAsync(PasswordMechanism(client.AuthenticationMechanisms, options.Username, options.Password), timeout.Token);
+            stage = "send";
+            await client.SendAsync(mail, timeout.Token);
+        }
+        catch (Exception error) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw EmailTransportException.From(stage, error);
+        }
         // The server has accepted the email. A QUIT/connection cleanup failure must not invalidate its code.
         try { await client.DisconnectAsync(true, timeout.Token); }
         catch (Exception error) when (error is IOException or MailKit.Net.Smtp.SmtpProtocolException or OperationCanceledException) { }
     }
+
+    public static SaslMechanism PasswordMechanism(ISet<string> supported, string username, string password) =>
+        supported.Contains("PLAIN") ? new SaslMechanismPlain(username, password) :
+        supported.Contains("LOGIN") ? new SaslMechanismLogin(username, password) :
+        throw new NotSupportedException("The SMTP server does not support password authentication over TLS.");
 }

@@ -3,6 +3,8 @@
 import json
 import re
 import secrets
+import smtplib
+import ssl
 import subprocess
 import sys
 
@@ -13,14 +15,46 @@ class ConfigurationError(Exception):
     pass
 
 
-def configure(payload, run=subprocess.run):
+def check_smtp(email, password, smtp_factory=None):
+    """One AUTH attempt over verified TLS. Never sends mail or returns raw server diagnostics."""
+    client = None
+    stage = "connect"
+    try:
+        client = (smtp_factory or smtplib.SMTP)("smtp.gmail.com", 587, timeout=10)
+        client.ehlo()
+        stage = "tls"
+        client.starttls(context=ssl.create_default_context())
+        client.ehlo()
+        stage = "authenticate"
+        status, _ = client.auth("PLAIN", lambda challenge=None: "\0" + email + "\0" + password)
+        return {"ok": status == 235, "stage": stage, "status": status, "kind": "accepted" if status == 235 else "auth_rejected"}
+    except smtplib.SMTPResponseException as error:
+        response = error.smtp_error.decode(errors="replace") if isinstance(error.smtp_error, bytes) else str(error.smtp_error)
+        codes = re.findall(r"\b[45]\.[0-9]\.[0-9]{1,3}\b", response)
+        return {"ok": False, "stage": stage, "status": error.smtp_code,
+                "enhanced": codes[0] if codes else None,
+                "kind": "auth_rejected" if stage == "authenticate" and error.smtp_code in (534, 535) else "smtp_rejected"}
+    except ssl.SSLError:
+        return {"ok": False, "stage": stage, "kind": "tls_error"}
+    except TimeoutError:
+        return {"ok": False, "stage": stage, "kind": "timeout"}
+    except smtplib.SMTPException:
+        return {"ok": False, "stage": stage, "kind": "protocol_error"}
+    except OSError:
+        return {"ok": False, "stage": stage, "kind": "connection_error"}
+    finally:
+        if client:
+            client.close()
+
+
+def configure(payload, run=subprocess.run, probe_smtp=check_smtp):
     namespace = payload["namespace"]
     name = payload["name"]
     for value in (namespace, name):
         if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", value):
             raise ConfigurationError("Invalid namespace or Secret name.")
     action = payload.get("action")
-    if action not in ("check", "configure"):
+    if action not in ("check", "test-smtp", "configure"):
         raise ConfigurationError("Unsupported operation.")
 
     def kubectl(arguments, body=None):
@@ -41,11 +75,23 @@ def configure(payload, run=subprocess.run):
     if action == "check":
         return {**summary, "ready": bool(state and all(state["keys"].get(k) for k in REQUIRED_KEYS)),
                 "keys": state["keys"] if state else {key: False for key in REQUIRED_KEYS}}
+    if action == "test-smtp":
+        if not state or not all(state["keys"].get(key) for key in ("smtp-username", "smtp-password")):
+            return {**summary, "ready": False, "smtp": {"ok": False, "kind": "missing_configuration"}}
+        import base64
+        # Values stay inside this process on the VM; stdout contains only a sanitized result.
+        saved = json.loads(kubectl(["get", "secret", name, "-o", "json"]))["data"]
+        email = base64.b64decode(saved["smtp-username"]).decode()
+        password = base64.b64decode(saved["smtp-password"]).decode()
+        return {**summary, "ready": all(state["keys"].get(key) for key in REQUIRED_KEYS), "smtp": probe_smtp(email, password)}
 
     email = payload.get("email", "").strip().lower()
     password = payload.get("password", "").replace(" ", "")
     if not re.fullmatch(r"[^\s@]+@(gmail|googlemail)\.com", email) or not re.fullmatch(r"[A-Za-z]{16}", password):
         raise ConfigurationError("Expected a personal Gmail address and a 16-character app password.")
+    smtp = probe_smtp(email, password)
+    if not smtp["ok"]:
+        return {**summary, "ready": False, "updated": False, "smtp": smtp}
     data = {"smtp-username": email, "smtp-password": password, "smtp-from-address": email}
     generated = not state or not state["keys"].get("otp-secret")
     if generated:
@@ -59,7 +105,7 @@ def configure(payload, run=subprocess.run):
         kubectl(["create", "-f", "-", "-o", "name"], {
             "apiVersion": "v1", "kind": "Secret", "type": "Opaque",
             "metadata": {"name": name, "namespace": namespace}, "stringData": data})
-    return {**summary, "present": True, "ready": True, "otpGenerated": generated, "updated": True}
+    return {**summary, "present": True, "ready": True, "otpGenerated": generated, "updated": True, "smtp": smtp}
 
 
 def main():

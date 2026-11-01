@@ -2,6 +2,8 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import smtplib
+import ssl
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -24,12 +26,16 @@ class FakeKubectl:
 
 
 class AuthenticationSecretTests(unittest.TestCase):
+    @staticmethod
+    def configure(payload, **kwargs):
+        return secret.configure(payload, probe_smtp=lambda email, password: {"ok": True, "status": 235, "kind": "accepted"}, **kwargs)
+
     payload = {"namespace": "bikehub", "name": "bikehub-auth", "action": "configure",
                "email": "rider@gmail.com", "password": "abcdefghijklmnop"}
 
     def test_first_setup_generates_otp_and_sends_credentials_only_in_stdin(self):
         runner = FakeKubectl()
-        result = secret.configure(self.payload, run=runner)
+        result = self.configure(self.payload, run=runner)
         command, options = runner.calls[-1]
         self.assertIn("create", command)
         self.assertTrue(result["otpGenerated"])
@@ -43,7 +49,7 @@ class AuthenticationSecretTests(unittest.TestCase):
     def test_update_preserves_existing_otp_and_uses_optimistic_concurrency(self):
         state = {"revision": "42", "keys": {key: True for key in secret.REQUIRED_KEYS}}
         runner = FakeKubectl(state)
-        result = secret.configure(self.payload, run=runner)
+        result = self.configure(self.payload, run=runner)
         command, options = runner.calls[-1]
         self.assertIn("patch", command)
         self.assertIn("--patch-file=/dev/stdin", command)
@@ -56,34 +62,109 @@ class AuthenticationSecretTests(unittest.TestCase):
         for state in (None, {"revision": "42", "keys": {key: True for key in secret.REQUIRED_KEYS}}):
             with self.subTest(state=bool(state)):
                 runner = FakeKubectl(state)
-                result = secret.configure({**self.payload, "action": "check"}, run=runner)
+                result = self.configure({**self.payload, "action": "check"}, run=runner)
                 self.assertEqual(1, len(runner.calls))
                 self.assertIn("get", runner.calls[0][0])
                 self.assertEqual(bool(state), result["ready"])
 
     def test_missing_otp_is_initialized_without_reading_old_values(self):
         runner = FakeKubectl({"revision": "42", "keys": {key: key != "otp-secret" for key in secret.REQUIRED_KEYS}})
-        result = secret.configure(self.payload, run=runner)
+        result = self.configure(self.payload, run=runner)
         self.assertTrue(result["otpGenerated"])
         self.assertIn("otp-secret", json.loads(runner.calls[-1][1]["input"])["stringData"])
 
     def test_kubernetes_write_error_does_not_repeat_credential(self):
         with self.assertRaises(secret.ConfigurationError) as error:
-            secret.configure(self.payload, run=FakeKubectl(fail_write=True))
+            self.configure(self.payload, run=FakeKubectl(fail_write=True))
         self.assertNotIn(self.payload["password"], str(error.exception))
         self.assertNotIn("private diagnostic", str(error.exception))
 
     def test_invalid_target_is_rejected_before_kubectl(self):
         runner = FakeKubectl()
         with self.assertRaises(secret.ConfigurationError):
-            secret.configure({**self.payload, "namespace": "bikehub; malicious"}, run=runner)
+            self.configure({**self.payload, "namespace": "bikehub; malicious"}, run=runner)
         self.assertEqual([], runner.calls)
 
     def test_invalid_password_never_writes(self):
         runner = FakeKubectl()
         with self.assertRaises(secret.ConfigurationError):
-            secret.configure({**self.payload, "password": "wrong"}, run=runner)
+            self.configure({**self.payload, "password": "wrong"}, run=runner)
         self.assertEqual(1, len(runner.calls))
+
+    def test_failed_smtp_validation_never_changes_the_secret(self):
+        runner = FakeKubectl({"revision": "42", "keys": {key: True for key in secret.REQUIRED_KEYS}})
+        result = secret.configure(self.payload, run=runner, probe_smtp=lambda email, password:
+                                  {"ok": False, "kind": "auth_rejected", "status": 535, "enhanced": "5.7.8"})
+        self.assertFalse(result["updated"])
+        self.assertFalse(result["ready"])
+        self.assertEqual(1, len(runner.calls))
+        self.assertIn("get", runner.calls[0][0])
+        self.assertEqual("auth_rejected", result["smtp"]["kind"])
+
+    def test_smtp_diagnostic_with_missing_configuration_never_authenticates(self):
+        def forbidden_probe(email, password):
+            self.fail("Must not authenticate with missing configuration")
+        runner = FakeKubectl()
+        result = secret.configure({**self.payload, "action": "test-smtp"}, run=runner, probe_smtp=forbidden_probe)
+        self.assertFalse(result["smtp"]["ok"])
+        self.assertEqual("missing_configuration", result["smtp"]["kind"])
+
+
+class FakeSMTP:
+    def __init__(self, failure=None):
+        self.failure = failure
+        self.closed = False
+        self.calls = []
+
+    def ehlo(self):
+        self.calls.append("ehlo")
+        return 250, b"ok"
+
+    def starttls(self, context):
+        self.calls.append("tls")
+        assert context.check_hostname and context.verify_mode == ssl.CERT_REQUIRED
+        return 220, b"ready"
+
+    def auth(self, mechanism, callback):
+        self.calls.append("auth:" + mechanism)
+        assert callback() == "\0rider@gmail.com\0abcdefghijklmnop"
+        if self.failure:
+            raise self.failure
+        return 235, b"authenticated"
+
+    def close(self):
+        self.closed = True
+
+
+class SmtpProbeTests(unittest.TestCase):
+    def test_probe_verifies_tls_authenticates_once_and_does_not_send(self):
+        client = FakeSMTP()
+        result = secret.check_smtp("rider@gmail.com", "abcdefghijklmnop", smtp_factory=lambda *args, **kwargs: client)
+        self.assertTrue(result["ok"])
+        self.assertEqual(["ehlo", "tls", "ehlo", "auth:PLAIN"], client.calls)
+        self.assertTrue(client.closed)
+
+    def test_probe_redacts_google_error_details(self):
+        failure = smtplib.SMTPAuthenticationError(535, b"5.7.8 BadCredentials rider@gmail.com abcdefghijklmnop")
+        client = FakeSMTP(failure)
+        result = secret.check_smtp("rider@gmail.com", "abcdefghijklmnop", smtp_factory=lambda *args, **kwargs: client)
+        self.assertFalse(result["ok"])
+        self.assertEqual(535, result["status"])
+        self.assertEqual("5.7.8", result["enhanced"])
+        self.assertEqual("auth_rejected", result["kind"])
+        self.assertNotIn("rider@gmail.com", json.dumps(result))
+        self.assertNotIn("abcdefghijklmnop", json.dumps(result))
+        self.assertTrue(client.closed)
+
+    def test_tls_failure_never_attempts_authentication(self):
+        client = FakeSMTP()
+        def rejected_tls(context):
+            raise ssl.SSLCertVerificationError("private diagnostic")
+        client.starttls = rejected_tls
+        result = secret.check_smtp("rider@gmail.com", "abcdefghijklmnop", smtp_factory=lambda *args, **kwargs: client)
+        self.assertEqual("tls_error", result["kind"])
+        self.assertNotIn("auth:PLAIN", client.calls)
+        self.assertTrue(client.closed)
 
 
 if __name__ == "__main__":
