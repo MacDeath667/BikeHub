@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -6,12 +7,12 @@ namespace BikeHub.Dal;
 
 public static class BootstrapperExtensions
 {
-    public static IHostApplicationBuilder AddDapper(this IHostApplicationBuilder builder, string connectionName)
+    public static IHostApplicationBuilder AddBikeHubDatabase(this IHostApplicationBuilder builder)
     {
-        var connectionString = builder.Configuration.GetConnectionString(connectionName).Protect();
-
-        builder.Services.AddSingleton<IDbConnectionFactory>(new SqlDbConnectionFactory(connectionString));
-
+        builder.Services.AddDbContextFactory<BikeHubDbContext>(options =>
+            options.UseNpgsql(builder.Configuration.GetConnectionString(Constants.ConnectionStringName).Protect()));
+        builder.Services.AddSingleton<DatabaseMigrator>();
+        builder.Services.AddSingleton<DatabaseBootstrapper>();
         return builder;
     }
 }

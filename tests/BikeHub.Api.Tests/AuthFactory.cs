@@ -47,7 +47,15 @@ public sealed class AuthFactory : WebApplicationFactory<Program>
         ["Database:MigrationsEnabled"] = "false",
         ["Authentication:Enabled"] = "true",
         ["Authentication:Store"] = "Memory",
-        ["Authentication:EmailProvider"] = "Development"
+        ["Authentication:EmailProvider"] = "Development",
+        // Tests must not inherit real mail credentials from environment variables or user-secrets.
+        ["Smtp:Username"] = string.Empty,
+        ["Smtp:Password"] = string.Empty,
+        ["Smtp:FromAddress"] = string.Empty,
+        ["GmailApi:ClientId"] = string.Empty,
+        ["GmailApi:ClientSecret"] = string.Empty,
+        ["GmailApi:RefreshToken"] = string.Empty,
+        ["GmailApi:FromAddress"] = string.Empty
     };
     public IVerificationEmailSender? Sender { get; init; }
 

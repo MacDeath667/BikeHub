@@ -15,5 +15,6 @@
     </PackageReference>
     <ProjectReference Include="../../src/BikeHub.Api/BikeHub.Api.csproj" />
     <Using Include="Xunit" />
+    <EmbeddedResource Include="Fixtures/LegacyDbUp/*.sql" />
   </ItemGroup>
 </Project>

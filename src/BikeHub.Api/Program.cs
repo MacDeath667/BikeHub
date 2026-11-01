@@ -12,12 +12,7 @@ var builder = WebApplication.CreateBuilder(
 
 var bootstrapEnabled = builder.Configuration.GetValue(Program.DatabaseBootstrapEnabledKey, true);
 var migrationsEnabled = builder.Configuration.GetValue(Program.DatabaseMigrationsEnabledKey, true);
-if (bootstrapEnabled || migrationsEnabled || migrationsOnly)
-{
-    builder.AddDapper(BikeHub.Dal.Constants.ConnectionStringName);
-    builder.Services.AddSingleton<DatabaseMigrator>();
-    builder.Services.AddSingleton<DatabaseBootstrapper>();
-}
+builder.AddBikeHubDatabase();
 builder.Services.AddControllers(options => options.Filters.Add<CsrfValidationFilter>());
 builder.Services.AddSingleton<MockCommunityStore>();
 builder.Services.AddScoped<IFeedService, MockFeedService>();

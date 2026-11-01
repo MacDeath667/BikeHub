@@ -15,6 +15,17 @@ npm --prefix Web run dev
 
 По умолчанию Development использует `Memory` и `Development`: аккаунты, коды и сессии сбрасываются после перезапуска API. Тестовое письмо можно получить только из того браузера, который запросил код, и только при соединении с API через loopback. Заголовок `X-Forwarded-For` не открывает этот доступ. В production тестовая почта запрещена.
 
+## Секции конфигурации
+
+`Authentication` содержит настройки входа, лимитов, хранилища и выбор `EmailProvider`. Настройки транспортов находятся отдельно на верхнем уровне:
+
+- `Smtp`: `Host`, `Port`, `Security`, `Username`, `Password`, `FromAddress`, `FromName`;
+- `GmailApi`: `ClientId`, `ClientSecret`, `RefreshToken`, `FromAddress`, `FromName`.
+
+Для user-secrets используются ключи `Smtp:Username`, `Smtp:Password`, `GmailApi:RefreshToken` и аналогичные. Для окружения — `Smtp__Username`, `Smtp__Password`, `GmailApi__RefreshToken`. Выбор провайдера остаётся в `Authentication:EmailProvider` / `Authentication__EmailProvider`.
+
+При переходе существующие локальные ключи из `Authentication:Smtp:*` и `Authentication:GmailApi:*` нужно перенести в `Smtp:*` и `GmailApi:*` с сохранением значений. Повторно выдавать OAuth-токен для этого не требуется. Скрипты настройки записывают новые ключи. На сервере имена Secret и его ключей сохранены: обновлённый Ansible-шаблон передаёт их в новые переменные окружения при обычном развёртывании.
+
 ## Личный Gmail для первого этапа
 
 Подходит для разработки и небольшого закрытого пилота. Письма будут приходить от вашего Gmail, и получатели увидят этот адрес.
@@ -88,7 +99,7 @@ Ansible выбирает транспорт по аннотации Secret `bike
   --client-json "$HOME/Downloads/client_secret_BikeHub.json" --target local
 ```
 
-Gmail API использует ключи Secret `gmail-client-id`, `gmail-client-secret`, `gmail-refresh-token`, `gmail-from-address`. Активный провайдер хранится отдельно как аннотация. В контейнер значения передаются через `Authentication__GmailApi__*`. SDK .NET кеширует access token в памяти, обновляет его по refresh token и не использует файловый DataStore. Ошибки OAuth/API журналируются только по этапу, безопасной категории и числовому статусу, без исходного ответа Google и токенов.
+Gmail API использует ключи Secret `gmail-client-id`, `gmail-client-secret`, `gmail-refresh-token`, `gmail-from-address`. Активный провайдер хранится отдельно как аннотация. В контейнер значения передаются через `GmailApi__*`. SDK .NET кеширует access token в памяти, обновляет его по refresh token и не использует файловый DataStore. Ошибки OAuth/API журналируются только по этапу, безопасной категории и числовому статусу, без исходного ответа Google и токенов.
 
 ## API и защита
 
@@ -115,7 +126,7 @@ Gmail API использует ключи Secret `gmail-client-id`, `gmail-clien
 Для production нужны:
 
 - `Authentication__Enabled=true`, `Authentication__Store=Postgres`, `Authentication__EmailProvider=Smtp`;
-- существующий `ConnectionStrings__BikeHub` и миграция `003_email_authentication.sql` (штатный migration Job запускается перед обновлением приложения);
+- существующий `ConnectionStrings__BikeHub` и EF-миграция `AdoptExistingSchema` (штатный migration Job запускается перед обновлением приложения; перенос прежней схемы описан в [инструкции хранилища](persistence.md));
 - случайный `Authentication__OtpSecret` длиной не менее 32 символов, одинаковый для реплик и стабильный после перезапуска;
 - SMTP username/app password/FromAddress либо OAuth Client ID, Client secret, refresh token и FromAddress для Gmail API;
 - постоянный каталог Data Protection для ключей cookie, доступный только приложению. Потеря ключей разлогинит пользователей; ключи также нужно защищать в резервных копиях;

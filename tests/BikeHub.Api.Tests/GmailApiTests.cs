@@ -11,16 +11,14 @@ namespace BikeHub.Api.Tests;
 
 public sealed class GmailApiTests
 {
-    private static AuthOptions Settings() => new()
+    private static GmailApiOptions Settings() => new()
     {
-        GmailApi = new()
-        {
-            ClientId = "test.apps.googleusercontent.com",
-            ClientSecret = "private-client-secret",
-            RefreshToken = "private-refresh-token",
-            FromAddress = "sender@example.test"
-        }
+        ClientId = "test.apps.googleusercontent.com",
+        ClientSecret = "private-client-secret",
+        RefreshToken = "private-refresh-token",
+        FromAddress = "sender@example.test"
     };
+
     private static VerificationMessage Message() => new(Guid.NewGuid(), "recipient@example.test", "123456",
         new string('A', 64), DateTimeOffset.UtcNow.AddMinutes(5), 5);
 
@@ -29,7 +27,8 @@ public sealed class GmailApiTests
     {
         var handler = new FakeGoogleHandler();
         var clock = new TestClock();
-        using var sender = new GmailApiVerificationEmailSender(Options.Create(Settings()), clock, new FakeFactory(handler));
+        using var sender =
+            new GmailApiVerificationEmailSender(Options.Create(Settings()), clock, new FakeFactory(handler));
         await sender.SendAsync(Message(), default);
         await sender.SendAsync(Message(), default);
         Assert.Equal(1, handler.TokenRequests);
@@ -58,7 +57,8 @@ public sealed class GmailApiTests
     public async Task Revoked_refresh_token_produces_sanitized_failure_and_does_not_send()
     {
         var handler = new FakeGoogleHandler { RejectRefresh = true };
-        using var sender = new GmailApiVerificationEmailSender(Options.Create(Settings()), new TestClock(), new FakeFactory(handler));
+        using var sender =
+            new GmailApiVerificationEmailSender(Options.Create(Settings()), new TestClock(), new FakeFactory(handler));
         var failure = await Assert.ThrowsAsync<EmailTransportException>(() => sender.SendAsync(Message(), default));
         Assert.Equal("oauth", failure.Stage);
         Assert.Equal("invalid_grant", failure.Reason);
@@ -76,7 +76,8 @@ public sealed class GmailApiTests
     public async Task Gmail_api_errors_do_not_expose_response_body(HttpStatusCode status, string reason)
     {
         var handler = new FakeGoogleHandler { SendStatus = status };
-        using var sender = new GmailApiVerificationEmailSender(Options.Create(Settings()), new TestClock(), new FakeFactory(handler));
+        using var sender =
+            new GmailApiVerificationEmailSender(Options.Create(Settings()), new TestClock(), new FakeFactory(handler));
         var failure = await Assert.ThrowsAsync<EmailTransportException>(() => sender.SendAsync(Message(), default));
         Assert.Equal("send", failure.Stage);
         Assert.Equal(reason, failure.Reason);
@@ -100,7 +101,8 @@ public sealed class GmailApiTests
         string googleReason, string expectedReason)
     {
         var handler = new FakeGoogleHandler { SendStatus = HttpStatusCode.Forbidden, SendReason = googleReason };
-        using var sender = new GmailApiVerificationEmailSender(Options.Create(Settings()), new TestClock(), new FakeFactory(handler));
+        using var sender =
+            new GmailApiVerificationEmailSender(Options.Create(Settings()), new TestClock(), new FakeFactory(handler));
         var failure = await Assert.ThrowsAsync<EmailTransportException>(() => sender.SendAsync(Message(), default));
         Assert.Equal(expectedReason, failure.Reason);
         Assert.DoesNotContain("private-", failure.ToString());
@@ -123,13 +125,20 @@ public sealed class GmailApiTests
     {
         await using var app = new AuthFactory();
         app.Settings["Authentication:EmailProvider"] = "GmailApi";
-        app.Settings["Authentication:GmailApi:ClientId"] = "test.apps.googleusercontent.com";
-        app.Settings["Authentication:GmailApi:ClientSecret"] = "private-client-secret";
-        app.Settings["Authentication:GmailApi:RefreshToken"] = "private-refresh-token";
-        app.Settings["Authentication:GmailApi:FromAddress"] = "sender@example.test";
+        app.Settings["GmailApi:ClientId"] = "test.apps.googleusercontent.com";
+        app.Settings["GmailApi:ClientSecret"] = "private-client-secret";
+        app.Settings["GmailApi:RefreshToken"] = "private-refresh-token";
+        app.Settings["GmailApi:FromAddress"] = "sender@example.test";
+        app.Settings["GmailApi:FromName"] = "Configured sender";
         using var browser = app.Browser();
         Assert.Equal(HttpStatusCode.OK, (await browser.GetAsync("/api/auth/session")).StatusCode);
         Assert.IsType<GmailApiVerificationEmailSender>(app.Services.GetRequiredService<IVerificationEmailSender>());
+        var options = app.Services.GetRequiredService<IOptions<GmailApiOptions>>().Value;
+        Assert.Equal("test.apps.googleusercontent.com", options.ClientId);
+        Assert.Equal("private-client-secret", options.ClientSecret);
+        Assert.Equal("private-refresh-token", options.RefreshToken);
+        Assert.Equal("sender@example.test", options.FromAddress);
+        Assert.Equal("Configured sender", options.FromName);
     }
 
     private sealed class FakeFactory(FakeGoogleHandler handler) : Google.Apis.Http.HttpClientFactory
@@ -138,6 +147,7 @@ public sealed class GmailApiTests
     }
 
     private sealed record SentMessage(string? Authorization, string Body);
+
     private sealed class FakeGoogleHandler : HttpMessageHandler
     {
         public int TokenRequests { get; private set; }
@@ -145,7 +155,9 @@ public sealed class GmailApiTests
         public HttpStatusCode SendStatus { get; init; } = HttpStatusCode.OK;
         public string? SendReason { get; init; }
         public List<SentMessage> Messages { get; } = [];
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+            CancellationToken cancellationToken)
         {
             Assert.DoesNotContain("private-", request.RequestUri!.AbsoluteUri);
             if (request.RequestUri.Host == "oauth2.googleapis.com")
@@ -154,16 +166,23 @@ public sealed class GmailApiTests
                 var form = await request.Content!.ReadAsStringAsync(cancellationToken);
                 Assert.Contains("refresh_token=private-refresh-token", form);
                 return RejectRefresh
-                    ? Json(HttpStatusCode.BadRequest, new { error = "invalid_grant", error_description = "sender@example.test private-refresh-token" })
-                    : Json(HttpStatusCode.OK, new { access_token = "private-access-token", token_type = "Bearer", expires_in = 3600 });
+                    ? Json(HttpStatusCode.BadRequest,
+                        new
+                        {
+                            error = "invalid_grant", error_description = "sender@example.test private-refresh-token"
+                        })
+                    : Json(HttpStatusCode.OK,
+                        new { access_token = "private-access-token", token_type = "Bearer", expires_in = 3600 });
             }
+
             Assert.Equal("gmail.googleapis.com", request.RequestUri.Host);
             Assert.Equal("/gmail/v1/users/me/messages/send", request.RequestUri.AbsolutePath);
             string body;
             if (request.Content!.Headers.ContentEncoding.Contains("gzip"))
             {
                 await using var encoded = await request.Content.ReadAsStreamAsync(cancellationToken);
-                await using var decoded = new System.IO.Compression.GZipStream(encoded, System.IO.Compression.CompressionMode.Decompress);
+                await using var decoded =
+                    new System.IO.Compression.GZipStream(encoded, System.IO.Compression.CompressionMode.Decompress);
                 using var reader = new StreamReader(decoded, Encoding.UTF8);
                 body = await reader.ReadToEndAsync(cancellationToken);
             }
@@ -173,19 +192,27 @@ public sealed class GmailApiTests
             }
 
             Messages.Add(new(request.Headers.Authorization?.ToString(), body));
-            return SendStatus == HttpStatusCode.OK ? Json(SendStatus, new { id = "test-message-id" })
+            return SendStatus == HttpStatusCode.OK
+                ? Json(SendStatus, new { id = "test-message-id" })
                 : Json(SendStatus, new
                 {
                     error = new
                     {
                         code = (int)SendStatus,
                         message = "recipient@example.test 123456",
-                        errors = new[] { new { reason = SendReason, message = "recipient@example.test 123456", domain = "global" } }
+                        errors = new[]
+                        {
+                            new { reason = SendReason, message = "recipient@example.test 123456", domain = "global" }
+                        }
                     }
                 });
         }
+
         private static HttpResponseMessage Json(HttpStatusCode status, object body) => new(status)
-        { Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json") };
-        protected override void Dispose(bool disposing) { } // Shared by the SDK's token and mail clients in this test only.
+            { Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json") };
+
+        protected override void Dispose(bool disposing)
+        {
+        } // Shared by the SDK's token and mail clients in this test only.
     }
 }

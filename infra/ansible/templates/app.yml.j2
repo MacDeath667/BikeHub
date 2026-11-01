@@ -65,8 +65,8 @@ spec:
             - name: Authentication__DataProtectionPath
               value: /app/data/auth/keys
 {% set transport_keys = [('GmailApi__ClientId', 'gmail-client-id'), ('GmailApi__ClientSecret', 'gmail-client-secret'), ('GmailApi__RefreshToken', 'gmail-refresh-token'), ('GmailApi__FromAddress', 'gmail-from-address')] if bikehub_effective_email_provider == 'GmailApi' else [('Smtp__Username', 'smtp-username'), ('Smtp__Password', 'smtp-password'), ('Smtp__FromAddress', 'smtp-from-address')] %}
-{% for setting, key in [('OtpSecret', 'otp-secret')] + transport_keys %}
-            - name: Authentication__{{ setting }}
+{% for setting, key in [('Authentication__OtpSecret', 'otp-secret')] + transport_keys %}
+            - name: {{ setting }}
               valueFrom:
                 secretKeyRef:
                   name: {{ bikehub_auth_secret_name }}

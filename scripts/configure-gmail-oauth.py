@@ -171,7 +171,7 @@ def main():
         mapping = {"gmail-client-id": "ClientId", "gmail-client-secret": "ClientSecret",
                    "gmail-refresh-token": "RefreshToken", "gmail-from-address": "FromAddress"}
         settings = {"Authentication:EmailProvider": "GmailApi", **{
-            "Authentication:GmailApi:" + name: payload["credentials"][field] for field, name in mapping.items()}}
+            "GmailApi:" + name: payload["credentials"][field] for field, name in mapping.items()}}
         subprocess.run(["dotnet", "user-secrets", "set", "--project", str(ROOT / "src/BikeHub.Api")],
                        input=json.dumps(settings), text=True, check=True, capture_output=True)
         print("Gmail OAuth сохранён в локальных .NET user-secrets. Перезапустите API в Development.")

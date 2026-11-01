@@ -42,10 +42,12 @@ public sealed class GmailApiVerificationEmailSender : IVerificationEmailSender, 
     private readonly UserCredential credential;
     private readonly GmailService gmail;
 
-    public GmailApiVerificationEmailSender(IOptions<AuthOptions> configuration, TimeProvider clock,
+    public GmailApiVerificationEmailSender(
+        IOptions<GmailApiOptions> gmailApiOptions,
+        TimeProvider clock,
         Google.Apis.Http.IHttpClientFactory httpClientFactory)
     {
-        options = configuration.Value.GmailApi;
+        options = gmailApiOptions.Value;
         flow = new(new GoogleAuthorizationCodeFlow.Initializer
         {
             ClientSecrets = new ClientSecrets { ClientId = options.ClientId, ClientSecret = options.ClientSecret },

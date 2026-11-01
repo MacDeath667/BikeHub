@@ -1,229 +1,141 @@
-using Npgsql;
+using BikeHub.Dal;
+using BikeHub.Dal.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace BikeHub.Api.Authentication;
 
-public sealed class PostgresAuthenticationStore(string connectionString) : IAuthenticationStore, IAsyncDisposable
+public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbContext> contexts) : IAuthenticationStore
 {
-    private const string CheckDeliveryLimitsSql = """
-        SELECT NOT EXISTS (
-            SELECT 1 FROM auth_email_challenges WHERE email = @email AND created_at > @cooldown
-        ) AND (
-            SELECT count(*) FROM auth_email_challenges WHERE email = @email AND created_at > @hour
-        ) < @per_email AND (
-            SELECT count(*) FROM auth_email_challenges WHERE created_at > @day
-        ) < @per_day
-        """;
-
-    private const string InvalidateChallengesSql = """
-        UPDATE auth_email_challenges SET consumed = true
-        WHERE NOT consumed AND (email = @email OR binding_hash = @binding)
-        """;
-
-    private const string InsertChallengeSql = """
-        INSERT INTO auth_email_challenges
-            (id, email, display_name, code_hash, binding_hash, created_at, expires_at)
-        VALUES (@id, @email, @name, @hash, @binding, @created, @expires)
-        """;
-
-    private const string SetDeliveredSql = """
-        UPDATE auth_email_challenges SET delivered = @delivered, consumed = consumed OR NOT @delivered WHERE id = @id
-        """;
-
-    private const string SelectChallengeSql = """
-        SELECT id,email,display_name,code_hash,binding_hash,created_at,expires_at,attempts,delivered,consumed
-        FROM auth_email_challenges WHERE id = @id FOR UPDATE
-        """;
-
-    private const string RecordAttemptSql = """
-        UPDATE auth_email_challenges SET attempts = attempts + 1, consumed = @valid WHERE id = @id
-        """;
-
-    private const string CreateAccountSql = """
-        INSERT INTO auth_accounts(id,email,display_name,email_confirmed_at,created_at)
-        VALUES (@id,@email,@name,@now,@now) ON CONFLICT(email) DO NOTHING
-        """;
-
-    private const string InsertSessionSql = """
-        INSERT INTO auth_sessions(id,account_id,created_at,expires_at) VALUES (@id,@account,@now,@expires)
-        """;
-
-    private const string GetSessionSql = """
-        SELECT s.id,s.expires_at,a.id,a.email,a.display_name,a.email_confirmed_at
-        FROM auth_sessions s JOIN auth_accounts a ON a.id = s.account_id
-        WHERE s.id = @id AND s.expires_at > @now
-        """;
-
-    private const string CleanupSql = """
-        DELETE FROM auth_email_challenges WHERE created_at < @day;
-        DELETE FROM auth_sessions WHERE expires_at <= @now;
-        """;
-
     private const string AcquireDeliveryLockSql = "SELECT pg_advisory_xact_lock(743802319)";
-
-    private const string FindAccountByEmailSql = "SELECT id,email,display_name,email_confirmed_at FROM auth_accounts WHERE email = @email";
-
-    private const string FindAccountByIdSql = "SELECT id,email,display_name,email_confirmed_at FROM auth_accounts WHERE id = @id";
-
-    private const string RevokeSessionSql = "DELETE FROM auth_sessions WHERE id = @id";
-
-    private readonly NpgsqlDataSource source = NpgsqlDataSource.Create(connectionString);
+    // Two-key advisory locks use a separate namespace from the global one-key delivery lock.
+    private const string AcquireAccountLockSql = "SELECT pg_advisory_xact_lock(1112099653, hashtext({0}))";
+    private const string SelectChallengeForUpdateSql = "SELECT * FROM auth_email_challenges WHERE id = {0} FOR UPDATE";
 
     public async Task<bool> TryCreateChallengeAsync(EmailChallenge value, AuthOptions limits, CancellationToken cancellationToken)
     {
-        await using var connection = await source.OpenConnectionAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        // Serialize issuance, including the global delivery budget, across API replicas.
-        await using (var mutex = new NpgsqlCommand(AcquireDeliveryLockSql, connection, transaction))
+        await using var context = await contexts.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        await context.Database.ExecuteSqlRawAsync(AcquireDeliveryLockSql, cancellationToken);
+        var cooldown = value.CreatedAt.AddSeconds(-limits.ResendSeconds);
+        var hour = value.CreatedAt.AddHours(-1);
+        var day = value.CreatedAt.AddDays(-1);
+        if (await context.EmailChallenges.AnyAsync(c => c.Email == value.Email && c.CreatedAt > cooldown, cancellationToken) ||
+            await context.EmailChallenges.CountAsync(c => c.Email == value.Email && c.CreatedAt > hour, cancellationToken) >= limits.MaxPerEmailHour ||
+            await context.EmailChallenges.CountAsync(c => c.CreatedAt > day, cancellationToken) >= limits.MaxPerDay)
         {
-            await mutex.ExecuteNonQueryAsync(cancellationToken);
+            return false;
         }
-
-        await using (var check = new NpgsqlCommand(CheckDeliveryLimitsSql, connection, transaction))
+        await context.EmailChallenges.Where(c => !c.Consumed && (c.Email == value.Email || c.BindingHash == value.BindingHash))
+            .ExecuteUpdateAsync(update => update.SetProperty(c => c.Consumed, true), cancellationToken);
+        context.EmailChallenges.Add(new EmailChallengeEntity
         {
-            check.Parameters.AddWithValue("email", value.Email);
-            check.Parameters.AddWithValue("cooldown", value.CreatedAt.AddSeconds(-limits.ResendSeconds));
-            check.Parameters.AddWithValue("hour", value.CreatedAt.AddHours(-1));
-            check.Parameters.AddWithValue("day", value.CreatedAt.AddDays(-1));
-            check.Parameters.AddWithValue("per_email", limits.MaxPerEmailHour);
-            check.Parameters.AddWithValue("per_day", limits.MaxPerDay);
-            if (await check.ExecuteScalarAsync(cancellationToken) is not true)
-            {
-                return false;
-            }
-        }
-        await using (var invalidate = new NpgsqlCommand(InvalidateChallengesSql, connection, transaction))
-        {
-            invalidate.Parameters.AddWithValue("email", value.Email);
-            invalidate.Parameters.AddWithValue("binding", value.BindingHash);
-            await invalidate.ExecuteNonQueryAsync(cancellationToken);
-        }
-        await using (var insert = new NpgsqlCommand(InsertChallengeSql, connection, transaction))
-        {
-            insert.Parameters.AddWithValue("id", value.Id);
-            insert.Parameters.AddWithValue("email", value.Email);
-            insert.Parameters.AddWithValue("name", value.DisplayName);
-            insert.Parameters.AddWithValue("hash", value.CodeHash);
-            insert.Parameters.AddWithValue("binding", value.BindingHash);
-            insert.Parameters.AddWithValue("created", value.CreatedAt);
-            insert.Parameters.AddWithValue("expires", value.ExpiresAt);
-            await insert.ExecuteNonQueryAsync(cancellationToken);
-        }
+            Id = value.Id,
+            Email = value.Email,
+            DisplayName = value.DisplayName,
+            CodeHash = value.CodeHash,
+            BindingHash = value.BindingHash,
+            CreatedAt = value.CreatedAt,
+            ExpiresAt = value.ExpiresAt
+        });
+        await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return true;
     }
 
     public async Task SetDeliveredAsync(Guid id, bool delivered, CancellationToken cancellationToken)
     {
-        await using var command = source.CreateCommand(SetDeliveredSql);
-        command.Parameters.AddWithValue("id", id);
-        command.Parameters.AddWithValue("delivered", delivered);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await using var context = await contexts.CreateDbContextAsync(cancellationToken);
+        await context.EmailChallenges.Where(c => c.Id == id).ExecuteUpdateAsync(update => update
+            .SetProperty(c => c.Delivered, delivered)
+            .SetProperty(c => c.Consumed, c => c.Consumed || !delivered), cancellationToken);
     }
 
     public async Task<ConfirmationResult> ConfirmAsync(Guid id, string codeHash, string bindingHash,
         DateTimeOffset now, DateTimeOffset sessionExpiresAt, int maxAttempts, CancellationToken cancellationToken)
     {
-        await using var connection = await source.OpenConnectionAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        EmailChallenge? value;
-        await using (var select = new NpgsqlCommand(SelectChallengeSql, connection, transaction))
-        {
-            select.Parameters.AddWithValue("id", id);
-            await using var reader = await select.ExecuteReaderAsync(cancellationToken);
-            value = await reader.ReadAsync(cancellationToken)
-                ? new(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
-                    reader.GetFieldValue<DateTimeOffset>(5), reader.GetFieldValue<DateTimeOffset>(6), reader.GetInt32(7),
-                    reader.GetBoolean(8), reader.GetBoolean(9)) : null;
-        }
+        await using var context = await contexts.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        var value = await context.EmailChallenges.FromSqlRaw(SelectChallengeForUpdateSql, id)
+            .SingleOrDefaultAsync(cancellationToken);
         if (value is null || value.Consumed || !value.Delivered || value.ExpiresAt <= now ||
             !OtpSecurity.EqualsHash(value.BindingHash, bindingHash))
         {
             return new(null, ConfirmationFailure.Invalid);
         }
-
         if (value.Attempts >= maxAttempts)
         {
             return new(null, ConfirmationFailure.TooManyAttempts);
         }
-
         var valid = OtpSecurity.EqualsHash(value.CodeHash, codeHash);
-        await using (var update = new NpgsqlCommand(RecordAttemptSql, connection, transaction))
-        {
-            update.Parameters.AddWithValue("id", id);
-            update.Parameters.AddWithValue("valid", valid);
-            await update.ExecuteNonQueryAsync(cancellationToken);
-        }
+        value.Attempts++;
+        value.Consumed = valid;
+        await context.SaveChangesAsync(cancellationToken);
         if (!valid)
         {
             await transaction.CommitAsync(cancellationToken);
-            return new(null, value.Attempts + 1 >= maxAttempts ? ConfirmationFailure.TooManyAttempts : ConfirmationFailure.Invalid);
+            return new(null, value.Attempts >= maxAttempts ? ConfirmationFailure.TooManyAttempts : ConfirmationFailure.Invalid);
         }
-        await using (var account = new NpgsqlCommand(CreateAccountSql, connection, transaction))
+
+        // Separate valid challenges for the same email must converge on a single account.
+        await context.Database.ExecuteSqlRawAsync(AcquireAccountLockSql, new object[] { value.Email }, cancellationToken);
+        var account = await context.Accounts.SingleOrDefaultAsync(a => a.Email == value.Email, cancellationToken);
+        if (account is null)
         {
-            account.Parameters.AddWithValue("id", Guid.CreateVersion7());
-            account.Parameters.AddWithValue("email", value.Email);
-            account.Parameters.AddWithValue("name", value.DisplayName);
-            account.Parameters.AddWithValue("now", now);
-            await account.ExecuteNonQueryAsync(cancellationToken);
+            account = new AuthAccountEntity
+            {
+                Id = Guid.CreateVersion7(),
+                Email = value.Email,
+                DisplayName = value.DisplayName,
+                EmailConfirmedAt = now,
+                CreatedAt = now
+            };
+            context.Accounts.Add(account);
         }
-        AuthAccount user;
-        await using (var account = new NpgsqlCommand(
-            FindAccountByEmailSql, connection, transaction))
+        var session = new AuthSessionEntity
         {
-            account.Parameters.AddWithValue("email", value.Email);
-            await using var reader = await account.ExecuteReaderAsync(cancellationToken);
-            await reader.ReadAsync(cancellationToken);
-            user = ReadAccount(reader, 0);
-        }
-        var session = new AuthSession(Guid.NewGuid(), user, sessionExpiresAt);
-        await using (var insert = new NpgsqlCommand(InsertSessionSql, connection, transaction))
-        {
-            insert.Parameters.AddWithValue("id", session.Id);
-            insert.Parameters.AddWithValue("account", user.Id);
-            insert.Parameters.AddWithValue("now", now);
-            insert.Parameters.AddWithValue("expires", sessionExpiresAt);
-            await insert.ExecuteNonQueryAsync(cancellationToken);
-        }
+            Id = Guid.NewGuid(),
+            AccountId = account.Id,
+            Account = account,
+            CreatedAt = now,
+            ExpiresAt = sessionExpiresAt
+        };
+        context.Sessions.Add(session);
+        await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new(session, ConfirmationFailure.None);
+        return new(new AuthSession(session.Id, MapAccount(account), session.ExpiresAt), ConfirmationFailure.None);
     }
 
     public async Task<AuthSession?> GetSessionAsync(Guid id, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        await using var command = source.CreateCommand(GetSessionSql);
-        command.Parameters.AddWithValue("id", id);
-        command.Parameters.AddWithValue("now", now);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken)
-            ? new(reader.GetGuid(0), ReadAccount(reader, 2), reader.GetFieldValue<DateTimeOffset>(1)) : null;
+        await using var context = await contexts.CreateDbContextAsync(cancellationToken);
+        var session = await context.Sessions.AsNoTracking().Include(s => s.Account)
+            .SingleOrDefaultAsync(s => s.Id == id && s.ExpiresAt > now, cancellationToken);
+        return session is null ? null : new(session.Id, MapAccount(session.Account), session.ExpiresAt);
     }
 
     public async Task<AuthAccount?> GetAccountAsync(Guid id, CancellationToken cancellationToken)
     {
-        await using var command = source.CreateCommand(FindAccountByIdSql);
-        command.Parameters.AddWithValue("id", id);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadAccount(reader, 0) : null;
+        await using var context = await contexts.CreateDbContextAsync(cancellationToken);
+        var account = await context.Accounts.AsNoTracking().SingleOrDefaultAsync(a => a.Id == id, cancellationToken);
+        return account is null ? null : MapAccount(account);
     }
 
     public async Task RevokeSessionAsync(Guid id, CancellationToken cancellationToken)
     {
-        await using var command = source.CreateCommand(RevokeSessionSql);
-        command.Parameters.AddWithValue("id", id);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await using var context = await contexts.CreateDbContextAsync(cancellationToken);
+        await context.Sessions.Where(s => s.Id == id).ExecuteDeleteAsync(cancellationToken);
     }
 
     public async Task CleanupAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
-        await using var command = source.CreateCommand(CleanupSql);
-        command.Parameters.AddWithValue("day", now.AddDays(-1));
-        command.Parameters.AddWithValue("now", now);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await using var context = await contexts.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+        var day = now.AddDays(-1);
+        await context.EmailChallenges.Where(c => c.CreatedAt < day).ExecuteDeleteAsync(cancellationToken);
+        await context.Sessions.Where(s => s.ExpiresAt <= now).ExecuteDeleteAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
-    private static AuthAccount ReadAccount(NpgsqlDataReader reader, int offset) => new(
-        reader.GetGuid(offset), reader.GetString(offset + 1), reader.GetString(offset + 2),
-        reader.GetFieldValue<DateTimeOffset>(offset + 3));
-
-    public ValueTask DisposeAsync() => source.DisposeAsync();
+    private static AuthAccount MapAccount(AuthAccountEntity value) =>
+        new(value.Id, value.Email, value.DisplayName, value.EmailConfirmedAt);
 }

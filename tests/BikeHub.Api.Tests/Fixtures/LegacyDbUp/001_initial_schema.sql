@@ -1,4 +1,4 @@
-﻿
+
 CREATE TABLE bikes
 (
     id UUID PRIMARY KEY,

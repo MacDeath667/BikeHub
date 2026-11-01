@@ -1,12 +1,16 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
+using BikeHub.Dal;
+using Microsoft.EntityFrameworkCore;
 
 namespace BikeHub.Api.Authentication;
 
 public static class AuthenticationExtensions
 {
     private const string ConfigurationSection = "Authentication";
+    private const string SmtpConfigurationSection = "Smtp";
+    private const string GmailApiConfigurationSection = "GmailApi";
     private const string GoogleClientIdSuffix = ".apps.googleusercontent.com";
     private const string AuthenticationLimitsMessage = "Authentication limits are invalid.";
     private const string UnsupportedAuthenticationMessage = "Select a supported authentication store and email provider.";
@@ -25,61 +29,67 @@ public static class AuthenticationExtensions
     public static WebApplicationBuilder AddBikeHubAuthentication(this WebApplicationBuilder builder)
     {
         var section = builder.Configuration.GetSection(ConfigurationSection);
-        var settings = section.Get<AuthOptions>() ?? new();
+        var smtpSection = builder.Configuration.GetSection(SmtpConfigurationSection);
+        var gmailApiSection = builder.Configuration.GetSection(GmailApiConfigurationSection);
+        var smtpOptions = smtpSection.Get<SmtpOptions>() ?? new();
+        var authOptions = section.Get<AuthOptions>() ?? new();
+        var gmailApiOptions = gmailApiSection.Get<GmailApiOptions>() ?? new();
         var development = builder.Environment.IsDevelopment();
-        if (settings.Enabled)
+        if (authOptions.Enabled)
         {
-            if (settings.CodeMinutes is < 1 or > 15 || settings.MaxAttempts is < 1 or > 10 ||
-                settings.ResendSeconds is < 1 or > 3600 || settings.SessionDays is < 1 or > 30 ||
-                settings.MaxPerEmailHour is < 1 or > 20 || settings.MaxPerDay is < 1 or > 10_000)
+            if (authOptions.CodeMinutes is < 1 or > 15 || authOptions.MaxAttempts is < 1 or > 10 ||
+                authOptions.ResendSeconds is < 1 or > 3600 || authOptions.SessionDays is < 1 or > 30 ||
+                authOptions.MaxPerEmailHour is < 1 or > 20 || authOptions.MaxPerDay is < 1 or > 10_000)
             {
                 throw new InvalidOperationException(AuthenticationLimitsMessage);
             }
 
-            if (settings.Store is not (Constants.AuthenticationStores.Memory or Constants.AuthenticationStores.Postgres) ||
-                settings.EmailProvider is not (Constants.EmailProviders.Development or Constants.EmailProviders.Smtp or Constants.EmailProviders.GmailApi))
+            if (authOptions.Store is not (Constants.AuthenticationStores.Memory or Constants.AuthenticationStores.Postgres) ||
+                authOptions.EmailProvider is not (Constants.EmailProviders.Development or Constants.EmailProviders.Smtp or Constants.EmailProviders.GmailApi))
             {
                 throw new InvalidOperationException(UnsupportedAuthenticationMessage);
             }
 
-            if (!development && (settings.Store != Constants.AuthenticationStores.Postgres || settings.EmailProvider == Constants.EmailProviders.Development ||
-                                 settings.OtpSecret.Length < 32 || !Path.IsPathFullyQualified(settings.DataProtectionPath)))
+            if (!development && (authOptions.Store != Constants.AuthenticationStores.Postgres || authOptions.EmailProvider == Constants.EmailProviders.Development ||
+                                 authOptions.OtpSecret.Length < 32 || !Path.IsPathFullyQualified(authOptions.DataProtectionPath)))
             {
                 throw new InvalidOperationException(ProductionConfigurationMessage);
             }
 
-            if (settings.Store == Constants.AuthenticationStores.Postgres &&
+            if (authOptions.Store == Constants.AuthenticationStores.Postgres &&
                 string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString(BikeHub.Dal.Constants.ConnectionStringName)))
             {
                 throw new InvalidOperationException(ConnectionStringMessage);
             }
 
-            if (settings.EmailProvider == Constants.EmailProviders.Smtp && (string.IsNullOrWhiteSpace(settings.Smtp.Host) ||
-                settings.Smtp.Port is < 1 or > 65535 || settings.Smtp.Security is not (Constants.SmtpSecurity.StartTls or Constants.SmtpSecurity.SslOnConnect) ||
-                string.IsNullOrWhiteSpace(settings.Smtp.Username) || string.IsNullOrWhiteSpace(settings.Smtp.Password) ||
-                OtpSecurity.NormalizeEmail(settings.Smtp.FromAddress) is null))
+            if (authOptions.EmailProvider == Constants.EmailProviders.Smtp && (string.IsNullOrWhiteSpace(smtpOptions.Host) ||
+                smtpOptions.Port is < 1 or > 65535 || smtpOptions.Security is not (Constants.SmtpSecurity.StartTls or Constants.SmtpSecurity.SslOnConnect) ||
+                string.IsNullOrWhiteSpace(smtpOptions.Username) || string.IsNullOrWhiteSpace(smtpOptions.Password) ||
+                OtpSecurity.NormalizeEmail(smtpOptions.FromAddress) is null))
             {
                 throw new InvalidOperationException(SmtpConfigurationMessage);
             }
 
-            if (settings.EmailProvider == Constants.EmailProviders.GmailApi && (string.IsNullOrWhiteSpace(settings.GmailApi.ClientId) ||
-                !settings.GmailApi.ClientId.EndsWith(GoogleClientIdSuffix, StringComparison.Ordinal) ||
-                string.IsNullOrWhiteSpace(settings.GmailApi.ClientSecret) || string.IsNullOrWhiteSpace(settings.GmailApi.RefreshToken) ||
-                OtpSecurity.NormalizeEmail(settings.GmailApi.FromAddress) is null))
+            if (authOptions.EmailProvider == Constants.EmailProviders.GmailApi && (string.IsNullOrWhiteSpace(gmailApiOptions.ClientId) ||
+                !gmailApiOptions.ClientId.EndsWith(GoogleClientIdSuffix, StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(gmailApiOptions.ClientSecret) || string.IsNullOrWhiteSpace(gmailApiOptions.RefreshToken) ||
+                OtpSecurity.NormalizeEmail(gmailApiOptions.FromAddress) is null))
             {
                 throw new InvalidOperationException(GmailConfigurationMessage);
             }
         }
         builder.Services.Configure<AuthOptions>(section);
+        builder.Services.Configure<SmtpOptions>(smtpSection);
+        builder.Services.Configure<GmailApiOptions>(gmailApiSection);
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<OtpSecurity>();
         builder.Services.AddSingleton<DevelopmentMessages>();
         builder.Services.AddSingleton<IAuthenticationStore>(services =>
-            settings.Enabled && settings.Store == Constants.AuthenticationStores.Postgres
-                ? new PostgresAuthenticationStore(builder.Configuration.GetConnectionString(BikeHub.Dal.Constants.ConnectionStringName)!)
+            authOptions.Enabled && authOptions.Store == Constants.AuthenticationStores.Postgres
+                ? new PostgresAuthenticationStore(services.GetRequiredService<IDbContextFactory<BikeHubDbContext>>())
                 : new InMemoryAuthenticationStore());
         builder.Services.AddSingleton<Google.Apis.Http.IHttpClientFactory, Google.Apis.Http.HttpClientFactory>();
-        builder.Services.AddSingleton<IVerificationEmailSender>(services => settings.EmailProvider switch
+        builder.Services.AddSingleton<IVerificationEmailSender>(services => authOptions.EmailProvider switch
         {
             Constants.EmailProviders.Development => ActivatorUtilities.CreateInstance<DevelopmentEmailSender>(services),
             Constants.EmailProviders.GmailApi => ActivatorUtilities.CreateInstance<GmailApiVerificationEmailSender>(services),
@@ -93,13 +103,13 @@ public static class AuthenticationExtensions
         builder.Services.AddHostedService<AuthenticationCleanup>();
 
         var protection = builder.Services.AddDataProtection().SetApplicationName(Constants.AuthenticationName);
-        if (string.IsNullOrWhiteSpace(settings.DataProtectionPath))
+        if (string.IsNullOrWhiteSpace(authOptions.DataProtectionPath))
         {
             protection.UseEphemeralDataProtectionProvider();
         }
         else
         {
-            var directory = new DirectoryInfo(settings.DataProtectionPath);
+            var directory = new DirectoryInfo(authOptions.DataProtectionPath);
             if (!directory.Exists)
             {
                 if (OperatingSystem.IsWindows())
@@ -124,7 +134,7 @@ public static class AuthenticationExtensions
             options.Cookie.SameSite = SameSiteMode.Lax;
             options.Cookie.Path = Constants.CookiePath;
             options.SlidingExpiration = false;
-            options.ExpireTimeSpan = TimeSpan.FromDays(settings.SessionDays);
+            options.ExpireTimeSpan = TimeSpan.FromDays(authOptions.SessionDays);
             options.EventsType = typeof(SessionCookieEvents);
         });
         builder.Services.AddAuthorization(options =>
@@ -133,11 +143,11 @@ public static class AuthenticationExtensions
         builder.Services.AddAntiforgery(options =>
         {
             options.HeaderName = CsrfHeaderName;
-            options.Cookie.Name = development || !settings.Enabled ? CsrfCookieName : SecureCsrfCookieName;
+            options.Cookie.Name = development || !authOptions.Enabled ? CsrfCookieName : SecureCsrfCookieName;
             options.Cookie.HttpOnly = true;
             options.Cookie.Path = Constants.CookiePath;
             options.Cookie.SameSite = SameSiteMode.Strict;
-            options.Cookie.SecurePolicy = settings.Enabled ? secure : CookieSecurePolicy.SameAsRequest;
+            options.Cookie.SecurePolicy = authOptions.Enabled ? secure : CookieSecurePolicy.SameAsRequest;
         });
         builder.Services.AddRateLimiter(options =>
         {

@@ -1,6 +1,6 @@
 using BikeHub.Api.Authentication;
 using BikeHub.Dal;
-using Npgsql;
+using Microsoft.EntityFrameworkCore;
 
 namespace BikeHub.Api.Tests;
 
@@ -15,6 +15,7 @@ public sealed class PostgresFactAttribute : FactAttribute
     }
 }
 
+[Collection("Postgres persistence")]
 public sealed class AuthenticationStoreTests
 {
     [Fact]
@@ -23,35 +24,10 @@ public sealed class AuthenticationStoreTests
     [PostgresFact]
     public async Task Postgres_migration_and_store_obey_the_authentication_contract()
     {
-        var connectionString = Environment.GetEnvironmentVariable("BIKEHUB_TEST_POSTGRES")!;
-        var schema = "auth_test_" + Guid.NewGuid().ToString("N");
-        await using var admin = NpgsqlDataSource.Create(connectionString);
-        await using (var create = admin.CreateCommand($"CREATE SCHEMA {schema}"))
-        {
-            await create.ExecuteNonQueryAsync();
-        }
-
-        try
-        {
-            var scoped = new NpgsqlConnectionStringBuilder(connectionString) { SearchPath = schema }.ConnectionString;
-            await using (var source = NpgsqlDataSource.Create(scoped))
-            {
-                var assembly = typeof(DatabaseMigrator).Assembly;
-                var name = assembly.GetManifestResourceNames().Single(n => n.EndsWith("003_email_authentication.sql"));
-                using var sql = new StreamReader(assembly.GetManifestResourceStream(name)!);
-                await using var migrate = source.CreateCommand(await sql.ReadToEndAsync());
-                await migrate.ExecuteNonQueryAsync();
-            }
-            await using (var store = new PostgresAuthenticationStore(scoped))
-            {
-                await VerifyContract(store);
-            }
-        }
-        finally
-        {
-            await using var drop = admin.CreateCommand($"DROP SCHEMA {schema} CASCADE");
-            await drop.ExecuteNonQueryAsync();
-        }
+        await using var database = await PersistenceTestDatabase.CreateAsync();
+        await using var context = database.CreateDbContext();
+        await context.Database.MigrateAsync();
+        await VerifyContract(new PostgresAuthenticationStore(database));
     }
 
     private static async Task VerifyContract(IAuthenticationStore store)
