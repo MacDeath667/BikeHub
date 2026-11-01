@@ -15,6 +15,7 @@ EXPOSE 8081
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS sdk
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
+COPY .editorconfig Directory.Build.props ./
 
 # 1. Копируем всю папку с исходниками
 COPY src/ ./src/

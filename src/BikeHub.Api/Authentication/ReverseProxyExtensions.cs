@@ -5,9 +5,11 @@ namespace BikeHub.Api.Authentication;
 
 public static class ReverseProxyExtensions
 {
+    private const string KnownProxiesKey = "ReverseProxy:KnownProxies";
+
     public static void AddBikeHubReverseProxy(this WebApplicationBuilder builder)
     {
-        var proxies = builder.Configuration.GetSection("ReverseProxy:KnownProxies").Get<string[]>() ?? [];
+        var proxies = builder.Configuration.GetSection(KnownProxiesKey).Get<string[]>() ?? [];
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
         {
             // nginx terminates TLS; client IP/host headers are deliberately not trusted.
@@ -15,7 +17,10 @@ public static class ReverseProxyExtensions
             options.ForwardLimit = 1;
             options.KnownIPNetworks.Clear();
             options.KnownProxies.Clear();
-            foreach (var proxy in proxies) options.KnownProxies.Add(IPAddress.Parse(proxy));
+            foreach (var proxy in proxies)
+            {
+                options.KnownProxies.Add(IPAddress.Parse(proxy));
+            }
         });
     }
 }

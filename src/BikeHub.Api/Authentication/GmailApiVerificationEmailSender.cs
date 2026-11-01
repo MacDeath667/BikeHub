@@ -12,6 +12,31 @@ namespace BikeHub.Api.Authentication;
 
 public sealed class GmailApiVerificationEmailSender : IVerificationEmailSender, IDisposable
 {
+    private const string SenderCredentialId = "bikehub-mail-sender";
+    private const string CurrentMailboxId = "me";
+    private const string MessageIdField = "id";
+    private const string InvalidGrantError = "invalid_grant";
+    private const string InvalidClientError = "invalid_client";
+    private const string AccessDeniedError = "access_denied";
+    private const string InvalidScopeError = "invalid_scope";
+    private const string OAuthError = "oauth_error";
+    private const string AccessNotConfiguredReason = "accessNotConfigured";
+    private const string ServiceDisabledReason = "serviceDisabled";
+    private const string InsufficientPermissionsReason = "insufficientPermissions";
+    private const string DomainPolicyReason = "domainPolicy";
+    private const string MailServiceNotEnabledReason = "mailServiceNotEnabled";
+    private const string DailyLimitExceededReason = "dailyLimitExceeded";
+    private const string UserRateLimitExceededReason = "userRateLimitExceeded";
+    private const string RateLimitExceededReason = "rateLimitExceeded";
+    private const string ApiDisabledFailure = "gmail_api_disabled";
+    private const string ScopeInsufficientFailure = "gmail_scope_insufficient";
+    private const string DomainPolicyFailure = "gmail_domain_policy";
+    private const string MailboxUnavailableFailure = "gmail_mailbox_unavailable";
+    private const string DailyLimitFailure = "gmail_daily_limit";
+    private const string PermissionDeniedFailure = "gmail_permission_denied";
+    private const string ApiFailure = "gmail_api_error";
+    private const int OperationTimeoutSeconds = 20;
+
     private readonly GmailApiOptions options;
     private readonly GoogleAuthorizationCodeFlow flow;
     private readonly UserCredential credential;
@@ -30,10 +55,10 @@ public sealed class GmailApiVerificationEmailSender : IVerificationEmailSender, 
             Clock = new GoogleClock(clock),
             DefaultExponentialBackOffPolicy = ExponentialBackOffPolicy.None
         });
-        credential = new(flow, "bikehub-mail-sender", new TokenResponse { RefreshToken = options.RefreshToken });
+        credential = new(flow, SenderCredentialId, new TokenResponse { RefreshToken = options.RefreshToken });
         gmail = new(new BaseClientService.Initializer
         {
-            ApplicationName = "BikeHub",
+            ApplicationName = Constants.ApplicationName,
             HttpClientInitializer = credential,
             HttpClientFactory = httpClientFactory,
             DefaultExponentialBackOffPolicy = ExponentialBackOffPolicy.None
@@ -43,26 +68,26 @@ public sealed class GmailApiVerificationEmailSender : IVerificationEmailSender, 
     public async Task SendAsync(VerificationMessage message, CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(20));
-        var stage = "oauth";
+        timeout.CancelAfter(TimeSpan.FromSeconds(OperationTimeoutSeconds));
+        var stage = Constants.EmailTransport.OAuthStage;
         try
         {
             // The Google SDK caches the access token and refreshes it using the in-memory credential.
             await credential.GetAccessTokenForRequestAsync(cancellationToken: timeout.Token);
-            stage = "send";
+            stage = Constants.EmailTransport.SendStage;
             using var mail = VerificationEmail.Create(options.FromAddress, options.FromName, message);
             await using var bytes = new MemoryStream();
             await mail.WriteToAsync(bytes, timeout.Token);
             var raw = Convert.ToBase64String(bytes.ToArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-            var request = gmail.Users.Messages.Send(new GmailMessage { Raw = raw }, "me");
-            request.Fields = "id";
+            var request = gmail.Users.Messages.Send(new GmailMessage { Raw = raw }, CurrentMailboxId);
+            request.Fields = MessageIdField;
             await request.ExecuteAsync(timeout.Token);
         }
         catch (TokenResponseException error)
         {
-            var reason = error.Error?.Error is "invalid_grant" or "invalid_client" or "access_denied" or "invalid_scope"
-                ? error.Error.Error : "oauth_error";
-            throw new EmailTransportException("oauth", error.GetType().Name, reason,
+            var reason = error.Error?.Error is InvalidGrantError or InvalidClientError or AccessDeniedError or InvalidScopeError
+                ? error.Error.Error : OAuthError;
+            throw new EmailTransportException(Constants.EmailTransport.OAuthStage, error.GetType().Name, reason,
                 error.StatusCode.HasValue ? (int)error.StatusCode.Value : null, null);
         }
         catch (GoogleApiException error)
@@ -83,22 +108,25 @@ public sealed class GmailApiVerificationEmailSender : IVerificationEmailSender, 
         {
             var reason = detail.Reason switch
             {
-                "accessNotConfigured" or "serviceDisabled" => "gmail_api_disabled",
-                "insufficientPermissions" => "gmail_scope_insufficient",
-                "domainPolicy" => "gmail_domain_policy",
-                "mailServiceNotEnabled" => "gmail_mailbox_unavailable",
-                "dailyLimitExceeded" => "gmail_daily_limit",
-                "userRateLimitExceeded" or "rateLimitExceeded" => "gmail_rate_limited",
+                AccessNotConfiguredReason or ServiceDisabledReason => ApiDisabledFailure,
+                InsufficientPermissionsReason => ScopeInsufficientFailure,
+                DomainPolicyReason => DomainPolicyFailure,
+                MailServiceNotEnabledReason => MailboxUnavailableFailure,
+                DailyLimitExceededReason => DailyLimitFailure,
+                UserRateLimitExceededReason or RateLimitExceededReason => Constants.EmailTransport.GmailRateLimited,
                 _ => null
             };
-            if (reason is not null) return reason;
+            if (reason is not null)
+            {
+                return reason;
+            }
         }
         return error.HttpStatusCode switch
         {
-            System.Net.HttpStatusCode.Unauthorized => "auth_rejected",
-            System.Net.HttpStatusCode.Forbidden => "gmail_permission_denied",
-            System.Net.HttpStatusCode.TooManyRequests => "gmail_rate_limited",
-            _ => "gmail_api_error"
+            System.Net.HttpStatusCode.Unauthorized => Constants.EmailTransport.AuthenticationRejected,
+            System.Net.HttpStatusCode.Forbidden => PermissionDeniedFailure,
+            System.Net.HttpStatusCode.TooManyRequests => Constants.EmailTransport.GmailRateLimited,
+            _ => ApiFailure
         };
     }
 

@@ -10,7 +10,7 @@ public sealed class BikesController(IBikeService service) : ControllerBase
 {
     [HttpGet]
     public ActionResult<Page<BikeDto>> Get([FromQuery] PaginationQuery paging,
-        [FromQuery] string? q, [FromQuery] string? category, [FromQuery] Guid? ownerId) =>
+        [FromQuery] string? q, [FromQuery] BikeCategory? category, [FromQuery] Guid? ownerId) =>
         Ok(service.GetBikes(q, category, ownerId, paging.Page, paging.PageSize));
 
     [HttpGet("{id:guid}")]

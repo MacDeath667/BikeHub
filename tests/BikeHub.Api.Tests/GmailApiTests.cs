@@ -15,8 +15,10 @@ public sealed class GmailApiTests
     {
         GmailApi = new()
         {
-            ClientId = "test.apps.googleusercontent.com", ClientSecret = "private-client-secret",
-            RefreshToken = "private-refresh-token", FromAddress = "sender@example.test"
+            ClientId = "test.apps.googleusercontent.com",
+            ClientSecret = "private-client-secret",
+            RefreshToken = "private-refresh-token",
+            FromAddress = "sender@example.test"
         }
     };
     private static VerificationMessage Message() => new(Guid.NewGuid(), "recipient@example.test", "123456",
@@ -165,11 +167,22 @@ public sealed class GmailApiTests
                 using var reader = new StreamReader(decoded, Encoding.UTF8);
                 body = await reader.ReadToEndAsync(cancellationToken);
             }
-            else body = await request.Content.ReadAsStringAsync(cancellationToken);
+            else
+            {
+                body = await request.Content.ReadAsStringAsync(cancellationToken);
+            }
+
             Messages.Add(new(request.Headers.Authorization?.ToString(), body));
             return SendStatus == HttpStatusCode.OK ? Json(SendStatus, new { id = "test-message-id" })
-                : Json(SendStatus, new { error = new { code = (int)SendStatus, message = "recipient@example.test 123456",
-                    errors = new[] { new { reason = SendReason, message = "recipient@example.test 123456", domain = "global" } } } });
+                : Json(SendStatus, new
+                {
+                    error = new
+                    {
+                        code = (int)SendStatus,
+                        message = "recipient@example.test 123456",
+                        errors = new[] { new { reason = SendReason, message = "recipient@example.test 123456", domain = "global" } }
+                    }
+                });
         }
         private static HttpResponseMessage Json(HttpStatusCode status, object body) => new(status)
         { Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json") };

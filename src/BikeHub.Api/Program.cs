@@ -1,3 +1,4 @@
+using Constants = BikeHub.Api.Constants;
 using BikeHub.Api.Middleware;
 using BikeHub.Api.Authentication;
 using BikeHub.Api.Observability;
@@ -5,15 +6,15 @@ using BikeHub.Api.Services;
 using BikeHub.Application.Community;
 using BikeHub.Dal;
 
-var migrationsOnly = args.Contains("--migrate-only", StringComparer.Ordinal);
+var migrationsOnly = args.Contains(Constants.MigrateOnlyArgument, StringComparer.Ordinal);
 var builder = WebApplication.CreateBuilder(
-    args.Where(argument => !string.Equals(argument, "--migrate-only", StringComparison.Ordinal)).ToArray());
+    args.Where(argument => !string.Equals(argument, Constants.MigrateOnlyArgument, StringComparison.Ordinal)).ToArray());
 
-var bootstrapEnabled = builder.Configuration.GetValue("Database:BootstrapEnabled", true);
-var migrationsEnabled = builder.Configuration.GetValue("Database:MigrationsEnabled", true);
+var bootstrapEnabled = builder.Configuration.GetValue(Program.DatabaseBootstrapEnabledKey, true);
+var migrationsEnabled = builder.Configuration.GetValue(Program.DatabaseMigrationsEnabledKey, true);
 if (bootstrapEnabled || migrationsEnabled || migrationsOnly)
 {
-    builder.AddDapper("BikeHub");
+    builder.AddDapper(BikeHub.Dal.Constants.ConnectionStringName);
     builder.Services.AddSingleton<DatabaseMigrator>();
     builder.Services.AddSingleton<DatabaseBootstrapper>();
 }
@@ -36,7 +37,11 @@ if (!migrationsOnly)
 
 
 var app = builder.Build();
-if (!migrationsOnly) app.UseForwardedHeaders();
+if (!migrationsOnly)
+{
+    app.UseForwardedHeaders();
+}
+
 app.UseMiddleware<StatisticsMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
@@ -62,7 +67,9 @@ if (migrationsOnly || migrationsEnabled)
 
 
 if (migrationsOnly)
+{
     return;
+}
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -71,12 +78,21 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.MapControllers();
-app.MapGet("/api/health", () => Results.Ok(new { status = "ok", dataSource = "in-memory-mocks" }));
+app.MapGet("/api/health", () => Results.Ok(new { status = Program.HealthyStatus, dataSource = Program.MockDataSource }));
 // Keep unknown API routes as 404 rather than serving the SPA document.
 app.MapFallback("/api/{**path}", () => Results.NotFound());
-if (File.Exists(Path.Combine(app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot"), "index.html")))
-    app.MapFallbackToFile("index.html");
+if (File.Exists(Path.Combine(app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, Program.WebRootDirectory), Constants.IndexDocument)))
+{
+    app.MapFallbackToFile(Constants.IndexDocument);
+}
 
 app.Run();
 
-public partial class Program { }
+public partial class Program
+{
+    private const string DatabaseBootstrapEnabledKey = "Database:BootstrapEnabled";
+    private const string DatabaseMigrationsEnabledKey = "Database:MigrationsEnabled";
+    private const string HealthyStatus = "ok";
+    private const string MockDataSource = "in-memory-mocks";
+    private const string WebRootDirectory = "wwwroot";
+}

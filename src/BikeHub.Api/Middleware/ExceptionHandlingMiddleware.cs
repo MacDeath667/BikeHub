@@ -6,6 +6,11 @@ public sealed class ExceptionHandlingMiddleware(
     RequestDelegate next,
     ILogger<ExceptionHandlingMiddleware> logger)
 {
+    private const string AuthenticationFailureLog = "Authentication request failed ({FailureType})";
+    private const string UnhandledExceptionLog = "Unhandled exception for {Method} {Path}";
+    private const string InternalServerErrorTitle = "Internal Server Error";
+    private const string TraceIdKey = "traceId";
+
     public async Task InvokeAsync(HttpContext context)
     {
         try
@@ -15,22 +20,27 @@ public sealed class ExceptionHandlingMiddleware(
         catch (Exception exception)
         {
             if (context.Request.Path.StartsWithSegments("/api/auth"))
-                logger.LogError("Authentication request failed ({FailureType})", exception.GetType().Name);
-            else logger.LogError(
+            {
+                logger.LogError(AuthenticationFailureLog, exception.GetType().Name);
+            }
+            else
+            {
+                logger.LogError(
                 exception,
-                "Unhandled exception for {Method} {Path}",
+                UnhandledExceptionLog,
                 context.Request.Method,
                 context.Request.Path);
+            }
 
             context.Response.StatusCode =
                 StatusCodes.Status500InternalServerError;
 
             await Results.Problem(
                     statusCode: StatusCodes.Status500InternalServerError,
-                    title: "Internal Server Error",
+                    title: InternalServerErrorTitle,
                     extensions: new Dictionary<string, object?>
                     {
-                        ["traceId"] = Activity.Current?.TraceId.ToString() ?? context.TraceIdentifier
+                        [TraceIdKey] = Activity.Current?.TraceId.ToString() ?? context.TraceIdentifier
                     })
                 .ExecuteAsync(context);
         }

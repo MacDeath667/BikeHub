@@ -9,7 +9,9 @@ public sealed class PostgresFactAttribute : FactAttribute
     public PostgresFactAttribute()
     {
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("BIKEHUB_TEST_POSTGRES")))
+        {
             Skip = "Run python3 scripts/test-auth-postgres.py to start an isolated PostgreSQL container.";
+        }
     }
 }
 
@@ -24,7 +26,11 @@ public sealed class AuthenticationStoreTests
         var connectionString = Environment.GetEnvironmentVariable("BIKEHUB_TEST_POSTGRES")!;
         var schema = "auth_test_" + Guid.NewGuid().ToString("N");
         await using var admin = NpgsqlDataSource.Create(connectionString);
-        await using (var create = admin.CreateCommand($"CREATE SCHEMA {schema}")) await create.ExecuteNonQueryAsync();
+        await using (var create = admin.CreateCommand($"CREATE SCHEMA {schema}"))
+        {
+            await create.ExecuteNonQueryAsync();
+        }
+
         try
         {
             var scoped = new NpgsqlConnectionStringBuilder(connectionString) { SearchPath = schema }.ConnectionString;
@@ -36,7 +42,10 @@ public sealed class AuthenticationStoreTests
                 await using var migrate = source.CreateCommand(await sql.ReadToEndAsync());
                 await migrate.ExecuteNonQueryAsync();
             }
-            await using (var store = new PostgresAuthenticationStore(scoped)) await VerifyContract(store);
+            await using (var store = new PostgresAuthenticationStore(scoped))
+            {
+                await VerifyContract(store);
+            }
         }
         finally
         {
@@ -86,8 +95,11 @@ public sealed class AuthenticationStoreTests
         Assert.True(await store.TryCreateChallengeAsync(fourth, limits, default));
         await store.SetDeliveredAsync(fourth.Id, true, default);
         for (var attempt = 1; attempt <= 5; attempt++)
+        {
             Assert.Equal(attempt == 5 ? ConfirmationFailure.TooManyAttempts : ConfirmationFailure.Invalid,
                 (await Confirm(fourth, fourth.CreatedAt, code: new string('D', 64))).Failure);
+        }
+
         Assert.Equal(ConfirmationFailure.TooManyAttempts, (await Confirm(fourth, fourth.CreatedAt)).Failure);
         Assert.False(await store.TryCreateChallengeAsync(Make("four@example.test", now.AddMinutes(4), binding), limits, default));
 

@@ -11,21 +11,21 @@ public record UserDto(Guid Id, string Name, string Handle, string City, string I
     string Color, string Bio, int Followers, bool IsFollowing, int BikesCount, int PostsCount);
 
 public record BikeDto(Guid Id, Guid OwnerId, string Name, string Description, string Brand,
-    string Category, int Year, decimal Mileage, string ImageUrl, string Color, UserDto Owner);
+    BikeCategory Category, int Year, decimal Mileage, string ImageUrl, string Color, UserDto Owner);
 
 public record PostDto(Guid Id, UserDto Author, BikeDto Bike, string Title, string Content,
     string Category, string ImageUrl, string[] Tags, DateTimeOffset CreatedAt,
     int Likes, int CommentsCount, bool IsLiked, bool IsSaved);
 
 public record CommentDto(Guid Id, UserDto Author, string Text, DateTimeOffset CreatedAt);
-public record CommunityDto(Guid Id, string Name, string Description, string Category,
+public record CommunityDto(Guid Id, string Name, string Description, BikeCategory Category,
     string ImageUrl, int Members, bool IsJoined);
 public record OverviewDto(int Riders, int Bikes, int Posts, string[] Tags, BikeDto FeaturedBike);
 
 public sealed record CreateBikeRequest(
     [Required, StringLength(100, MinimumLength = 2)] string Name,
     [Required, StringLength(80)] string Brand,
-    [Required, RegularExpression("^(road|mtb|gravel|city)$")] string Category,
+    [EnumDataType(typeof(BikeCategory))] BikeCategory Category,
     [Range(1950, 2100)] int Year,
     [Range(0, 1000000)] decimal Mileage,
     [StringLength(2000)] string Description);
@@ -40,13 +40,13 @@ public sealed record CreateCommentRequest([Required, StringLength(2000)] string 
 
 public interface IFeedService
 {
-    Page<PostDto> GetFeed(string? tab, string? category, string? query, int page, int pageSize);
+    Page<PostDto> GetFeed(string? tab, BikeCategory? category, string? query, int page, int pageSize);
     OverviewDto GetOverview();
 }
 
 public interface IBikeService
 {
-    Page<BikeDto> GetBikes(string? query, string? category, Guid? ownerId, int page, int pageSize);
+    Page<BikeDto> GetBikes(string? query, BikeCategory? category, Guid? ownerId, int page, int pageSize);
     BikeDto? GetBike(Guid id);
     BikeDto CreateBike(CreateBikeRequest request);
     Page<PostDto>? GetHistory(Guid id, int page, int pageSize);

@@ -17,6 +17,8 @@ class SourcePackageTests(unittest.TestCase):
             root = Path(temp) / "repo"
             files = {
                 ".dockerignore": "**/node_modules",
+                ".editorconfig": "[*.cs]\ncsharp_prefer_braces = true\n",
+                "Directory.Build.props": "<Project><PropertyGroup><EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild></PropertyGroup></Project>",
                 "Web/package.json": '{}',
                 "Web/src/main.tsx": "export {};",
                 "src/BikeHub.Api/Program.cs": "app.Run();",
@@ -37,6 +39,8 @@ class SourcePackageTests(unittest.TestCase):
                 names = archive.getnames()
             self.assertIn("Web/package.json", names)
             self.assertIn("src/BikeHub.Api/Program.cs", names)
+            self.assertIn(".editorconfig", names)
+            self.assertIn("Directory.Build.props", names)
             self.assertNotIn("infra", names)
             self.assertFalse(any("node_modules" in p or "/obj" in p or "/dist" in p or "/.env" in p for p in names))
             os.utime(root / "Web/package.json", (1, 1))

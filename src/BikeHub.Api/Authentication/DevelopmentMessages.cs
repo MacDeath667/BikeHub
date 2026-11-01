@@ -11,12 +11,18 @@ public sealed class DevelopmentMessages(TimeProvider clock)
     public void Add(string channel, VerificationMessage message)
     {
         foreach (var (id, existing) in messages)
-            if (existing.Message.ExpiresAt <= clock.GetUtcNow()) messages.TryRemove(id, out _);
+        {
+            if (existing.Message.ExpiresAt <= clock.GetUtcNow())
+            {
+                messages.TryRemove(id, out _);
+            }
+        }
+
         messages[message.ChallengeId] = new(channel, message);
     }
 
     public VerificationMessage? FindEmail(Guid id, string bindingHash) =>
-        messages.TryGetValue(id, out var value) && value.Channel == "email" &&
+        messages.TryGetValue(id, out var value) && value.Channel == Constants.EmailChannel &&
         value.Message.ExpiresAt > clock.GetUtcNow() && OtpSecurity.EqualsHash(value.Message.BindingHash, bindingHash)
             ? value.Message : null;
 
@@ -25,20 +31,33 @@ public sealed class DevelopmentMessages(TimeProvider clock)
 
 public sealed class DevelopmentEmailSender(DevelopmentMessages messages, IHostEnvironment environment) : IVerificationEmailSender
 {
+    private const string EnvironmentRestrictionMessage = "Development email is restricted to Development.";
+
     public Task SendAsync(VerificationMessage message, CancellationToken cancellationToken)
     {
-        if (!environment.IsDevelopment()) throw new InvalidOperationException("Development email is restricted to Development.");
-        messages.Add("email", message);
+        if (!environment.IsDevelopment())
+        {
+            throw new InvalidOperationException(EnvironmentRestrictionMessage);
+        }
+
+        messages.Add(Constants.EmailChannel, message);
         return Task.CompletedTask;
     }
 }
 
 public sealed class TestSmsSender(DevelopmentMessages messages, IHostEnvironment environment) : ISmsSender
 {
+    private const string ChannelName = "sms";
+    private const string EnvironmentRestrictionMessage = "Test SMS is restricted to Development.";
+
     public Task SendAsync(VerificationMessage message, CancellationToken cancellationToken)
     {
-        if (!environment.IsDevelopment()) throw new InvalidOperationException("Test SMS is restricted to Development.");
-        messages.Add("sms", message);
+        if (!environment.IsDevelopment())
+        {
+            throw new InvalidOperationException(EnvironmentRestrictionMessage);
+        }
+
+        messages.Add(ChannelName, message);
         return Task.CompletedTask;
     }
 }
