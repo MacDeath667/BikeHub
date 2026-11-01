@@ -16,8 +16,7 @@ public sealed class AuthOptions
     public int MaxPerEmailHour { get; set; } = 5;
     public int MaxPerDay { get; set; } = 100;
     public int SessionDays { get; set; } = 14;
-    public SmtpOptions Smtp { get; set; } = new();
-    public GmailApiOptions GmailApi { get; set; } = new();
+
 }
 
 public sealed class GmailApiOptions

@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace BikeHub.Api.Authentication;
 
-public sealed class SmtpVerificationEmailSender(IOptions<AuthOptions> configuration) : IVerificationEmailSender
+public sealed class SmtpVerificationEmailSender(IOptions<SmtpOptions> smptConfiguration) : IVerificationEmailSender
 {
     private const string ConnectStage = "connect";
     private const string PlainMechanism = "PLAIN";
@@ -15,7 +15,7 @@ public sealed class SmtpVerificationEmailSender(IOptions<AuthOptions> configurat
 
     public async Task SendAsync(VerificationMessage message, CancellationToken cancellationToken)
     {
-        var options = configuration.Value.Smtp;
+        var options = smptConfiguration.Value;
         using var mail = VerificationEmail.Create(options.FromAddress, options.FromName, message);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(OperationTimeoutSeconds));

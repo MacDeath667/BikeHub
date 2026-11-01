@@ -1,26 +1,20 @@
 using BikeHub.Dal;
-using Dapper;
+using Microsoft.EntityFrameworkCore;
 
 namespace BikeHub.Application.Commands.AddBike;
 
-public class Handler(IDbConnectionFactory connectionFactory)
+public class Handler(IDbContextFactory<BikeHubDbContext> contexts)
 {
-    private const string InsertBikeSql = """
-        INSERT into bikes (name, description, owner_id)
-        values (@Name, @Description, @OwnerId)
-        """;
-
     public async Task Handle(Command command, CancellationToken cancellationToken)
     {
-        using var connection = connectionFactory.CreateConnection();
-        var inserts = await connection.ExecuteAsync(
-            InsertBikeSql,
-            new
-            {
-                @Name = command.Name,
-                @Description = command.Description,
-                @OwnerId = command.OwnerId
-            });
-
+        await using var context = await contexts.CreateDbContextAsync(cancellationToken);
+        context.Bikes.Add(new Bike
+        {
+            Id = Guid.CreateVersion7(),
+            OwnerId = command.OwnerId,
+            Name = command.Name,
+            Description = command.Description
+        });
+        await context.SaveChangesAsync(cancellationToken);
     }
 }

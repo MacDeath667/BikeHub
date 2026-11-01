@@ -19,13 +19,13 @@ def main():
         raise SystemExit("Нужен 16-символьный пароль приложения, а не обычный пароль Google.")
     settings = {
         "Authentication:EmailProvider": "Smtp",
-        "Authentication:Smtp:Host": "smtp.gmail.com",
-        "Authentication:Smtp:Port": "587",
-        "Authentication:Smtp:Security": "StartTls",
-        "Authentication:Smtp:Username": email,
-        "Authentication:Smtp:Password": password,
-        "Authentication:Smtp:FromAddress": email,
-        "Authentication:Smtp:FromName": "BikeHub",
+        "Smtp:Host": "smtp.gmail.com",
+        "Smtp:Port": "587",
+        "Smtp:Security": "StartTls",
+        "Smtp:Username": email,
+        "Smtp:Password": password,
+        "Smtp:FromAddress": email,
+        "Smtp:FromName": "BikeHub",
     }
     subprocess.run(["dotnet", "user-secrets", "set", "--project", str(ROOT / "src/BikeHub.Api")],
                    input=json.dumps(settings), text=True, check=True, stdout=subprocess.DEVNULL)

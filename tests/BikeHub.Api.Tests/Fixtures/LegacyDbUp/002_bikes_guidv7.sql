@@ -1,4 +1,4 @@
-﻿-- PostgreSQL versions before 18 do not provide uuidv7() natively.
+-- PostgreSQL versions before 18 do not provide uuidv7() natively.
 -- Build a UUIDv7 using the current Unix timestamp and random UUID bits.
 CREATE OR REPLACE FUNCTION public.uuidv7()
 RETURNS uuid

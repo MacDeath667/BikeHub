@@ -234,9 +234,9 @@ public sealed class EmailAuthenticationTests
             app.Settings["Authentication:EmailProvider"] = "Smtp";
             app.Settings["Authentication:OtpSecret"] = new string('A', 64);
             app.Settings["Authentication:DataProtectionPath"] = directory;
-            app.Settings["Authentication:Smtp:Username"] = "sender@example.test";
-            app.Settings["Authentication:Smtp:Password"] = "test-only-not-a-real-password";
-            app.Settings["Authentication:Smtp:FromAddress"] = "sender@example.test";
+            app.Settings["Smtp:Username"] = "sender@example.test";
+            app.Settings["Smtp:Password"] = "test-only-not-a-real-password";
+            app.Settings["Smtp:FromAddress"] = "sender@example.test";
             app.Settings["ReverseProxy:KnownProxies:0"] = "127.0.0.1";
             using var browser = app.Browser(https: true);
             using var response = await browser.GetAsync("/api/auth/session");
