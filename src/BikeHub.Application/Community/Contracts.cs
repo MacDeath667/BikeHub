@@ -65,7 +65,7 @@ public interface IPostService
 public interface IUserService
 {
     UserDto GetCurrentUser();
-    UserDto? GetUser(Guid id);
+    Task<UserDto?> GetUserAsync(Guid id, CancellationToken cancellationToken = default);
     UserDto? SetFollowing(Guid id, bool active);
 }
 

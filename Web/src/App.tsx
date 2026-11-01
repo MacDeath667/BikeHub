@@ -10,12 +10,16 @@ import {
   Compass,
   House,
   Menu,
+  LogOut,
+  MailCheck,
   Mountain,
   Search,
   Users,
   X,
 } from "lucide-react";
 import { api } from "./api";
+import type { AuthSession } from "./api";
+import { AuthModal } from "./components/AuthModal";
 import type { Community, Overview, User } from "./api";
 import { Avatar, Empty, ErrorBox, Loading } from "./components/ui";
 import { RightRail } from "./components/RightRail";
@@ -45,6 +49,10 @@ function useRoute() {
 export default function App() {
   const route = useRoute();
   const [me, setMe] = useState<User | null>(null);
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null);
+  const [booting, setBooting] = useState(true);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [afterAuth, setAfterAuth] = useState<"post" | "bike" | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [bootError, setBootError] = useState("");
@@ -65,13 +73,14 @@ export default function App() {
   useEffect(() => {
     let active = true;
     Promise.all([
-      api<User>("/users/me"),
+      api<AuthSession>("/auth/session"),
       api<Overview>("/feed/overview"),
       api<Community[]>("/communities"),
     ])
-      .then(([user, stats, groups]) => {
+      .then(([session, stats, groups]) => {
         if (active) {
-          setMe(user);
+          setMe(session.user);
+          setAuthSession(session);
           setOverview(stats);
           setCommunities(groups);
           setBootError("");
@@ -79,7 +88,8 @@ export default function App() {
       })
       .catch((e) => {
         if (active) setBootError(e.message);
-      });
+      })
+      .finally(() => { if (active) setBooting(false); });
     return () => {
       active = false;
     };
@@ -94,6 +104,22 @@ export default function App() {
   const searchSubmit = (event: FormEvent) => {
     event.preventDefault();
     navigate(`/?q=${encodeURIComponent(searchText.trim())}`);
+  };
+  useEffect(() => {
+    const requireLogin = () => { setMe(null); setAuthOpen(true); setVersion((value) => value + 1); };
+    window.addEventListener("bikehub:auth-required", requireLogin);
+    return () => window.removeEventListener("bikehub:auth-required", requireLogin);
+  }, []);
+  const create = (type: "post" | "bike") => {
+    if (me) setModal(type);
+    else { setAfterAuth(type); setAuthOpen(true); }
+  };
+  const logout = async () => {
+    try {
+      const session = await api<AuthSession>("/auth/logout", { method: "POST" });
+      setMe(null); setAuthSession(session); setModal(null); reload(); navigate("/");
+      notify("Вы вышли из аккаунта");
+    } catch (error) { notify((error as Error).message); }
   };
   const nav = [
     {
@@ -236,28 +262,38 @@ export default function App() {
               Демо
             </span>
             {me && (
+              <>
               <a
                 className="user-menu"
                 href={`#/user/${me.id}`}
                 aria-label="Открыть мой профиль"
               >
                 <Avatar user={me} small />
-                <span>Александр</span>
+                <span>{me.name.split(" ")[0]}</span>
+                {authSession?.emailConfirmed && <MailCheck size={15} aria-label="Почта подтверждена" />}
                 <ChevronDown size={14} />
               </a>
+              <button className="icon-button" aria-label="Выйти из аккаунта" title="Выйти" onClick={logout}><LogOut size={18} /></button>
+              </>
             )}
+            {!me && <button className="button primary login-button" onClick={() => setAuthOpen(true)}>Войти</button>}
           </div>
         </header>
         <main className="page">
           {bootError ? (
             <ErrorBox message={bootError} retry={reload} />
-          ) : !me ? (
+          ) : booting ? (
             <Loading />
           ) : (
             <>
               <div className="content-grid">
                 <div className="primary-content">
-                  {(!section || section === "saved") && (
+                  {!me && ["saved", "garage"].includes(section) && (
+                    <Empty title={section === "garage" ? "Ваш гараж начинается здесь" : "Сохраните свои истории"}
+                      description="Войдите по почте, чтобы открыть своё пространство в BikeHub."
+                      action={<button className="button primary" onClick={() => setAuthOpen(true)}>Войти в BikeHub</button>} />
+                  )}
+                  {(!section || (section === "saved" && me)) && (
                     <Feed
                       key={`${section}-${searchQuery}-${version}`}
                       saved={section === "saved"}
@@ -265,16 +301,16 @@ export default function App() {
                       version={version}
                       me={me}
                       notify={notify}
-                      onCreate={() => setModal("post")}
+                      onCreate={() => create("post")}
                     />
                   )}
-                  {(section === "bikes" || section === "garage") && (
+                  {(section === "bikes" || (section === "garage" && me)) && (
                     <BikeDirectory
                       key={`${section}-${version}`}
                       garage={section === "garage"}
                       me={me}
                       version={version}
-                      onCreate={() => setModal("bike")}
+                      onCreate={() => create("bike")}
                     />
                   )}
                   {section === "bike" && (
@@ -283,13 +319,13 @@ export default function App() {
                       id={path.split("/")[2]}
                       me={me}
                       version={version}
-                      onCreate={() => setModal("post")}
+                      onCreate={() => create("post")}
                       notify={notify}
                     />
                   )}
                   {section === "post" && (
                     <PostDetail
-                      key={path}
+                      key={`${path}-${version}`}
                       id={path.split("/")[2]}
                       me={me}
                       notify={notify}
@@ -297,7 +333,7 @@ export default function App() {
                   )}
                   {section === "user" && (
                     <UserProfile
-                      key={path}
+                      key={`${path}-${version}`}
                       id={path.split("/")[2]}
                       me={me}
                       notify={notify}
@@ -336,8 +372,7 @@ export default function App() {
                 <RightRail
                   overview={overview}
                   communities={communities}
-                  me={me}
-                  onCreate={() => setModal("bike")}
+                  onCreate={() => create("bike")}
                 />
               </div>
               <footer className="page-footer">
@@ -350,6 +385,12 @@ export default function App() {
           )}
         </main>
       </div>
+      {authOpen && <AuthModal session={authSession}
+        close={() => { setAuthOpen(false); setAfterAuth(null); }}
+        onSuccess={(session) => {
+          setAuthSession(session); setMe(session.user); setAuthOpen(false);
+          setModal(afterAuth); setAfterAuth(null); reload(); notify("Почта подтверждена. Добро пожаловать!");
+        }} />}
       {modal && me && (
         <CreateModal
           type={modal}

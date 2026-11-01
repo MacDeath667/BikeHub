@@ -13,6 +13,10 @@ bikehub_namespace: bikehub
 bikehub_deployment: bikehub-api
 bikehub_database_enabled: true
 bikehub_database_bootstrap_enabled: true
+# Enable after creating the bikehub-auth Secret described in docs/authentication.md.
+bikehub_auth_enabled: false
+bikehub_auth_secret_name: bikehub-auth
+bikehub_auth_key_claim: bikehub-auth-keys
 bikehub_migration_timeout: 300
 bikehub_migration_retention: 86400
 bikehub_truenas_hostname: truenas.local

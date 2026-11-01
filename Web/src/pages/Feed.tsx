@@ -23,7 +23,7 @@ export function Feed({
   saved: boolean;
   search: string;
   version: number;
-  me: User;
+  me: User | null;
   notify: (s: string) => void;
   onCreate: () => void;
 }) {
@@ -129,7 +129,7 @@ export function Feed({
       )}
       {!saved && !search && (
         <button className="compose-prompt" onClick={onCreate}>
-          <Avatar user={me} small />
+          {me ? <Avatar user={me} small /> : <BikeIcon size={24} />}
           <span>Какая история у вашего велосипеда?</span>
           <span className="compose-plus">
             <Plus size={18} />

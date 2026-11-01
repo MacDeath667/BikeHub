@@ -13,7 +13,7 @@ export function UserProfile({
   version,
 }: {
   id: string;
-  me: User;
+  me: User | null;
   notify: (s: string) => void;
   reload: () => void;
   version: number;
@@ -82,7 +82,7 @@ export function UserProfile({
                 @{user.handle} <span>·</span> {user.city}
               </span>
             </div>
-            {id !== me.id && (
+            {id !== me?.id && (
               <button
                 className={`button ${user.isFollowing ? "secondary" : "primary"}`}
                 disabled={busy}

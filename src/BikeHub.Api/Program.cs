@@ -1,4 +1,5 @@
 using BikeHub.Api.Middleware;
+using BikeHub.Api.Authentication;
 using BikeHub.Api.Observability;
 using BikeHub.Api.Services;
 using BikeHub.Application.Community;
@@ -16,7 +17,7 @@ if (bootstrapEnabled || migrationsEnabled || migrationsOnly)
     builder.Services.AddSingleton<DatabaseMigrator>();
     builder.Services.AddSingleton<DatabaseBootstrapper>();
 }
-builder.Services.AddControllers();
+builder.Services.AddControllers(options => options.Filters.Add<CsrfValidationFilter>());
 builder.Services.AddSingleton<MockCommunityStore>();
 builder.Services.AddScoped<IFeedService, MockFeedService>();
 builder.Services.AddScoped<IBikeService, MockBikeService>();
@@ -27,10 +28,15 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 if (!migrationsOnly)
+{
+    builder.AddBikeHubAuthentication();
+    builder.AddBikeHubReverseProxy();
     builder.AddBikeHubObservability();
+}
 
 
 var app = builder.Build();
+if (!migrationsOnly) app.UseForwardedHeaders();
 app.UseMiddleware<StatisticsMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
@@ -60,6 +66,10 @@ if (migrationsOnly)
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseRouting();
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
 app.MapControllers();
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", dataSource = "in-memory-mocks" }));
 // Keep unknown API routes as 404 rather than serving the SPA document.
@@ -68,3 +78,5 @@ if (File.Exists(Path.Combine(app.Environment.WebRootPath ?? Path.Combine(app.Env
     app.MapFallbackToFile("index.html");
 
 app.Run();
+
+public partial class Program { }

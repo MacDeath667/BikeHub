@@ -2,30 +2,46 @@
 """Exercise the running mock API; creates one demo bike, post and comment in memory."""
 import json
 import sys
+import uuid
+from http.cookiejar import CookieJar
 from urllib.error import HTTPError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, HTTPCookieProcessor
 
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:5179").rstrip("/")
 checks = 0
+csrf = ""
+opener = build_opener(HTTPCookieProcessor(CookieJar()))
 
 
 def request(path, method="GET", body=None, status=200):
-    global checks
+    global checks, csrf
     req = Request(BASE + "/api" + path, method=method,
                   data=json.dumps(body).encode() if body is not None else None,
-                  headers={"Content-Type": "application/json"})
+                  headers={"Content-Type": "application/json", **({"X-CSRF-TOKEN": csrf} if method != "GET" else {})})
     try:
-        response = urlopen(req, timeout=10)
+        response = opener.open(req, timeout=10)
     except HTTPError as error:
         response = error
     with response:
         assert response.status == status, (path, response.status, response.read().decode())
         checks += 1
-        return json.loads(response.read() or "null")
+        result = json.loads(response.read() or "null")
+        if isinstance(result, dict) and "csrfToken" in result:
+            csrf = result["csrfToken"]
+        return result
 
 
 assert request("/health")["dataSource"] == "in-memory-mocks"
+request("/users/me", status=401)
+request("/feed?tab=saved", status=401)
+session = request("/auth/session")
+if not session["developmentMailbox"]:
+    raise SystemExit("This smoke test requires the local Development mailbox; no real email will be sent.")
+challenge = request("/auth/email/challenges", "POST", {"email": f"smoke-{uuid.uuid4().hex}@example.test", "name": "Smoke Rider"}, 202)
+message = request("/auth/development/messages/" + challenge["challengeId"])
+verified = request("/auth/email/verify", "POST", {"challengeId": challenge["challengeId"], "code": message["code"]})
+assert verified["emailConfirmed"] and not verified["phoneConfirmed"]
 me = request("/users/me")
 feed = request("/feed?pageSize=2")
 assert len(feed["items"]) == 2 and feed["hasMore"]
@@ -72,4 +88,6 @@ assert created["id"] in {p["id"] for p in request("/feed?" + urlencode({"q": "П
 assert all(p["bike"]["category"] == "gravel" for p in request("/feed?category=gravel")["items"])
 popular = request("/feed?tab=popular")["items"]
 assert [p["likes"] for p in popular] == sorted((p["likes"] for p in popular), reverse=True)
+request("/auth/logout", "POST")
+request("/users/me", status=401)
 print(f"OK: {checks} HTTP checks; pagination, validation, likes, bookmarks, follows, communities, garage, posts, comments, search.")

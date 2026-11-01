@@ -7,18 +7,16 @@ import {
   Sparkles,
 } from "lucide-react";
 import { categories, number } from "../api";
-import type { Community, Overview, User } from "../api";
+import type { Community, Overview } from "../api";
 import { Avatar } from "./ui";
 
 export function RightRail({
   overview,
   communities,
-  me,
   onCreate,
 }: {
   overview: Overview | null;
   communities: Community[];
-  me: User;
   onCreate: () => void;
 }) {
   return (
@@ -74,8 +72,8 @@ export function RightRail({
             <ArrowUpRight size={16} />
           </a>
           <div className="featured-owner">
-            <Avatar user={me} small />
-            <span>@{me.handle}</span>
+            <Avatar user={overview.featuredBike.owner} small />
+            <span>@{overview.featuredBike.owner.handle}</span>
             <span className="dot-separator">·</span>
             <span>{categories[overview.featuredBike.category]}</span>
           </div>

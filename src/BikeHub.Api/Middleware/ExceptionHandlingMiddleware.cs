@@ -14,7 +14,9 @@ public sealed class ExceptionHandlingMiddleware(
         }
         catch (Exception exception)
         {
-            logger.LogError(
+            if (context.Request.Path.StartsWithSegments("/api/auth"))
+                logger.LogError("Authentication request failed ({FailureType})", exception.GetType().Name);
+            else logger.LogError(
                 exception,
                 "Unhandled exception for {Method} {Path}",
                 context.Request.Method,

@@ -11,6 +11,9 @@
           - ansible_host | default('') | length > 0
           - bikehub_remote_root is match('^/opt/[A-Za-z0-9_-]+$')
           - bikehub_replica_count | int > 0
+          - not (bikehub_auth_enabled | bool) or (bikehub_database_enabled | bool and bikehub_tls_enabled | bool)
+          - bikehub_auth_secret_name is match('^[a-z0-9][a-z0-9-]*$')
+          - bikehub_auth_key_claim is match('^[a-z0-9][a-z0-9-]*$')
           - bikehub_app_port | int > 0 and bikehub_app_port | int < 65536
           - bikehub_node_port | int >= 30000 and bikehub_node_port | int <= 32767
           - bikehub_image | length == 0 or bikehub_image is match('^[A-Za-z0-9./_:@-]+$')
@@ -237,7 +240,11 @@
       ansible.builtin.import_tasks: ../tasks/database.yml
       when: bikehub_database_enabled | bool
 
-    - name: Render the application with the current database Secret revision
+    - name: Check authentication prerequisites without reading credentials
+      ansible.builtin.import_tasks: ../tasks/authentication.yml
+      when: bikehub_auth_enabled | bool
+
+    - name: Render the application with current Secret revisions
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../templates/app.yml.j2"
         dest: "{{ bikehub_remote_root }}/k8s/app.yml"

@@ -11,6 +11,21 @@ export interface User {
   bikesCount: number;
   postsCount: number;
 }
+export interface AuthSession {
+  user: User | null;
+  emailConfirmed: boolean;
+  maskedEmail: string | null;
+  phoneConfirmed: boolean;
+  csrfToken: string;
+  enabled: boolean;
+  developmentMailbox: boolean;
+}
+
+let csrfToken = "";
+let csrfRequest: Promise<void> | null = null;
+export function requestLogin() {
+  window.dispatchEvent(new Event("bikehub:auth-required"));
+}
 export interface Bike {
   id: string;
   ownerId: string;
@@ -98,11 +113,24 @@ export async function api<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const method = (options.method || "GET").toUpperCase();
+  const headers = new Headers(options.headers);
+  headers.set("Content-Type", "application/json");
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+    if (!csrfToken) {
+      csrfRequest ??= api<AuthSession>("/auth/session")
+        .then((session) => { csrfToken = session.csrfToken; })
+        .finally(() => { csrfRequest = null; });
+      await csrfRequest;
+    }
+    headers.set("X-CSRF-TOKEN", csrfToken);
+  }
   let response: Response;
   try {
     response = await fetch(`/api${path}`, {
       ...options,
-      headers: { "Content-Type": "application/json", ...options.headers },
+      credentials: "same-origin",
+      headers,
     });
   } catch {
     throw new Error(
@@ -110,19 +138,30 @@ export async function api<T>(
     );
   }
   if (!response.ok) {
+    if (response.status === 401 && !path.startsWith("/auth/")) {
+      csrfToken = "";
+      requestLogin();
+    }
     const problem = await response.json().catch(() => null);
     const validation = problem?.errors
       ? Object.values(problem.errors).flat().join(" ")
       : null;
     throw new Error(
-      response.status === 404
+      response.status === 401
+        ? "Войдите в аккаунт, чтобы продолжить."
+        : response.status === 429
+        ? problem?.title || "Слишком много запросов. Попробуйте позже."
+        : response.status === 404
         ? "Эта страница не найдена."
         : validation ||
           problem?.title ||
           "Не удалось выполнить действие. Попробуйте ещё раз.",
     );
   }
-  return response.json() as Promise<T>;
+  if (response.status === 204) return undefined as T;
+  const result = await response.json();
+  if (path.startsWith("/auth/") && typeof result?.csrfToken === "string") csrfToken = result.csrfToken;
+  return result as T;
 }
 export function query(values: Record<string, string | number | undefined>) {
   const params = new URLSearchParams();

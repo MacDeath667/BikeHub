@@ -21,7 +21,7 @@ export function BikeDirectory({
   onCreate,
 }: {
   garage: boolean;
-  me: User;
+  me: User | null;
   version: number;
   onCreate: () => void;
 }) {
@@ -44,7 +44,7 @@ export function BikeDirectory({
     setLoading(true);
     setError("");
     api<Page<Bike>>(
-      `/bikes?${query({ category, q: debounced, ownerId: garage ? me.id : undefined, page, pageSize: 8 })}`,
+      `/bikes?${query({ category, q: debounced, ownerId: garage ? me?.id : undefined, page, pageSize: 8 })}`,
     )
       .then((next) => {
         if (active)
@@ -63,7 +63,7 @@ export function BikeDirectory({
     return () => {
       active = false;
     };
-  }, [garage, me.id, category, debounced, version, page]);
+  }, [garage, me?.id, category, debounced, version, page]);
   return (
     <>
       <div className="page-heading">
@@ -149,7 +149,7 @@ export function BikeDetail({
   notify,
 }: {
   id: string;
-  me: User;
+  me: User | null;
   version: number;
   onCreate: () => void;
   notify: (s: string) => void;
@@ -232,7 +232,7 @@ export function BikeDetail({
         <h2>
           Бортжурнал<span className="count">{total}</span>
         </h2>
-        {bike.ownerId === me.id && (
+        {bike.ownerId === me?.id && (
           <button className="text-button" onClick={onCreate}>
             <Plus size={16} />
             Новая запись
@@ -259,7 +259,7 @@ export function BikeDetail({
           title="История только начинается"
           description="Здесь появятся поездки, обслуживание и обновления этого велосипеда."
           action={
-            bike.ownerId === me.id && (
+            bike.ownerId === me?.id && (
               <button className="button primary" onClick={onCreate}>
                 Написать первую запись
               </button>
