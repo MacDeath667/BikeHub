@@ -68,18 +68,38 @@ public sealed class GmailApiVerificationEmailSender : IVerificationEmailSender, 
         catch (GoogleApiException error)
         {
             throw new EmailTransportException(stage, error.GetType().Name,
-                error.HttpStatusCode switch
-                {
-                    System.Net.HttpStatusCode.Unauthorized => "auth_rejected",
-                    System.Net.HttpStatusCode.Forbidden => "gmail_permission_denied",
-                    System.Net.HttpStatusCode.TooManyRequests => "gmail_rate_limited",
-                    _ => "gmail_api_error"
-                }, (int)error.HttpStatusCode, null);
+                FailureReason(error), (int)error.HttpStatusCode, null);
         }
         catch (Exception error) when (!cancellationToken.IsCancellationRequested)
         {
             throw EmailTransportException.From(stage, error);
         }
+    }
+
+    private static string FailureReason(GoogleApiException error)
+    {
+        // Google messages can contain addresses or submitted content. Only emit fixed reason labels.
+        foreach (var detail in error.Error?.Errors ?? [])
+        {
+            var reason = detail.Reason switch
+            {
+                "accessNotConfigured" or "serviceDisabled" => "gmail_api_disabled",
+                "insufficientPermissions" => "gmail_scope_insufficient",
+                "domainPolicy" => "gmail_domain_policy",
+                "mailServiceNotEnabled" => "gmail_mailbox_unavailable",
+                "dailyLimitExceeded" => "gmail_daily_limit",
+                "userRateLimitExceeded" or "rateLimitExceeded" => "gmail_rate_limited",
+                _ => null
+            };
+            if (reason is not null) return reason;
+        }
+        return error.HttpStatusCode switch
+        {
+            System.Net.HttpStatusCode.Unauthorized => "auth_rejected",
+            System.Net.HttpStatusCode.Forbidden => "gmail_permission_denied",
+            System.Net.HttpStatusCode.TooManyRequests => "gmail_rate_limited",
+            _ => "gmail_api_error"
+        };
     }
 
     public void Dispose()

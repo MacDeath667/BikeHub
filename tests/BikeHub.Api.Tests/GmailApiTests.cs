@@ -84,6 +84,29 @@ public sealed class GmailApiTests
         Assert.Single(handler.Messages); // No retry of a potentially accepted message.
     }
 
+    [Theory]
+    [InlineData("accessNotConfigured", "gmail_api_disabled")]
+    [InlineData("serviceDisabled", "gmail_api_disabled")]
+    [InlineData("insufficientPermissions", "gmail_scope_insufficient")]
+    [InlineData("domainPolicy", "gmail_domain_policy")]
+    [InlineData("mailServiceNotEnabled", "gmail_mailbox_unavailable")]
+    [InlineData("dailyLimitExceeded", "gmail_daily_limit")]
+    [InlineData("userRateLimitExceeded", "gmail_rate_limited")]
+    [InlineData("rateLimitExceeded", "gmail_rate_limited")]
+    [InlineData("private-refresh-token", "gmail_permission_denied")]
+    public async Task Gmail_error_reasons_distinguish_configuration_and_permissions_without_disclosing_details(
+        string googleReason, string expectedReason)
+    {
+        var handler = new FakeGoogleHandler { SendStatus = HttpStatusCode.Forbidden, SendReason = googleReason };
+        using var sender = new GmailApiVerificationEmailSender(Options.Create(Settings()), new TestClock(), new FakeFactory(handler));
+        var failure = await Assert.ThrowsAsync<EmailTransportException>(() => sender.SendAsync(Message(), default));
+        Assert.Equal(expectedReason, failure.Reason);
+        Assert.DoesNotContain("private-", failure.ToString());
+        Assert.DoesNotContain("recipient@example.test", failure.ToString());
+        Assert.DoesNotContain("123456", failure.ToString());
+        Assert.Single(handler.Messages);
+    }
+
     [Fact]
     public void Gmail_provider_fails_startup_when_oauth_configuration_is_missing()
     {
@@ -118,6 +141,7 @@ public sealed class GmailApiTests
         public int TokenRequests { get; private set; }
         public bool RejectRefresh { get; init; }
         public HttpStatusCode SendStatus { get; init; } = HttpStatusCode.OK;
+        public string? SendReason { get; init; }
         public List<SentMessage> Messages { get; } = [];
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -144,7 +168,8 @@ public sealed class GmailApiTests
             else body = await request.Content.ReadAsStringAsync(cancellationToken);
             Messages.Add(new(request.Headers.Authorization?.ToString(), body));
             return SendStatus == HttpStatusCode.OK ? Json(SendStatus, new { id = "test-message-id" })
-                : Json(SendStatus, new { error = new { code = (int)SendStatus, message = "recipient@example.test 123456" } });
+                : Json(SendStatus, new { error = new { code = (int)SendStatus, message = "recipient@example.test 123456",
+                    errors = new[] { new { reason = SendReason, message = "recipient@example.test 123456", domain = "global" } } } });
         }
         private static HttpResponseMessage Json(HttpStatusCode status, object body) => new(status)
         { Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json") };
