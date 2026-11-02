@@ -1,8 +1,10 @@
 # BikeHub на TrueNAS
 
-Terraform управляет существующей Debian VM на TrueNAS; Ansible собирает API и фронт, импортирует образ в K3s и настраивает nginx. Данные внешнего PostgreSQL и его сервис Ansible не пересоздаёт.
+Terraform управляет существующей Debian VM на TrueNAS; Ansible собирает отдельные образы API, фронта и почты, импортирует их в K3s и настраивает nginx. Данные внешнего PostgreSQL и его сервис Ansible не пересоздаёт.
 
-Почта работает отдельным Deployment `bikehub-mail` с HTTP API и Kafka consumer. Штатная выкладка собирает второй образ, поднимает внутренний Kafka с PVC, применяет почтовую миграцию и ждёт готовности сервиса перед обновлением API. Существующие Gmail/SMTP и OTP Secrets сохраняются. Настройки, запуск и идемпотентность — в [инструкции почтового сервиса](../docs/mail-service.md).
+Почта работает отдельным Deployment `bikehub-mail` с HTTP API и Kafka consumer. Штатная выкладка собирает три образа, поднимает внутренний Kafka с PVC, применяет почтовую миграцию и ждёт готовности сервиса перед обновлением API. Существующие Gmail/SMTP и OTP Secrets сохраняются. Настройки, запуск и идемпотентность — в [инструкции почтового сервиса](../docs/mail-service.md).
+
+`server.yml` также разворачивает соседний staging: [описание и отдельный запуск](#staging-рядом-с-основным-инстансом). Для выкладки только основного инстанса передайте `-e bikehub_staging_enabled=false`; существующий staging эта настройка не удаляет.
 
 ## Текущий сервер
 
@@ -14,6 +16,37 @@ Terraform управляет существующей Debian VM на TrueNAS; An
 - Часы VM в TrueNAS должны быть **UTC** (`time = "UTC"`). Debian использует UTC для аппаратных часов.
 
 Перед подключением можно проверить адрес через `ping bikehub01.local`. Для постоянного адреса закрепите текущий MAC в DHCP роутера.
+
+## Staging рядом с основным инстансом
+
+Staging использует ту же VM, namespace `bikehub` и PostgreSQL из существующего Secret `bikehub-database`. Нового сервера и базы PostgreSQL не создаётся: «каталог» здесь — схема `staging` в той же базе, где основные таблицы лежат в `public`. API и почта staging хранят таблицы в `staging`; журналы миграций разные: `staging.__EFMigrationsHistory` и `staging.__MailMigrationsHistory`. Схема создаётся автоматически перед миграциями. Данные основного инстанса не копируются.
+
+Состав соответствует локальному Compose: API, отдельный nginx с фронтом, почтовый микросервис, отдельный Kafka с топиком `bikehub.staging.mail.send.v1` и Mailpit. Все письма остаются в Mailpit; Gmail/SMTP Secrets основного инстанса к staging не подключаются. Контейнеры запускаются в Development, а метрики, логи и трассировки получают `deployment.environment.name=Staging` для фильтрации в существующей Grafana.
+
+Адреса после успешной выкладки:
+
+- Сайт: **https://bikehub-staging.local/**.
+- Перехваченные письма и коды входа: **https://bikehub-staging.local/mailpit/**.
+- NodePort API: `30081`; UI Mailpit: `30082`. SMTP и почтовый API доступны только внутри кластера.
+
+Образы API и почты те же, что у основной выкладки. Kubernetes-ресурсы имеют префикс `bikehub-staging`; Kafka, PVC, cookie-ключи, OTP secret и внутренний API key отдельные. Логины и регистрации двух инстансов независимы. Разделение схем логическое: роль PostgreSQL берётся из существующего Secret и сохраняет свои права на остальные схемы. В `search_path` staging входит только `staging`, поэтому отсутствующая таблица не подменяется таблицей из `public` или `mail`.
+
+Обновить только staging, не обновляя основной Deployment:
+
+```sh
+ansible-playbook -i "192.168.0.49," -u ansible \
+  --private-key ~/.ssh/truenas_admin \
+  infra/ansible/playbooks/staging.yml \
+  -e bikehub_target_group=all
+```
+
+Playbook собирает и импортирует API и почту, создаёт собственные ключи на VM при первом запуске, поднимает Kafka/Mailpit, последовательно применяет API- и mail-миграции и проверяет HTTPS, фронт и Mailpit. Строка подключения передаётся контейнерам через `secretKeyRef`; Ansible читает только ревизию Secret. Отдельный playbook требует уже подготовленного K3s, nginx, namespace и Secret `bikehub-database`.
+
+Для повторного применения конфигов без сборки добавьте `-e bikehub_rebuild_image=false`: отдельный staging-playbook возьмёт образы из текущих staging Deployment.
+
+Staging получает отдельный самоподписанный сертификат. Его публичная копия — `infra/ansible/.local-pki/bikehub-staging_tls.pub`; добавьте её в доверенные сертификаты на устройствах. Основной `bikehub_tls.pub` остаётся прежним. Имя публикуется отдельной службой `bikehub-staging-mdns`; настройки основного nginx-хоста и mDNS-службы сохраняются.
+
+Параметры `bikehub_staging_*` находятся в `inventory/group_vars/bikehub/main.yml`. Обычный `server.yml` собирает образы один раз для обоих инстансов. Данные Kafka, Mailpit и ключи сохраняются при повторной выкладке.
 
 ## Обновление приложения в существующей VM
 
@@ -38,7 +71,7 @@ ansible-playbook -i "$BIKEHUB_VM_IP," -u ansible \
   -e bikehub_target_group=all -e bikehub_auth_enabled=true
 ```
 
-Ansible упаковывает `src`, `Web`, `.dockerignore`, `.editorconfig` и `Directory.Build.props` через `community.general.archive`, без `bin`, `obj`, `node_modules`, `dist`, `.env*`, Terraform state и Vault. Стабильный хеш относительных путей и содержимого входит в тег образа; timestamps на него не влияют. Временный архив удаляется. Источники собираются в `/opt/bikehub/build`, Kubernetes manifests — в `/opt/bikehub/k8s`.
+Ansible нормализует путь исходников и упаковывает `src`, `Web`, `.dockerignore`, `.editorconfig` и `Directory.Build.props` через `community.general.archive`, без `../` в именах архива, `bin`, `obj`, `node_modules`, `dist`, `.env*`, Terraform state и Vault. Стабильный хеш относительных путей и содержимого входит в тег образа; timestamps на него не влияют. Временный архив удаляется. Источники собираются в `/opt/bikehub/build`, Kubernetes manifests — в `/opt/bikehub/k8s`.
 
 По умолчанию `bikehub_auth_enabled: null`: playbook читает только флаг из текущего Deployment и сохраняет его; на новой установке вход выключен. Неоднозначное значение прерывает выкладку. Явные `true`/`false` переопределяют режим. В примерах для текущего сервера вход явно включён; используется существующий `bikehub-auth` Secret и сохранённые ключи cookie.
 
@@ -211,7 +244,14 @@ ansible-playbook -i infra/ansible/inventory/hosts.yml \
 ansible-playbook -i localhost, infra/tests/package-source.yml
 ansible-playbook -i localhost, infra/tests/configure-mail.yml
 ansible-playbook -i localhost, infra/tests/auth-mode.yml
+ansible-playbook -i localhost, infra/tests/staging.yml
 bash -n infra/terraform/terraform-apply.sh
 ```
 
 Документация: [CoreDNS custom imports в K3s](https://docs.k3s.io/advanced#coredns-custom-configuration-imports), [ротация сертификатов K3s](https://docs.k3s.io/cli/certificate#rotating-clientserver-certificates), [ресурс TrueNAS VM](https://registry.terraform.io/providers/truenas/truenas/latest/docs/resources/vm).
+
+## Отдельный фронт и запуск инстансов
+
+Фронт — независимый nginx-контейнер из `Web/Dockerfile`, API раздаёт только API и Swagger. Host nginx направляет `/api` и `/swagger` в API, остальные запросы в Web. NodePort фронта: 30083 у production, 30084 у staging. Почтовый маршрут `/mailpit/` staging сохраняется.
+
+Только production запускается через `playbooks/production.yml`, только staging — через `playbooks/staging.yml`, оба — через `playbooks/server.yml`. [Готовые команды](../README.md#отдельные-контейнеры-фронта-и-api). После первого обновления с пересборкой можно применять конфиги с `-e bikehub_rebuild_image=false`: читаются три соответствующих Deployment. Frontend-реплики задаются `bikehub_web_replica_count`, независимо от API. Учтите, что контент API пока находится в памяти каждой реплики.

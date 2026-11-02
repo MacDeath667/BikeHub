@@ -1,0 +1,4 @@
+{% with bikehub_resource_prefix=bikehub_staging_prefix,
+        bikehub_mail_topic='bikehub.staging.mail.send.v1' %}
+{% include 'mail-kafka.yml.j2' %}
+{% endwith %}

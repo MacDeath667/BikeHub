@@ -22,6 +22,8 @@ spec:
           args:
             - --migrate-only
           env:
+            - name: Database__Schema
+              value: {{ bikehub_database_schema | default('public') | to_json }}
             - name: Database__BootstrapEnabled
               value: {{ bikehub_database_bootstrap_enabled | bool | ternary('true', 'false') | to_json }}
             - name: Database__MigrationsEnabled

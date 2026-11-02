@@ -1,0 +1,5 @@
+---
+- name: Deploy only the production instance
+  ansible.builtin.import_playbook: server.yml
+  vars:
+    bikehub_deploy_staging: false

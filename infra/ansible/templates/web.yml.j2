@@ -1,0 +1,39 @@
+{% set prefix = bikehub_resource_prefix | default('bikehub') %}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ prefix }}-web
+  namespace: {{ bikehub_namespace }}
+spec:
+  replicas: {{ bikehub_web_replica_count | default(1) }}
+  selector:
+    matchLabels: { app.kubernetes.io/name: {{ prefix }}-web }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: {{ prefix }}-web }
+    spec:
+      containers:
+        - name: web
+          image: {{ bikehub_selected_web_image }}
+          imagePullPolicy: Never
+          ports: [{ name: http, containerPort: 80 }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { cpu: "0.5", memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ prefix }}-web
+  namespace: {{ bikehub_namespace }}
+spec:
+  type: NodePort
+  selector: { app.kubernetes.io/name: {{ prefix }}-web }
+  ports:
+    - { name: http, port: 80, targetPort: http, nodePort: {{ bikehub_web_node_port }} }

@@ -1,17 +1,18 @@
+{% set prefix = bikehub_resource_prefix | default('bikehub') %}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: bikehub-mail
+  name: {{ prefix }}-mail
   namespace: {{ bikehub_namespace }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: bikehub-mail
+      app.kubernetes.io/name: {{ prefix }}-mail
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: bikehub-mail
+        app.kubernetes.io/name: {{ prefix }}-mail
       annotations:
         bikehub.io/mail-secret-version: {{ bikehub_mail_secret_version.stdout | to_json }}
         bikehub.io/credentials-version: {{ (bikehub_mail_credential_revisions.results | map(attribute='stdout') | list | join('-')) | to_json }}
@@ -26,7 +27,7 @@ spec:
               containerPort: 8080
           env:
             - name: ASPNETCORE_ENVIRONMENT
-              value: Production
+              value: {{ bikehub_environment | default('Production') | to_json }}
             - name: Mail__Provider
               value: {{ bikehub_effective_email_provider | to_json }}
             - name: Mail__ApiKey
@@ -34,6 +35,12 @@ spec:
                 secretKeyRef:
                   name: {{ bikehub_mail_secret_name }}
                   key: api-key
+            - name: Database__Schema
+              value: {{ bikehub_mail_database_schema | default('mail') | to_json }}
+            - { name: Database__BootstrapEnabled, value: "false" }
+            - { name: Database__MigrationsEnabled, value: "false" }
+            - name: Observability__Environment
+              value: {{ bikehub_observability_environment | default('Production') | to_json }}
             - name: ConnectionStrings__Mail
               valueFrom:
                 secretKeyRef:
@@ -51,6 +58,14 @@ spec:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://otel-collector.{{ bikehub_observability_namespace }}.svc.cluster.local:4318
 {% endif %}
+{% if bikehub_mailpit_enabled | default(false) | bool %}
+            - { name: Smtp__Host, value: {{ (prefix ~ '-mailpit') | to_json }} }
+            - { name: Smtp__Port, value: "1025" }
+            - { name: Smtp__Security, value: None }
+            - { name: Smtp__Username, value: "" }
+            - { name: Smtp__Password, value: "" }
+            - { name: Smtp__FromAddress, value: no-reply@bikehub.local }
+{% else %}
 {% set transport_keys = [('GmailApi__ClientId', 'gmail-client-id'), ('GmailApi__ClientSecret', 'gmail-client-secret'), ('GmailApi__RefreshToken', 'gmail-refresh-token'), ('GmailApi__FromAddress', 'gmail-from-address')] if bikehub_effective_email_provider == 'GmailApi' else [('Smtp__Username', 'smtp-username'), ('Smtp__Password', 'smtp-password'), ('Smtp__FromAddress', 'smtp-from-address')] %}
 {% for setting, key in transport_keys %}
             - name: {{ setting }}
@@ -59,6 +74,7 @@ spec:
                   name: {{ bikehub_auth_secret_name }}
                   key: {{ key }}
 {% endfor %}
+{% endif %}
           startupProbe:
             httpGet: { path: /health/ready, port: http }
             periodSeconds: 3
@@ -76,12 +92,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: bikehub-mail
+  name: {{ prefix }}-mail
   namespace: {{ bikehub_namespace }}
 spec:
   type: ClusterIP
   selector:
-    app.kubernetes.io/name: bikehub-mail
+    app.kubernetes.io/name: {{ prefix }}-mail
   ports:
     - name: http
       port: 8080

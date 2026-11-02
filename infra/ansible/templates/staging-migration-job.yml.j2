@@ -1,0 +1,34 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ bikehub_staging_prefix }}-migrate-{{ ansible_facts.date_time.epoch }}
+  namespace: {{ bikehub_namespace }}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: {{ bikehub_migration_timeout }}
+  ttlSecondsAfterFinished: {{ bikehub_migration_retention }}
+  template:
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: api-migrations
+          image: {{ bikehub_selected_image }}
+          imagePullPolicy: Never
+          args: ["--migrate-only"]
+          env:
+            - { name: Database__Schema, value: {{ bikehub_staging_schema | to_json }} }
+            - { name: Database__BootstrapEnabled, value: "false" }
+            - name: ConnectionStrings__BikeHub
+              valueFrom:
+                secretKeyRef: { name: bikehub-database, key: connection-string }
+      containers:
+        - name: mail-migrations
+          image: {{ bikehub_selected_mail_image }}
+          imagePullPolicy: Never
+          args: ["--migrate-only"]
+          env:
+            - { name: Database__Schema, value: {{ bikehub_staging_schema | to_json }} }
+            - { name: Database__BootstrapEnabled, value: "false" }
+            - name: ConnectionStrings__Mail
+              valueFrom:
+                secretKeyRef: { name: bikehub-database, key: connection-string }

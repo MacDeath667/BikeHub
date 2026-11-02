@@ -15,6 +15,7 @@
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" PrivateAssets="all" />
     <ProjectReference Include="../../src/BikeHub.Mail/BikeHub.Mail.csproj" />
+    <ProjectReference Include="../../src/BikeHub.Api/BikeHub.Api.csproj" />
     <ProjectReference Include="../../tools/BikeHub.Tools/BikeHub.Tools.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>

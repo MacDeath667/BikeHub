@@ -39,7 +39,6 @@ public sealed class MailDbContext(DbContextOptions<MailDbContext> options) : DbC
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.HasDefaultSchema(Constants.Schema);
         var messages = modelBuilder.Entity<MailMessage>();
         messages.ToTable("messages");
         messages.HasKey(x => x.Id);
@@ -64,7 +63,11 @@ public sealed class MailDbContextFactory : IDesignTimeDbContextFactory<MailDbCon
     private const string ConnectionStringVariable = "ConnectionStrings__Mail";
     private const string DesignTimeConnectionString = "Host=localhost;Database=bikehub_mail;Username=bikehub_mail";
 
-    public MailDbContext CreateDbContext(string[] args) => new(new DbContextOptionsBuilder<MailDbContext>()
-        .UseNpgsql(Environment.GetEnvironmentVariable(ConnectionStringVariable) ?? DesignTimeConnectionString,
-            postgres => postgres.MigrationsHistoryTable("__EFMigrationsHistory", Constants.Schema)).Options);
+    public MailDbContext CreateDbContext(string[] args)
+    {
+        var options = new DbContextOptionsBuilder<MailDbContext>();
+        MailDatabase.Configure(options, Environment.GetEnvironmentVariable(ConnectionStringVariable) ?? DesignTimeConnectionString,
+            Environment.GetEnvironmentVariable("Database__Schema"));
+        return new(options.Options);
+    }
 }

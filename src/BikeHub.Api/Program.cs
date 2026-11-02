@@ -66,8 +66,6 @@ if (migrationsOnly)
     return;
 }
 
-app.UseDefaultFiles();
-app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -76,10 +74,7 @@ app.MapControllers();
 app.MapGet("/api/health", () => Results.Ok(new { status = Program.HealthyStatus, dataSource = Program.MockDataSource }));
 // Keep unknown API routes as 404 rather than serving the SPA document.
 app.MapFallback("/api/{**path}", () => Results.NotFound());
-if (File.Exists(Path.Combine(app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, Program.WebRootDirectory), Constants.IndexDocument)))
-{
-    app.MapFallbackToFile(Constants.IndexDocument);
-}
+
 
 app.Run();
 
@@ -89,5 +84,4 @@ public partial class Program
     private const string DatabaseMigrationsEnabledKey = "Database:MigrationsEnabled";
     private const string HealthyStatus = "ok";
     private const string MockDataSource = "in-memory-mocks";
-    private const string WebRootDirectory = "wwwroot";
 }

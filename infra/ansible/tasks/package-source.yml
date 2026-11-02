@@ -1,7 +1,11 @@
 ---
+- name: Normalize the controller source path before selecting archive members
+  ansible.builtin.set_fact:
+    bikehub_canonical_source_dir: "{{ bikehub_source_dir | realpath }}"
+
 - name: Check required Docker context inputs
   ansible.builtin.stat:
-    path: "{{ bikehub_source_dir }}/{{ item }}"
+    path: "{{ bikehub_canonical_source_dir }}/{{ item }}"
     checksum_algorithm: sha256
   loop: [src, Web, .dockerignore, .editorconfig, Directory.Build.props]
   delegate_to: localhost
@@ -20,7 +24,7 @@
 
 - name: Inventory source files and their content hashes
   ansible.builtin.find:
-    paths: ["{{ bikehub_source_dir }}/src", "{{ bikehub_source_dir }}/Web"]
+    paths: ["{{ bikehub_canonical_source_dir }}/src", "{{ bikehub_canonical_source_dir }}/Web"]
     recurse: true
     hidden: true
     follow: false
@@ -50,7 +54,7 @@
     checksum_algorithm: sha256
   loop: "{{ bikehub_source_entries | selectattr('isreg') | list }}"
   loop_control:
-    label: "{{ item.path | relpath(bikehub_source_dir) }}"
+    label: "{{ item.path | relpath(bikehub_canonical_source_dir) }}"
   delegate_to: localhost
   become: false
   register: bikehub_source_checksums
@@ -62,7 +66,7 @@
 - name: Hash relative paths and checksums rather than archive timestamps
   ansible.builtin.set_fact:
     bikehub_source_digest: >-
-      {{ ((bikehub_source_files | map(attribute='path') | map('regex_replace', '^' ~ (bikehub_source_dir | regex_escape) ~ '/', '') | list)
+      {{ ((bikehub_source_files | map(attribute='path') | map('regex_replace', '^' ~ (bikehub_canonical_source_dir | regex_escape) ~ '/', '') | list)
           | zip(bikehub_source_files | map(attribute='checksum') | list) | list | to_json) | hash('sha256') }}
 
 - name: Create the temporary source archive

@@ -23,10 +23,10 @@ public partial class AdoptExistingSchema : Migration
     private const string UuidV7Sql = """
         DO $migration$
         BEGIN
-            IF to_regprocedure('public.uuidv7()') IS NULL THEN
+            IF to_regprocedure('uuidv7()') IS NULL THEN
                 -- PostgreSQL versions before 18 do not provide uuidv7() natively.
                 -- Build a UUIDv7 using the current Unix timestamp and random UUID bits.
-                CREATE FUNCTION public.uuidv7()
+                CREATE FUNCTION uuidv7()
                 RETURNS uuid
                 LANGUAGE plpgsql
                 VOLATILE
@@ -61,7 +61,7 @@ public partial class AdoptExistingSchema : Migration
 
 
         ALTER TABLE bikes
-            ALTER COLUMN id SET DEFAULT public.uuidv7(),
+            ALTER COLUMN id SET DEFAULT uuidv7(),
             ALTER COLUMN created_at SET DEFAULT NOW();
         """;
 

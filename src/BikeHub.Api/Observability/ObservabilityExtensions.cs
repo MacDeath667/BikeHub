@@ -53,7 +53,7 @@ public static class ObservabilityExtensions
                     serviceVersion: typeof(ObservabilityExtensions).Assembly.GetName().Version?.ToString())
                 .AddAttributes(new Dictionary<string, object>
                 {
-                    [DeploymentEnvironmentAttribute] = builder.Environment.EnvironmentName
+                    [DeploymentEnvironmentAttribute] = configuration["Environment"] ?? builder.Environment.EnvironmentName
                 }))
             .WithMetrics(metrics => metrics
                 .AddAspNetCoreInstrumentation()

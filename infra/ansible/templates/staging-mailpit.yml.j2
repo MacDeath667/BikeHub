@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ bikehub_staging_prefix }}-mailpit
+  namespace: {{ bikehub_namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests: { storage: 1Gi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ bikehub_staging_prefix }}-mailpit
+  namespace: {{ bikehub_namespace }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app.kubernetes.io/name: {{ bikehub_staging_prefix }}-mailpit }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: {{ bikehub_staging_prefix }}-mailpit }
+    spec:
+      containers:
+        - name: mailpit
+          image: {{ bikehub_staging_mailpit_image }}
+          env:
+            - { name: MP_DATABASE, value: /data/mailpit.db }
+            - { name: MP_MAX_MESSAGES, value: "1000" }
+            - { name: MP_WEBROOT, value: /mailpit/ }
+          ports:
+            - { name: smtp, containerPort: 1025 }
+            - { name: http, containerPort: 8025 }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+          readinessProbe:
+            exec: { command: ["/mailpit", "readyz"] }
+            periodSeconds: 5
+          livenessProbe:
+            exec: { command: ["/mailpit", "readyz"] }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { cpu: "0.5", memory: 256Mi }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: {{ bikehub_staging_prefix }}-mailpit }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ bikehub_staging_prefix }}-mailpit
+  namespace: {{ bikehub_namespace }}
+spec:
+  selector: { app.kubernetes.io/name: {{ bikehub_staging_prefix }}-mailpit }
+  ports:
+    - { name: smtp, port: 1025, targetPort: smtp }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ bikehub_staging_prefix }}-mailpit-ui
+  namespace: {{ bikehub_namespace }}
+spec:
+  type: NodePort
+  selector: { app.kubernetes.io/name: {{ bikehub_staging_prefix }}-mailpit }
+  ports:
+    - { name: http, port: 8025, targetPort: http, nodePort: {{ bikehub_staging_mailpit_node_port }} }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ bikehub_staging_prefix }}-mailpit
+  namespace: {{ bikehub_namespace }}
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: {{ bikehub_staging_prefix }}-mailpit }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: {{ bikehub_staging_prefix }}-mail }
+      ports: [{ protocol: TCP, port: 1025 }]
+    - ports: [{ protocol: TCP, port: 8025 }]

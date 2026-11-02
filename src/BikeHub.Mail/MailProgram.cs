@@ -35,9 +35,9 @@ public partial class MailProgram
         }
         var migrateOnly = args.Contains(Constants.MigrateOnlyArgument, StringComparer.Ordinal);
         var builder = WebApplication.CreateBuilder(args.Where(x => x != Constants.MigrateOnlyArgument).ToArray());
-        builder.Services.AddDbContextFactory<MailDbContext>(options => options.UseNpgsql(
+        builder.Services.AddDbContextFactory<MailDbContext>(options => MailDatabase.Configure(options,
             builder.Configuration.GetConnectionString(Constants.ConnectionStringName),
-            postgres => postgres.MigrationsHistoryTable("__EFMigrationsHistory", Constants.Schema)));
+            builder.Configuration[MailDatabase.ConfigurationKey]));
         if (!migrateOnly)
         {
             ValidateConfiguration(builder.Configuration, builder.Environment.IsDevelopment());
@@ -76,7 +76,7 @@ public partial class MailProgram
                     await creator.CreateAsync();
                 }
             }
-            await context.Database.MigrateAsync();
+            await MailDatabase.MigrateAsync(context);
         }
         if (migrateOnly)
         {
