@@ -1,3 +1,4 @@
+import { PhotoGallery } from "../components/PhotoGallery";
 import { ContentTools, ReportButton } from "../components/ContentTools";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -109,11 +110,7 @@ export function PostDetail({
             </div>
           </div>
         </div>
-        <img
-          className="article-image"
-          src={post.imageUrl}
-          alt={post.bike.name}
-        />
+        <PhotoGallery photos={post.photos} fallback={post.imageUrl} title={post.title} className="post-photo-gallery" />
         <div className="article-text">
           {post.content.split("\n\n").map((paragraph, i) => (
             <p key={i}>{paragraph}</p>

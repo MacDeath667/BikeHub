@@ -14,15 +14,17 @@ public record UserDto(Guid Id, string Name, string Handle, string City, string I
 }
 
 public record BikeDto(Guid Id, Guid OwnerId, string Name, string Description, string Brand,
-    BikeCategory Category, int Year, decimal Mileage, string ImageUrl, string Color, UserDto Owner, Guid? ImageId = null)
+    BikeCategory Category, int Year, decimal Mileage, string ImageUrl, string Color, UserDto Owner, Guid? ImageId = null, Guid[]? ImageIds = null)
 {
+    public PhotoDto[] Photos => ContentPhotos.FromIds(ImageIds, ImageId);
     public BikeDto() : this(default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!) { }
 }
 
 public record PostDto(Guid Id, UserDto Author, BikeDto Bike, string Title, string Content,
     string Category, string ImageUrl, string[] Tags, DateTimeOffset CreatedAt,
-    int Likes, int CommentsCount, bool IsLiked, bool IsSaved, Guid? ImageId = null)
+    int Likes, int CommentsCount, bool IsLiked, bool IsSaved, Guid? ImageId = null, Guid[]? ImageIds = null)
 {
+    public PhotoDto[] Photos => ContentPhotos.FromIds(ImageIds, ImageId);
     public PostDto() : this(default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!) { }
 }
 
@@ -40,13 +42,15 @@ public sealed record CreateBikeRequest(
     [EnumDataType(typeof(BikeCategory))] BikeCategory Category,
     [Range(1950, 2100)] int Year,
     [Range(0, 1000000)] decimal Mileage,
-    [StringLength(2000)] string Description, Guid? ImageId = null);
+    [StringLength(2000)] string Description, Guid? ImageId = null,
+    [MaxLength(Constants.MaximumContentPhotos)] Guid[]? ImageIds = null);
 
 public sealed record CreatePostRequest(
     Guid BikeId,
     [Required, StringLength(160, MinimumLength = 3)] string Title,
     [Required, StringLength(20000, MinimumLength = 10)] string Content,
-    [Required, RegularExpression("^(ride|maintenance|upgrade|story)$")] string Category, Guid? ImageId = null);
+    [Required, RegularExpression("^(ride|maintenance|upgrade|story)$")] string Category, Guid? ImageId = null,
+    [MaxLength(Constants.MaximumContentPhotos)] Guid[]? ImageIds = null);
 
 public sealed record CreateCommentRequest([Required, StringLength(2000)] string Text);
 
@@ -85,4 +89,13 @@ public interface ICommunityService
 {
     IReadOnlyList<CommunityDto> GetCommunities(string? query);
     CommunityDto? SetMembership(Guid id, bool active);
+}
+
+public sealed record PhotoDto(Guid Id, string ImageUrl);
+
+internal static class ContentPhotos
+{
+    internal static PhotoDto[] FromIds(Guid[]? ids, Guid? cover) =>
+        (ids is { Length: > 0 } ? ids : cover.HasValue ? [cover.Value] : [])
+            .Select(id => new PhotoDto(id, Constants.MediaPathPrefix + id)).ToArray();
 }

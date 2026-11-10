@@ -20,6 +20,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     private const string RequiredTitle = "Заполните обязательное поле.";
     private const string MaterialTypeTitle = "Укажите тип материала.";
     private const string ProtectedModeratorTitle = "Нельзя заблокировать модератора.";
+    private const string InvalidPhotosTitle = "Выберите до 10 разных фотографий.";
     private const string MissingTitle = "Материал не найден.";
     private const string OwnContentTitle = "Изменять можно только свои материалы.";
     private const string MediaOwnershipTitle = "Выберите свою загруженную фотографию.";
@@ -70,6 +71,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
                 b.Category == (int)BikeCategory.City ? Constants.Images.City : Constants.Images.Gravel,
             Color = string.Empty,
             ImageId = b.ImageId,
+            ImageIds = b.ImageIds,
             Owner = u
         };
 
@@ -92,6 +94,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             CommentsCount = db.Comments.Count(c => c.PostId == p.Id && !c.IsDeleted && !c.IsHidden && db.Accounts.Any(u => u.Id == c.AuthorId && !u.IsBlocked)),
             IsLiked = Viewer.HasValue && db.Relations.Any(r => r.UserId == Viewer && r.TargetId == p.Id && r.Kind == RelationKind.Like),
             ImageId = p.ImageId,
+            ImageIds = p.ImageIds,
             IsSaved = Viewer.HasValue && db.Relations.Any(r => r.UserId == Viewer && r.TargetId == p.Id && r.Kind == RelationKind.Bookmark)
         };
 
@@ -172,7 +175,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     {
         using var db = contexts.CreateDbContext();
         var actor = Actor();
-        CheckImage(db, request.ImageId, actor.Id);
+        var images = CheckImages(db, request.ImageIds, request.ImageId, actor.Id);
         var bike = new Bike
         {
             Id = Guid.CreateVersion7(),
@@ -183,7 +186,8 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             Category = (int)request.Category,
             Year = request.Year,
             Mileage = request.Mileage,
-            ImageId = request.ImageId,
+            ImageId = images.Length > 0 ? images[0] : null,
+            ImageIds = images,
             CreatedAt = clock.GetUtcNow()
         };
         db.Bikes.Add(bike);
@@ -200,10 +204,10 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         {
             throw new CommunityProblem(409, HiddenTitle);
         }
-        CheckImage(db, request.ImageId, bike.OwnerId);
+        var images = CheckImages(db, request.ImageIds, request.ImageId, bike.OwnerId);
         bike.Name = request.Name.Trim(); bike.Description = request.Description?.Trim() ?? string.Empty;
         bike.Brand = request.Brand.Trim(); bike.Category = (int)request.Category; bike.Year = request.Year;
-        bike.Mileage = request.Mileage; bike.ImageId = request.ImageId;
+        bike.Mileage = request.Mileage; bike.ImageId = images.Length > 0 ? images[0] : null; bike.ImageIds = images;
         db.SaveChanges();
         return Bikes(db).SingleOrDefault(b => b.Id == id) ?? throw new CommunityProblem(409, HiddenTitle);
     }
@@ -236,7 +240,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         {
             return null;
         }
-        CheckImage(db, request.ImageId, actor.Id);
+        var images = CheckImages(db, request.ImageIds, request.ImageId, actor.Id);
         var post = new CommunityPost
         {
             Id = Guid.CreateVersion7(),
@@ -246,7 +250,8 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             Content = request.Content.Trim(),
             Category = request.Category,
             Tags = Tags(request.Content),
-            ImageId = request.ImageId,
+            ImageId = images.Length > 0 ? images[0] : null,
+            ImageIds = images,
             CreatedAt = clock.GetUtcNow()
         };
         db.Posts.Add(post); db.SaveChanges();
@@ -270,9 +275,9 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         {
             throw new CommunityProblem(400, OwnBikeTitle);
         }
-        CheckImage(db, request.ImageId, actor.Id);
+        var images = CheckImages(db, request.ImageIds, request.ImageId, actor.Id);
         post.Title = request.Title.Trim(); post.Content = request.Content.Trim(); post.Category = request.Category;
-        post.BikeId = request.BikeId; post.ImageId = request.ImageId; post.Tags = Tags(request.Content); post.UpdatedAt = clock.GetUtcNow();
+        post.BikeId = request.BikeId; post.ImageId = images.Length > 0 ? images[0] : null; post.ImageIds = images; post.Tags = Tags(request.Content); post.UpdatedAt = clock.GetUtcNow();
         db.SaveChanges();
         return Posts(db).SingleOrDefault(p => p.Id == id) ?? throw new CommunityProblem(409, HiddenTitle);
     }
@@ -459,6 +464,20 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             throw new CommunityProblem(403, OwnContentTitle);
         }
     }
+    private static Guid[] CheckImages(BikeHubDbContext db, Guid[]? ids, Guid? legacyCover, Guid owner)
+    {
+        var images = ids ?? (legacyCover.HasValue ? [legacyCover.Value] : []);
+        if (images.Length > BikeHub.Application.Constants.MaximumContentPhotos || images.Distinct().Count() != images.Length || images.Contains(Guid.Empty))
+        {
+            throw new CommunityProblem(400, InvalidPhotosTitle);
+        }
+        if (db.Media.Count(m => images.Contains(m.Id) && m.OwnerId == owner && !m.IsDeleted) != images.Length)
+        {
+            throw new CommunityProblem(400, MediaOwnershipTitle);
+        }
+        return images;
+    }
+
     private static void CheckImage(BikeHubDbContext db, Guid? id, Guid owner)
     {
         if (id.HasValue && !db.Media.Any(m => m.Id == id && m.OwnerId == owner && !m.IsDeleted))

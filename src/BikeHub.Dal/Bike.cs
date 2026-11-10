@@ -6,6 +6,7 @@ public sealed class Bike
     public int Category { get; set; } = 3;
     public int Year { get; set; }
     public decimal Mileage { get; set; }
+    public Guid[] ImageIds { get; set; } = [];
     public Guid? ImageId { get; set; }
     public bool IsDeleted { get; set; }
     public bool IsHidden { get; set; }

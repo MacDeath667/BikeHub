@@ -15,6 +15,7 @@ internal static class CommunityModel
         account.HasIndex(x => x.Handle).IsUnique().HasDatabaseName("ix_auth_accounts_handle").HasFilter("handle IS NOT NULL");
         account.HasOne<MediaAsset>().WithMany().HasForeignKey(x => x.AvatarId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_account_avatar");
         var bike = model.Entity<Bike>();
+        bike.Property(x => x.ImageIds).HasColumnType("uuid[]").HasDefaultValueSql("ARRAY[]::uuid[]");
         bike.Property(x => x.Brand).HasDefaultValue(string.Empty).HasMaxLength(80);
         bike.Property(x => x.Category).HasDefaultValue(3);
         bike.Property(x => x.Year).HasDefaultValue(0);
@@ -29,6 +30,7 @@ internal static class CommunityModel
         post.Property(x => x.Title).HasMaxLength(160);
         post.Property(x => x.Content).HasMaxLength(20000);
         post.Property(x => x.Category).HasMaxLength(20);
+        post.Property(x => x.ImageIds).HasColumnType("uuid[]").HasDefaultValueSql("ARRAY[]::uuid[]");
         post.Property(x => x.Tags).HasColumnType("text[]").HasDefaultValueSql("ARRAY[]::text[]");
         post.HasIndex(x => new { x.CreatedAt, x.Id }).HasDatabaseName("ix_posts_feed");
         post.HasOne<Bike>().WithMany().HasForeignKey(x => x.BikeId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_post_bike");

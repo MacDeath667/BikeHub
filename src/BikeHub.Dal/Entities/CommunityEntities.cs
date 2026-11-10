@@ -12,6 +12,7 @@ public sealed class CommunityPost
     public string Content { get; set; } = string.Empty;
     public string[] Tags { get; set; } = [];
     public string Category { get; set; } = string.Empty;
+    public Guid[] ImageIds { get; set; } = [];
     public Guid? ImageId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }

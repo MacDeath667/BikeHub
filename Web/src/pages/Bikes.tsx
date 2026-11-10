@@ -1,3 +1,4 @@
+import { PhotoGallery } from "../components/PhotoGallery";
 import { ContentTools } from "../components/ContentTools";
 import { useEffect, useState } from "react";
 import {
@@ -195,7 +196,7 @@ export function BikeDetail({
       <ContentTools bike={bike} me={me} saved={() => { setPage(1); setRevision(v => v + 1); }} notify={notify} />
       <section className="bike-detail">
         <div className="detail-cover">
-          <img src={bike.imageUrl} alt={bike.name} />
+          <PhotoGallery photos={bike.photos} fallback={bike.imageUrl} title={bike.name} />
           <span className="image-category">{categories[bike.category]}</span>
         </div>
         <div className="detail-body">

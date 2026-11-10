@@ -121,8 +121,8 @@ public sealed class MediaStore(IDbContextFactory<BikeHubDbContext> contexts, ICu
             return null;
         }
         var visible = db.Bikes.Where(b => !b.IsDeleted && !b.IsHidden && db.Accounts.Any(a => a.Id == b.OwnerId && !a.IsBlocked));
-        var published = db.Accounts.Any(a => a.AvatarId == id && !a.IsBlocked) || visible.Any(b => b.ImageId == id) ||
-            db.Posts.Any(p => p.ImageId == id && !p.IsDeleted && !p.IsHidden && visible.Any(b => b.Id == p.BikeId));
+        var published = db.Accounts.Any(a => a.AvatarId == id && !a.IsBlocked) || visible.Any(b => b.ImageId == id || b.ImageIds.Contains(id)) ||
+            db.Posts.Any(p => (p.ImageId == id || p.ImageIds.Contains(id)) && !p.IsDeleted && !p.IsHidden && visible.Any(b => b.Id == p.BikeId));
         var path = PathFor(id);
         return (published || asset.OwnerId == current.Id) && File.Exists(path) ? path : null;
     }

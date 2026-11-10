@@ -58,6 +58,13 @@ namespace BikeHub.Dal.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("image_id");
 
+                    b.PrimitiveCollection<Guid[]>("ImageIds")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("image_ids")
+                        .HasDefaultValueSql("ARRAY[]::uuid[]");
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -336,6 +343,13 @@ namespace BikeHub.Dal.Migrations
                     b.Property<Guid?>("ImageId")
                         .HasColumnType("uuid")
                         .HasColumnName("image_id");
+
+                    b.PrimitiveCollection<Guid[]>("ImageIds")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("image_ids")
+                        .HasDefaultValueSql("ARRAY[]::uuid[]");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean")

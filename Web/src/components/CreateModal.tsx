@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ArrowUpRight, Bike as BikeIcon, MessageCircle, X } from "lucide-react";
 import { api, categories, postCategories } from "../api";
-import type { Bike, Page, Post, User } from "../api";
-import { PhotoUpload } from "./PhotoUpload";
+import type { Bike, Page, Photo, Post, User } from "../api";
+import { PhotoCollection } from "./PhotoCollection";
 import { Empty, ErrorBox, Loading } from "./ui";
 
 export function CreateModal({
@@ -22,7 +22,7 @@ export function CreateModal({
   onSuccess: (id: string) => void;
 }) {
   const initial = initialPost || initialBike;
-  const [imageId, setImageId] = useState<string | null>(initial?.imageId || null);
+  const [photos, setPhotos] = useState<Photo[]>(initial?.photos?.length ? initial.photos : initial?.imageId ? [{ id: initial.imageId, imageUrl: initial.imageUrl }] : []);
   const [uploading, setUploading] = useState(false);
   const [bikes, setBikes] = useState<Bike[]>([]);
   const [loading, setLoading] = useState(type === "post");
@@ -68,7 +68,7 @@ export function CreateModal({
     try {
       const result = await api<{ id: string }>(
         (type === "post" ? "/posts" : "/bikes") + (initial ? `/${initial.id}` : ""),
-        { method: initial ? "PUT" : "POST", body: JSON.stringify({ ...values, imageId }) },
+        { method: initial ? "PUT" : "POST", body: JSON.stringify({ ...values, imageIds: photos.map(photo => photo.id) }) },
       );
       onSuccess(result.id);
     } catch (e) {
@@ -144,6 +144,7 @@ export function CreateModal({
         />
       ) : (
         <form onSubmit={submit} className="editor-form">
+          <PhotoCollection photos={photos} onChange={setPhotos} onBusy={setUploading} disabled={saving} />
           {type === "post" ? (
             <>
               <label>
@@ -196,7 +197,7 @@ export function CreateModal({
                 />
               </label>
               <span className="form-hint">
-                Обложка будет взята из карточки велосипеда.
+                Без своих фотографий запись возьмёт обложку велосипеда.
               </span>
             </>
           ) : (
@@ -270,11 +271,10 @@ export function CreateModal({
                 />
               </label>
               <span className="form-hint">
-                Добавьте свою фотографию или оставьте обложку по типу велосипеда.
+                Расскажите о велосипеде и добавьте фотографии ниже.
               </span>
             </>
           )}
-          <PhotoUpload value={initial?.imageUrl} onChange={setImageId} onBusy={setUploading} />
           {error && <ErrorBox message={error} />}
           <div className="dialog-footer">
             <button

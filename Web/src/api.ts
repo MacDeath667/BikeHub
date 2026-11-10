@@ -42,6 +42,7 @@ let csrfRequest: Promise<void> | null = null;
 export function requestLogin() {
   window.dispatchEvent(new Event("bikehub:auth-required"));
 }
+export interface Photo { id: string; imageUrl: string; }
 export interface Bike {
   id: string;
   ownerId: string;
@@ -53,6 +54,8 @@ export interface Bike {
   mileage: number;
   imageUrl: string;
   imageId?: string | null;
+  photos?: Photo[];
+  imageIds?: string[];
   color: string;
   owner: User;
 }
@@ -65,6 +68,8 @@ export interface Post {
   category: string;
   imageUrl: string;
   imageId?: string | null;
+  photos?: Photo[];
+  imageIds?: string[];
   tags: string[];
   createdAt: string;
   likes: number;
@@ -85,6 +90,8 @@ export interface Community {
   category: string;
   imageUrl: string;
   imageId?: string | null;
+  photos?: Photo[];
+  imageIds?: string[];
   members: number;
   isJoined: boolean;
 }
