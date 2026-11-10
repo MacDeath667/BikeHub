@@ -1,5 +1,6 @@
 using BikeHub.Api.Authentication;
 using BikeHub.Dal;
+using BikeHub.Dal.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace BikeHub.Api.Tests;
@@ -17,6 +18,41 @@ public sealed class AuthenticationStoreTests
         await using var context = database.CreateDbContext();
         await context.Database.MigrateAsync();
         await VerifyContract(new PostgresAuthenticationStore(database));
+    }
+
+    [Fact]
+    public Task Memory_store_enforces_challenge_purpose() => VerifyPurpose(new InMemoryAuthenticationStore());
+
+    [Fact]
+    public async Task Postgres_store_enforces_challenge_purpose()
+    {
+        await using var database = await PersistenceTestDatabase.CreateAsync();
+        await new DatabaseMigrator(database).MigrateAsync(default);
+        await VerifyPurpose(new PostgresAuthenticationStore(database));
+    }
+
+    private static async Task VerifyPurpose(IAuthenticationStore store)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var hash = new string('A', 64);
+        var email = "flow@example.test";
+        async Task<ConfirmationResult> Confirm(AuthenticationPurpose purpose, DateTimeOffset time, string name)
+        {
+            var challenge = new EmailChallenge(Guid.NewGuid(), email, name, hash, hash,
+                time, time.AddMinutes(5), Purpose: purpose);
+            Assert.True(await store.TryCreateChallengeAsync(challenge, new(), default));
+            await store.SetDeliveredAsync(challenge.Id, true, default);
+            return await store.ConfirmAsync(challenge.Id, hash, hash, time, time.AddDays(14), 5, default);
+        }
+        Assert.Equal(ConfirmationFailure.AccountNotFound, (await Confirm(AuthenticationPurpose.Login, now, "Ignored")).Failure);
+        Assert.Null(await store.FindByEmailAsync(email, default));
+        var registered = (await Confirm(AuthenticationPurpose.Registration, now.AddMinutes(2), "Original")).Session!;
+        // Bypass the HTTP precheck: confirmation must independently reject an existing account.
+        Assert.Equal(ConfirmationFailure.AccountExists,
+            (await Confirm(AuthenticationPurpose.Registration, now.AddMinutes(4), "Replacement")).Failure);
+        var login = (await Confirm(AuthenticationPurpose.Login, now.AddMinutes(6), "Replacement")).Session!;
+        Assert.Equal(registered.Account.Id, login.Account.Id);
+        Assert.Equal("Original", login.Account.DisplayName);
     }
 
     private static async Task VerifyContract(IAuthenticationStore store)
@@ -45,11 +81,13 @@ public sealed class AuthenticationStoreTests
         Assert.Null(await store.GetSessionAsync(session.Id, now, default));
         Assert.False(await store.TryCreateChallengeAsync(Make(first.Email, now.AddSeconds(30), binding), limits, default));
 
-        var second = Make(first.Email, now.AddSeconds(61), binding);
+        var second = Make(first.Email, now.AddSeconds(61), binding) with { DisplayName = "Другое имя" };
         Assert.True(await store.TryCreateChallengeAsync(second, limits, default));
         await store.SetDeliveredAsync(second.Id, true, default);
         var returning = (await Confirm(second, second.CreatedAt)).Session!;
         Assert.Equal(session.Account.Id, returning.Account.Id);
+        Assert.Equal(session.Account.DisplayName, returning.Account.DisplayName);
+        Assert.Equal(session.Account.DisplayName, (await store.GetAccountAsync(returning.Account.Id, default))!.DisplayName);
         Assert.False(await store.TryCreateChallengeAsync(Make(first.Email, now.AddMinutes(3), binding), limits, default));
 
         var third = Make("two@example.test", now.AddMinutes(3), binding);

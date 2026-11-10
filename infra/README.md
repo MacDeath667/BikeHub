@@ -255,3 +255,20 @@ bash -n infra/terraform/terraform-apply.sh
 Фронт — независимый nginx-контейнер из `Web/Dockerfile`, API раздаёт только API и Swagger. Host nginx направляет `/api` и `/swagger` в API, остальные запросы в Web. NodePort фронта: 30083 у production, 30084 у staging. Почтовый маршрут `/mailpit/` staging сохраняется.
 
 Только production запускается через `playbooks/production.yml`, только staging — через `playbooks/staging.yml`, оба — через `playbooks/server.yml`. [Готовые команды](../README.md#отдельные-контейнеры-фронта-и-api). После первого обновления с пересборкой можно применять конфиги с `-e bikehub_rebuild_image=false`: читаются три соответствующих Deployment. Frontend-реплики задаются `bikehub_web_replica_count`, независимо от API. Учтите, что контент API пока находится в памяти каждой реплики.
+
+## BikeHub под /bikehub/ рядом с Nextcloud
+
+Публичный адрес: `https://macdeath.duckdns.org/bikehub/`. Nextcloud остаётся в корне. Фронт использует относительную Vite base (`./`), вычисляет адрес API от каталога страницы и добавляет тот же префикс к путям изображений из API. Один Web-образ поддерживает и корень, и `/bikehub/`; hash-маршруты сохраняются.
+
+Сначала обновите приложение штатной командой `production.yml` из README. В Nginx Proxy Manager отредактируйте существующий Proxy Host **macdeath.duckdns.org**, которым обслуживается Nextcloud:
+
+1. Оставьте вкладку Details и настройки Nextcloud прежними.
+2. Исправьте Custom Location: **Location `/bikehub/`**, **Scheme `https`**, **Forward Host `192.168.0.49`**, **Forward Port `443`**. Оставьте **Access List: Inherit from Proxy Host**.
+3. Нажмите шестерёнку этого location и вставьте три директивы из [nginx-proxy-manager/bikehub.conf](nginx-proxy-manager/bikehub.conf): `rewrite`, `proxy_ssl_server_name`, `proxy_ssl_name`. Они снимают `/bikehub/` перед передачей в nginx VM и устанавливают SNI `bikehub.local`.
+4. На вкладке Advanced добавьте содержимое [nginx-proxy-manager/bikehub-redirect.conf](nginx-proxy-manager/bikehub-redirect.conf) для `/bikehub` без завершающего слеша. Существующие директивы Nextcloud сохраните. Второй Proxy Host на тот же домен создавать не нужно.
+5. На вкладке SSL выберите действующий сертификат **macdeath.duckdns.org** (или запросите Let's Encrypt), затем сохраните. Проверьте статус хоста: Online. TLS выбирается по имени домена до обработки URL-пути; изменение Custom Location само по себе не исправляет `ERR_SSL_UNRECOGNIZED_NAME_ALERT`.
+6. Внешние 80/443 должны попадать на HTTP/HTTPS-порты NPM. Сохраните прежний проброс Nextcloud через NPM.
+
+Далее nginx VM маршрутизирует `/api` и статику. Upstream использует HTTPS **443** и SNI `bikehub.local`; браузеру NPM предъявляет публичный сертификат DuckDNS. Внутренний самоподписанный сертификат VM не становится сертификатом публичного домена.
+
+Если появится 502, проверьте доступ от NPM к `192.168.0.49:443` и готовность Web/API. Проверяйте `/bikehub/`, JS/CSS, картинки, `/bikehub/api/health` и корень Nextcloud. Никакие общие location `/api`, `/assets` или `/images` для BikeHub на публичном домене добавлять не нужно: эти пути остаются внутри `/bikehub/`.

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using BikeHub.Dal.Entities;
 
 namespace BikeHub.Api.Authentication;
 
@@ -15,14 +16,14 @@ public sealed class EmailAuthenticationService(IAuthenticationStore store, IVeri
     private const string DeliveryFailureLog = "Verification email delivery failed ({FailureType})";
 
     public async Task<EmailCodeResponse?> RequestAsync(string email, string? name, string binding,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, AuthenticationPurpose purpose = AuthenticationPurpose.Registration)
     {
         var options = configuration.Value;
         var now = clock.GetUtcNow();
         var id = Guid.NewGuid();
         var code = OtpSecurity.NewCode();
         var challenge = new EmailChallenge(id, email, string.IsNullOrWhiteSpace(name) ? DefaultDisplayName : name.Trim(),
-            security.HashCode(id, code), security.Hash(Constants.BrowserBindingPurpose, binding), now, now.AddMinutes(options.CodeMinutes));
+            security.HashCode(id, code), security.Hash(Constants.BrowserBindingPurpose, binding), now, now.AddMinutes(options.CodeMinutes), Purpose: purpose);
         if (!await store.TryCreateChallengeAsync(challenge, options, cancellationToken))
         {
             AuthTelemetry.Record(ThrottledEvent);

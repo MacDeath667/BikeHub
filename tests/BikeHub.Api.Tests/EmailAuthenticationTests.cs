@@ -9,6 +9,28 @@ namespace BikeHub.Api.Tests;
 public sealed class EmailAuthenticationTests
 {
     [Fact]
+    public async Task Login_never_registers_and_registration_never_logs_into_an_existing_account()
+    {
+        await using var app = new AuthFactory();
+        using var browser = app.Browser();
+        using var missing = await AuthTestClient.Post(browser, "/api/auth/login/email/challenges", new { email = "missing@example.test" });
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        var (registered, registeredResponse) = await AuthTestClient.Login(browser, "registered@example.test", "Первое имя");
+        registeredResponse.Dispose();
+        using var logout = await AuthTestClient.Post(browser, "/api/auth/logout");
+        app.Clock.Advance(TimeSpan.FromSeconds(61));
+        using var duplicate = await AuthTestClient.Post(browser, "/api/auth/registration/email/challenges",
+            new { email = "REGISTERED@example.test", name = "Другое имя" });
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        var anonymous = await browser.GetFromJsonAsync<AuthBootstrap>("/api/auth/session");
+        Assert.Null(anonymous!.User);
+        var (signedIn, loginResponse) = await AuthTestClient.Login(browser, "registered@example.test", registering: false);
+        loginResponse.Dispose();
+        Assert.Equal(registered.User!.Id, signedIn.User!.Id);
+        Assert.Equal("Первое имя", signedIn.User.Name);
+    }
+
+    [Fact]
     public async Task Guest_can_read_but_cannot_modify_or_read_personal_data()
     {
         await using var app = new AuthFactory();
@@ -30,7 +52,7 @@ public sealed class EmailAuthenticationTests
         using var browser = app.Browser();
         using var diagnostic = await browser.GetAsync("/api/auth/session");
         Assert.True(diagnostic.IsSuccessStatusCode, string.Join("\n", app.Logs.Entries));
-        var (session, response) = await AuthTestClient.Login(browser, "alice@example.test");
+        var (session, response) = await AuthTestClient.Login(browser, "alice@example.test", "Другое имя");
         using (response)
         {
             Assert.NotNull(session.User);
@@ -50,15 +72,17 @@ public sealed class EmailAuthenticationTests
         using var browser = app.Browser();
         var (challenge, code) = await AuthTestClient.Challenge(browser, "Alice@EXAMPLE.test");
         using var first = await AuthTestClient.Post(browser, "/api/auth/email/verify", new { challengeId = challenge.ChallengeId, code });
-        var original = (await first.Content.ReadFromJsonAsync<AuthBootstrap>())!.User!.Id;
+        var originalUser = (await first.Content.ReadFromJsonAsync<AuthBootstrap>())!.User!;
+        var original = originalUser.Id;
         using var replay = await AuthTestClient.Post(browser, "/api/auth/email/verify", new { challengeId = challenge.ChallengeId, code });
         Assert.Equal(HttpStatusCode.BadRequest, replay.StatusCode);
         using var logout = await AuthTestClient.Post(browser, "/api/auth/logout");
         app.Clock.Advance(TimeSpan.FromSeconds(61));
-        var (next, response) = await AuthTestClient.Login(browser, "alice@example.test");
+        var (next, response) = await AuthTestClient.Login(browser, "alice@example.test", "Другое имя", registering: false);
         using (response)
         {
             Assert.Equal(original, next.User!.Id);
+            Assert.Equal(originalUser.Name, next.User.Name);
         }
     }
 

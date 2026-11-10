@@ -2500,3 +2500,5 @@ textarea {
 .auth-comment-prompt .button { white-space: nowrap; }
 .login-button { min-height: 36px; padding: 8px 15px; }
 @media (max-width: 480px) { .auth-dialog { padding: 26px 22px; } .auth-secondary { gap: 8px; } .auth-comment-prompt { align-items: flex-start; flex-direction: column; } }
+
+.auth-name-hint { margin: 0; color: #64756b; font-size: 12px; line-height: 1.6; }

@@ -158,9 +158,9 @@ export default function App() {
         />
       )}
       <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
-        <a className="brand" href="#/">
+        <a className="brand" href="#/" aria-label="BikeHub — на главную">
           <span className="brand-mark">
-            <BikeIcon size={26} />
+            <img src="./brand/bikehub-mark-light.svg?v=3" width="36" height="36" alt="" />
           </span>
           bikehub<span className="brand-dot">.</span>
         </a>

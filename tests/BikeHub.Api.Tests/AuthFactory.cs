@@ -115,9 +115,9 @@ public static class AuthTestClient
         return await client.SendAsync(request);
     }
 
-    public static async Task<(EmailCodeResponse Challenge, string Code)> Challenge(HttpClient client, string email)
+    public static async Task<(EmailCodeResponse Challenge, string Code)> Challenge(HttpClient client, string email, string name = "Участник теста", bool registering = true)
     {
-        using var response = await Post(client, "/api/auth/email/challenges", new { email, name = "Участник теста" });
+        using var response = await Post(client, registering ? "/api/auth/registration/email/challenges" : "/api/auth/login/email/challenges", new { email, name });
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
         var challenge = (await response.Content.ReadFromJsonAsync<EmailCodeResponse>())!;
@@ -125,9 +125,9 @@ public static class AuthTestClient
         return (challenge, message!.Code);
     }
 
-    public static async Task<(AuthBootstrap Session, HttpResponseMessage Response)> Login(HttpClient client, string email)
+    public static async Task<(AuthBootstrap Session, HttpResponseMessage Response)> Login(HttpClient client, string email, string name = "Участник теста", bool registering = true)
     {
-        var (challenge, code) = await Challenge(client, email);
+        var (challenge, code) = await Challenge(client, email, name, registering);
         var response = await Post(client, "/api/auth/email/verify", new { challengeId = challenge.ChallengeId, code });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return ((await response.Content.ReadFromJsonAsync<AuthBootstrap>())!, response);

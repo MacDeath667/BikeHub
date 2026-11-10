@@ -1,3 +1,5 @@
+using BikeHub.Dal.Entities;
+
 namespace BikeHub.Api.Authentication;
 
 // Development/test implementation; production uses the transactional PostgreSQL store.
@@ -68,7 +70,16 @@ public sealed class InMemoryAuthenticationStore : IAuthenticationStore
                     value.Attempts >= maxAttempts ? ConfirmationFailure.TooManyAttempts : ConfirmationFailure.Invalid));
             }
             challenges[id] = value with { Consumed = true };
-            if (!accounts.TryGetValue(value.Email, out var account))
+            accounts.TryGetValue(value.Email, out var account);
+            if (value.Purpose == AuthenticationPurpose.Registration && account is not null)
+            {
+                return Task.FromResult(new ConfirmationResult(null, ConfirmationFailure.AccountExists));
+            }
+            if (value.Purpose == AuthenticationPurpose.Login && account is null)
+            {
+                return Task.FromResult(new ConfirmationResult(null, ConfirmationFailure.AccountNotFound));
+            }
+            if (account is null)
             {
                 account = new(Guid.CreateVersion7(), value.Email, value.DisplayName, now);
                 accounts.Add(account.Email, account);
@@ -84,6 +95,14 @@ public sealed class InMemoryAuthenticationStore : IAuthenticationStore
         lock (gate)
         {
             return Task.FromResult(sessions.TryGetValue(id, out var value) && value.ExpiresAt > now ? value : null);
+        }
+    }
+
+    public Task<AuthAccount?> FindByEmailAsync(string email, CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            return Task.FromResult(accounts.GetValueOrDefault(email));
         }
     }
 

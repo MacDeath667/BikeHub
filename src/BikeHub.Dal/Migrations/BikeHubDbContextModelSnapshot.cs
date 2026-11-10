@@ -193,6 +193,12 @@ namespace BikeHub.Dal.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
+                    b.Property<int>("Purpose")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("purpose");
+
                     b.HasKey("Id")
                         .HasName("auth_email_challenges_pkey");
 

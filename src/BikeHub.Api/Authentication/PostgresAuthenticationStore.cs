@@ -30,6 +30,7 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
         context.EmailChallenges.Add(new EmailChallengeEntity
         {
             Id = value.Id,
+            Purpose = value.Purpose,
             Email = value.Email,
             DisplayName = value.DisplayName,
             CodeHash = value.CodeHash,
@@ -79,6 +80,16 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
         // Separate valid challenges for the same email must converge on a single account.
         await context.Database.ExecuteSqlRawAsync(AcquireAccountLockSql, new object[] { value.Email }, cancellationToken);
         var account = await context.Accounts.SingleOrDefaultAsync(a => a.Email == value.Email, cancellationToken);
+        if (value.Purpose == AuthenticationPurpose.Registration && account is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return new(null, ConfirmationFailure.AccountExists);
+        }
+        if (value.Purpose == AuthenticationPurpose.Login && account is null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return new(null, ConfirmationFailure.AccountNotFound);
+        }
         if (account is null)
         {
             account = new AuthAccountEntity
@@ -111,6 +122,13 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
         var session = await context.Sessions.AsNoTracking().Include(s => s.Account)
             .SingleOrDefaultAsync(s => s.Id == id && s.ExpiresAt > now, cancellationToken);
         return session is null ? null : new(session.Id, MapAccount(session.Account), session.ExpiresAt);
+    }
+
+    public async Task<AuthAccount?> FindByEmailAsync(string email, CancellationToken cancellationToken)
+    {
+        await using var context = await contexts.CreateDbContextAsync(cancellationToken);
+        var account = await context.Accounts.AsNoTracking().SingleOrDefaultAsync(x => x.Email == email, cancellationToken);
+        return account is null ? null : MapAccount(account);
     }
 
     public async Task<AuthAccount?> GetAccountAsync(Guid id, CancellationToken cancellationToken)

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BikeHub.Dal.Entities;
 using BikeHub.Api.Authentication;
 using BikeHub.Api.Services;
 using Microsoft.AspNetCore.Antiforgery;
@@ -25,6 +26,8 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
     private const string AttemptsExceededTitle = "Попытки закончились. Запросите новый код.";
     private const string InvalidCodeTitle = "Код неверный или истёк. Проверьте письмо или запросите новый код.";
     private const string SignedOutEvent = "signed_out";
+    private const string AccountExistsTitle = "Эта почта уже зарегистрирована. Перейдите ко входу.";
+    private const string AccountNotFoundTitle = "Аккаунт с этой почтой не найден. Зарегистрируйтесь.";
     private const string EmailMask = "***";
     private const string DevelopmentCodeTemplate = "Ваш код: {0}";
 
@@ -35,9 +38,19 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
     [HttpGet("session")]
     public ActionResult<AuthBootstrap> Session() => Ok(Bootstrap());
 
+    [HttpPost("registration/email/challenges")]
     [HttpPost("email/challenges")]
     [EnableRateLimiting(Constants.RateLimitPolicies.RequestCode)]
-    public async Task<ActionResult<EmailCodeResponse>> RequestCode(RequestEmailCode request, CancellationToken cancellationToken)
+    public Task<ActionResult<EmailCodeResponse>> RequestCode(RequestEmailCode request, CancellationToken cancellationToken) =>
+        RequestCodeAsync(request, AuthenticationPurpose.Registration, cancellationToken);
+
+    [HttpPost("login/email/challenges")]
+    [EnableRateLimiting(Constants.RateLimitPolicies.RequestCode)]
+    public Task<ActionResult<EmailCodeResponse>> Login(RequestLoginCode request, CancellationToken cancellationToken) =>
+        RequestCodeAsync(new RequestEmailCode(request.Email, null), AuthenticationPurpose.Login, cancellationToken);
+
+    private async Task<ActionResult<EmailCodeResponse>> RequestCodeAsync(RequestEmailCode request,
+        AuthenticationPurpose purpose, CancellationToken cancellationToken)
     {
         if (!configuration.Value.Enabled)
         {
@@ -53,6 +66,16 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
         if (email is null)
         {
             return Problem(statusCode: StatusCodes.Status400BadRequest, title: InvalidEmailTitle);
+        }
+
+        var existing = await store.FindByEmailAsync(email, cancellationToken);
+        if (purpose == AuthenticationPurpose.Registration && existing is not null)
+        {
+            return AccountExists();
+        }
+        if (purpose == AuthenticationPurpose.Login && existing is null)
+        {
+            return AccountNotFound();
         }
 
         var name = request.Name?.Trim();
@@ -78,7 +101,7 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
         });
         try
         {
-            var result = await authentication.RequestAsync(email, name, binding, cancellationToken);
+            var result = await authentication.RequestAsync(email, name, binding, cancellationToken, purpose);
             if (result is null)
             {
                 Response.Headers.RetryAfter = configuration.Value.ResendSeconds.ToString();
@@ -118,6 +141,14 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
             return Problem(statusCode: StatusCodes.Status429TooManyRequests, title: AttemptsExceededTitle);
         }
 
+        if (result.Failure == ConfirmationFailure.AccountExists)
+        {
+            return AccountExists();
+        }
+        if (result.Failure == ConfirmationFailure.AccountNotFound)
+        {
+            return AccountNotFound();
+        }
         if (result.Session is not { } session)
         {
             return InvalidCode();
@@ -180,6 +211,11 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
         return new(user, account is not null, masked, false,
             antiforgery.GetAndStoreTokens(HttpContext).RequestToken!, configuration.Value.Enabled, DevelopmentMailbox);
     }
+
+    private ObjectResult AccountExists() => Problem(statusCode: StatusCodes.Status409Conflict,
+        title: AccountExistsTitle);
+    private ObjectResult AccountNotFound() => Problem(statusCode: StatusCodes.Status404NotFound,
+        title: AccountNotFoundTitle);
 
     private ObjectResult InvalidCode() => Problem(statusCode: StatusCodes.Status400BadRequest, title: InvalidCodeTitle);
 }

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using BikeHub.Dal.Entities;
 using BikeHub.Application.Community;
 
 namespace BikeHub.Api.Authentication;
@@ -23,6 +24,9 @@ public sealed record RequestEmailCode(
     [Required, EmailAddress, StringLength(Constants.MaximumEmailLength)] string Email,
     [StringLength(60, MinimumLength = Constants.MinimumDisplayNameLength)] string? Name);
 
+public sealed record RequestLoginCode(
+    [Required, EmailAddress, StringLength(Constants.MaximumEmailLength)] string Email);
+
 public sealed record VerifyEmailCode(
     Guid ChallengeId,
     [Required, RegularExpression("^[0-9]{6}$")] string Code);
@@ -34,8 +38,8 @@ public sealed record AuthAccount(Guid Id, string Email, string DisplayName, Date
 public sealed record AuthSession(Guid Id, AuthAccount Account, DateTimeOffset ExpiresAt);
 public sealed record EmailChallenge(Guid Id, string Email, string DisplayName, string CodeHash,
     string BindingHash, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt,
-    int Attempts = 0, bool Delivered = false, bool Consumed = false);
-public enum ConfirmationFailure { None, Invalid, TooManyAttempts }
+    int Attempts = 0, bool Delivered = false, bool Consumed = false, AuthenticationPurpose Purpose = AuthenticationPurpose.Legacy);
+public enum ConfirmationFailure { None, Invalid, TooManyAttempts, AccountExists, AccountNotFound }
 public sealed record ConfirmationResult(AuthSession? Session, ConfirmationFailure Failure);
 public sealed record VerificationMessage(Guid ChallengeId, string Destination, string Code,
     string BindingHash, DateTimeOffset ExpiresAt, int ValidMinutes);
@@ -58,6 +62,7 @@ public interface IAuthenticationStore
     Task<ConfirmationResult> ConfirmAsync(Guid id, string codeHash, string bindingHash,
         DateTimeOffset now, DateTimeOffset sessionExpiresAt, int maxAttempts, CancellationToken cancellationToken);
     Task<AuthSession?> GetSessionAsync(Guid id, DateTimeOffset now, CancellationToken cancellationToken);
+    Task<AuthAccount?> FindByEmailAsync(string email, CancellationToken cancellationToken);
     Task<AuthAccount?> GetAccountAsync(Guid id, CancellationToken cancellationToken);
     Task RevokeSessionAsync(Guid id, CancellationToken cancellationToken);
     Task CleanupAsync(DateTimeOffset now, CancellationToken cancellationToken);

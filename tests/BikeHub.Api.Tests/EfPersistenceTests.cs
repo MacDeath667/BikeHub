@@ -20,7 +20,7 @@ public sealed class EfPersistenceTests
         await new DatabaseMigrator(database).MigrateAsync(default);
         await new DatabaseMigrator(database).MigrateAsync(default);
         await using var context = database.CreateDbContext();
-        Assert.Equal(2, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.False(context.Database.HasPendingModelChanges());
         Assert.Empty(await context.Bikes.ToListAsync());
         Assert.Empty(await context.Accounts.ToListAsync());
@@ -39,7 +39,7 @@ public sealed class EfPersistenceTests
         await context.SaveChangesAsync();
         await Assert.ThrowsAsync<NotSupportedException>(() => context.GetService<IMigrator>().MigrateAsync("0"));
         Assert.True(await context.Bikes.AnyAsync(x => x.Id == bike.Id));
-        Assert.Equal(2, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Fact]
@@ -90,8 +90,15 @@ public sealed class EfPersistenceTests
             Attempts = 2,
             Delivered = true
         };
-        context.AddRange(account, session, bike, challenge);
+        context.AddRange(account, session, bike);
         await context.SaveChangesAsync();
+        // Seed using legacy columns: the new purpose column must be added by EF afterwards.
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO auth_email_challenges
+                (id, email, display_name, code_hash, binding_hash, created_at, expires_at, attempts, delivered, consumed)
+            VALUES ({challenge.Id}, {challenge.Email}, {challenge.DisplayName}, {challenge.CodeHash},
+                {challenge.BindingHash}, {challenge.CreatedAt}, {challenge.ExpiresAt}, {challenge.Attempts}, true, false)
+            """);
 
         await new DatabaseMigrator(database).MigrateAsync(default);
         // Force the baseline SQL to run again against tables and indexes it has already adopted.
@@ -100,7 +107,7 @@ public sealed class EfPersistenceTests
             """);
         await new DatabaseMigrator(database).MigrateAsync(default);
         context.ChangeTracker.Clear();
-        Assert.Equal(2, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal("Keep me", (await context.Bikes.SingleAsync()).Description);
         Assert.Equal("+79990000000", (await context.Accounts.SingleAsync()).PhoneNumber);
         Assert.Equal(2, (await context.EmailChallenges.SingleAsync()).Attempts);

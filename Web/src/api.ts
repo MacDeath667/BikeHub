@@ -21,6 +21,20 @@ export interface AuthSession {
   developmentMailbox: boolean;
 }
 
+const siteBase = new URL(".", window.location.href);
+
+// Public assets returned by the API are relative to BikeHub, including behind a path proxy.
+function resolveImages(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(resolveImages);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
+      key === "imageUrl" && typeof item === "string" && item.startsWith("/") && !item.startsWith("//")
+        ? new URL(item.slice(1), siteBase).href : resolveImages(item),
+    ]));
+  }
+  return value;
+}
+
 let csrfToken = "";
 let csrfRequest: Promise<void> | null = null;
 export function requestLogin() {
@@ -127,7 +141,7 @@ export async function api<T>(
   }
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, {
+    response = await fetch(new URL(`api${path}`, siteBase), {
       ...options,
       credentials: "same-origin",
       headers,
@@ -161,7 +175,7 @@ export async function api<T>(
   if (response.status === 204) return undefined as T;
   const result = await response.json();
   if (path.startsWith("/auth/") && typeof result?.csrfToken === "string") csrfToken = result.csrfToken;
-  return result as T;
+  return resolveImages(result) as T;
 }
 export function query(values: Record<string, string | number | undefined>) {
   const params = new URLSearchParams();

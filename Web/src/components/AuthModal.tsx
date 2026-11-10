@@ -13,6 +13,7 @@ export function AuthModal({ session, close, onSuccess }: {
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const codeInput = useRef<HTMLInputElement>(null);
+  const [registering, setRegistering] = useState(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -40,8 +41,8 @@ export function AuthModal({ session, close, onSuccess }: {
     setBusy(true);
     setError("");
     try {
-      const next = await api<Challenge>("/auth/email/challenges", {
-        method: "POST", body: JSON.stringify({ email: email.trim(), name: name.trim() || null }),
+      const next = await api<Challenge>(registering ? "/auth/registration/email/challenges" : "/auth/login/email/challenges", {
+        method: "POST", body: JSON.stringify(registering ? { email: email.trim(), name: name.trim() || null } : { email: email.trim() }),
       });
       setChallenge(next);
       setCode("");
@@ -81,30 +82,40 @@ export function AuthModal({ session, close, onSuccess }: {
     <button className="icon-button auth-close" aria-label="Закрыть окно входа" onClick={close}><X size={20} /></button>
     <div className="auth-symbol"><Mail size={28} strokeWidth={1.5} /></div>
     <div className="eyebrow">ВАШЕ МЕСТО В BIKEHUB</div>
-    <h2 id="auth-title">{challenge ? "Проверьте почту" : "Поехали вместе"}</h2>
+    <h2 id="auth-title">{challenge ? "Проверьте почту" : registering ? "Регистрация в BikeHub" : "Вход в BikeHub"}</h2>
     {!session?.enabled ? <p className="auth-description">Вход временно недоступен. Попробуйте позже — истории и велосипеды доступны без регистрации.</p> : <>
       <p className="auth-description">{challenge
         ? <>Введите код из письма на <strong>{email}</strong>. Он подтвердит вашу почту и откроет аккаунт.</>
-        : "Войдите или создайте аккаунт по почте. Отправим одноразовый код — пароль не нужен."}</p>
+        : registering
+          ? "Создайте аккаунт по почте. Отправим код для подтверждения — пароль не нужен."
+          : "Укажите почту вашего аккаунта. Отправим одноразовый код для входа — пароль не нужен."}</p>
       {!challenge ? <form className="auth-form" onSubmit={send}>
         <label htmlFor="auth-email">Ваша почта</label>
         <input id="auth-email" type="email" autoComplete="email" placeholder="you@example.com" required maxLength={254}
           autoFocus value={email} disabled={busy} onChange={(event) => setEmail(event.target.value)} />
+        {registering && <>
         <label htmlFor="auth-name">Как к вам обращаться <span>необязательно</span></label>
-        <input id="auth-name" autoComplete="nickname" placeholder="Имя для профиля" minLength={2} maxLength={60}
+        <input id="auth-name" aria-describedby="auth-name-hint" autoComplete="nickname" placeholder="Имя для профиля" minLength={2} maxLength={60}
           value={name} disabled={busy} onChange={(event) => setName(event.target.value)} />
+        <p id="auth-name-hint" className="auth-name-hint">Укажите имя для нового профиля. Уже зарегистрированы? Перейдите ко входу.</p>
+        </>}
         <button className="button primary" disabled={busy}>{busy ? "Отправляем…" : "Получить код"}<ArrowRight size={17} /></button>
       </form> : <form className="auth-form" onSubmit={verify}>
         <label htmlFor="auth-code">Код из письма</label>
         <input ref={codeInput} id="auth-code" className="auth-code" inputMode="numeric" autoComplete="one-time-code"
           pattern="[0-9]{6}" maxLength={6} required placeholder="000000" value={code} disabled={busy}
           onChange={(event) => setCode(event.target.value.replace(/[^0-9]/g, ""))} />
-        <button className="button primary" disabled={busy || code.length !== 6}>{busy ? "Проверяем…" : "Подтвердить и войти"}<Check size={17} /></button>
+        <button className="button primary" disabled={busy || code.length !== 6}>{busy ? "Проверяем…" : registering ? "Подтвердить и зарегистрироваться" : "Войти"}<Check size={17} /></button>
         <div className="auth-secondary">
           <button type="button" disabled={busy} onClick={() => { setChallenge(null); setError(""); setDevCode(""); }}><ArrowLeft size={14} /> Другая почта</button>
           <button type="button" disabled={busy || remaining > 0} onClick={() => send()}>{remaining ? `Ещё раз через ${remaining} с` : "Отправить ещё раз"}</button>
         </div>
       </form>}
+      <div className="auth-secondary">
+        <button type="button" disabled={busy} onClick={() => { setRegistering(!registering); setChallenge(null); setCode(""); setDevCode(""); setError(""); }}>
+          {registering ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Зарегистрироваться"}
+        </button>
+      </div>
       {error && <p className="auth-error" role="alert">{error}</p>}
       {session.developmentMailbox && <div className="auth-development">
         <strong>Тестовая почта</strong>
