@@ -42,7 +42,7 @@ ansible-playbook -i "192.168.0.49," -u ansible \
 
 Playbook собирает и импортирует API и почту, создаёт собственные ключи на VM при первом запуске, поднимает Kafka/Mailpit, последовательно применяет API- и mail-миграции и проверяет HTTPS, фронт и Mailpit. Строка подключения передаётся контейнерам через `secretKeyRef`; Ansible читает только ревизию Secret. Отдельный playbook требует уже подготовленного K3s, nginx, namespace и Secret `bikehub-database`.
 
-Для повторного применения конфигов без сборки добавьте `-e bikehub_rebuild_image=false`: отдельный staging-playbook возьмёт образы из текущих staging Deployment.
+Для повторного применения конфигов без сборки добавьте `-e bikehub_rebuild_image=false`: отдельный staging-playbook возьмёт образы из текущих staging Deployment. Если сохранён старый образ API без `/api/health/ready`, временно укажите `-e bikehub_api_readiness_path=/api/health`. Для новой сборки используется проверка PostgreSQL `/api/health/ready` по умолчанию.
 
 Staging получает отдельный самоподписанный сертификат. Его публичная копия — `infra/ansible/.local-pki/bikehub-staging_tls.pub`; добавьте её в доверенные сертификаты на устройствах. Основной `bikehub_tls.pub` остаётся прежним. Имя публикуется отдельной службой `bikehub-staging-mdns`; настройки основного nginx-хоста и mDNS-службы сохраняются.
 

@@ -127,7 +127,7 @@ spec:
             failureThreshold: 60
           readinessProbe:
             httpGet:
-              path: /api/health/ready
+              path: {{ bikehub_api_readiness_path | default('/api/health/ready') }}
               port: http
             periodSeconds: 5
             failureThreshold: 3
