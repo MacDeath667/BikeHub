@@ -39,7 +39,7 @@
     bikehub_source_entries: >-
       {{ (bikehub_source_inventory.files +
           (bikehub_source_inputs.results | map(attribute='stat') | list))
-         | rejectattr('path', 'search', '/(bin|obj|node_modules|dist|wwwroot|__pycache__|[.]git|[.]idea|[.]vs)(/|$)|/[.]env[^/]*($|/)|[.](user|pyc|tsbuildinfo|pfx|p12)$|/[.]DS_Store$')
+         | rejectattr('path', 'search', '/(bin|obj|node_modules|dist|wwwroot|App_Data|__pycache__|[.]git|[.]idea|[.]vs)(/|$)|/[.]env[^/]*($|/)|[.](user|pyc|tsbuildinfo|pfx|p12)$|/[.]DS_Store$')
          | sort(attribute='path') | list }}
 
 - name: Reject symlinks in the selected build context

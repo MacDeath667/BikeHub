@@ -25,3 +25,5 @@
 LICENSE
 README.md
 **/wwwroot
+
+**/App_Data

@@ -20,13 +20,13 @@
           ansible.builtin.file:
             path: "{{ fixture.path }}/{{ item }}"
             state: directory
-          loop: [src/BikeHub.Api, src/BikeHub.Api/obj, Web/src, Web/node_modules, Web/dist, infra]
+          loop: [src/BikeHub.Api, src/BikeHub.Api/obj, src/BikeHub.Api/App_Data/auth/keys, Web/src, Web/node_modules, Web/dist, infra]
 
         - name: Write source and excluded fixture files
           ansible.builtin.copy:
             dest: "{{ fixture.path }}/{{ item }}"
             content: fixture
-          loop: [.dockerignore, .editorconfig, Directory.Build.props, src/BikeHub.Api/Program.cs, src/BikeHub.Api/obj/cache, Web/package.json, Web/src/main.tsx, Web/.env.local, Web/node_modules/private, Web/dist/index.html, infra/vault.yml]
+          loop: [.dockerignore, .editorconfig, Directory.Build.props, src/BikeHub.Api/Program.cs, src/BikeHub.Api/obj/cache, src/BikeHub.Api/App_Data/auth/keys/test-key.xml, Web/package.json, Web/src/main.tsx, Web/.env.local, Web/node_modules/private, Web/dist/index.html, infra/vault.yml]
 
         - name: Package fixture with the actual deployment tasks
           ansible.builtin.include_tasks: ../ansible/tasks/package-source.yml
@@ -48,7 +48,7 @@
               - "'Web/package.json' in members.stdout_lines"
               - "'src/BikeHub.Api/Program.cs' in members.stdout_lines"
               - "'.editorconfig' in members.stdout_lines"
-              - members.stdout is not search('node_modules|/obj/|/dist/|[.]env|infra/|[.][.]/')
+              - members.stdout is not search('node_modules|/obj/|/dist/|/App_Data/|[.]env|infra/|[.][.]/')
 
         - name: Change only file timestamps
           ansible.builtin.file:
