@@ -95,14 +95,8 @@ export function Feed({
             Делитесь опытом и вдохновляйтесь дорогой.
           </p>
           <div className="intro-bottom">
-            <div className="avatar-stack">
-              <span className="sage">АВ</span>
-              <span className="sand">МС</span>
-              <span className="rose">АБ</span>
-              <span className="blue">ДО</span>
-            </div>
             <span>
-              Здесь есть свои.{" "}
+              Найдите свою компанию.{" "}
               <a href="#/communities">
                 Найдите и вы <ArrowUpRight size={13} />
               </a>

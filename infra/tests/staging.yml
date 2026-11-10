@@ -23,6 +23,10 @@
     bikehub_staging_key_version: { stdout: '20' }
     templates: "{{ playbook_dir }}/../ansible/templates"
   tasks:
+    - name: Enable authentication explicitly after inventory defaults
+      ansible.builtin.set_fact:
+        bikehub_auth_enabled: true
+
     - name: Render production and staging using the actual deployment templates
       ansible.builtin.set_fact:
         production: "{{ (lookup('ansible.builtin.template', templates ~ '/app.yml.j2') ~ '\n---\n' ~ lookup('ansible.builtin.template', templates ~ '/mail.yml.j2') ~ '\n---\n' ~ lookup('ansible.builtin.template', templates ~ '/mail-kafka.yml.j2')) | from_yaml_all | list }}"
@@ -63,6 +67,10 @@
           - api_env.Observability__Environment == 'Staging'
           - mail_env.Observability__Environment == 'Staging'
           - api.spec.volumes[0].persistentVolumeClaim.claimName == 'bikehub-staging-auth-keys'
+          - api.spec.volumes[1].persistentVolumeClaim.claimName == 'bikehub-staging-auth-keys-media'
+          - prod_api.spec.volumes[1].persistentVolumeClaim.claimName == 'bikehub-auth-keys-media'
+          - api_env.Media__RootPath == '/app/data/media'
+          - staging | selectattr('kind', 'equalto', 'PersistentVolumeClaim') | selectattr('metadata.name', 'equalto', 'bikehub-staging-auth-keys-media') | length == 1
           - api.metadata.labels['app.kubernetes.io/name'] == 'bikehub-staging-api'
           - mail.metadata.labels['app.kubernetes.io/name'] == 'bikehub-staging-mail'
           - mail_env.ASPNETCORE_ENVIRONMENT == 'Development'

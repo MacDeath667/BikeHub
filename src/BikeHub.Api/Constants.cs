@@ -11,6 +11,7 @@ internal static class Constants
     public const string VerificationEmailSubject = "Код для входа в BikeHub";
     public const string AuthenticationUnavailableTitle = "Вход пока недоступен.";
     public const string MigrateOnlyArgument = "--migrate-only";
+    public const string MediaPathPrefix = "/api/media/";
     public const string IndexDocument = "index.html";
     public const int MaximumEmailLength = 254;
     public const int MinimumDisplayNameLength = 2;
@@ -44,6 +45,7 @@ internal static class Constants
 
     public static class FeedTabs
     {
+        public const string Popular = "popular";
         public const string Following = "following";
         public const string Saved = "saved";
     }

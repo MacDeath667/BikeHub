@@ -7,6 +7,12 @@ namespace BikeHub.Dal;
 
 public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options) : DbContext(options)
 {
+    public DbSet<CommunityPost> Posts => Set<CommunityPost>();
+    public DbSet<CommunityComment> Comments => Set<CommunityComment>();
+    public DbSet<CommunityGroup> Communities => Set<CommunityGroup>();
+    public DbSet<CommunityRelation> Relations => Set<CommunityRelation>();
+    public DbSet<MediaAsset> Media => Set<MediaAsset>();
+    public DbSet<ModerationReport> Reports => Set<ModerationReport>();
     public DbSet<Bike> Bikes => Set<Bike>();
     public DbSet<AuthAccountEntity> Accounts => Set<AuthAccountEntity>();
     public DbSet<EmailChallengeEntity> EmailChallenges => Set<EmailChallengeEntity>();
@@ -63,6 +69,8 @@ public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options)
             .OnDelete(DeleteBehavior.Cascade).HasConstraintName("auth_sessions_account_id_fkey");
         sessions.HasIndex(x => x.AccountId).HasDatabaseName("ix_auth_sessions_account");
         sessions.HasIndex(x => x.ExpiresAt).HasDatabaseName("ix_auth_sessions_expires");
+
+        CommunityModel.Configure(modelBuilder);
 
         foreach (var entity in modelBuilder.Model.GetEntityTypes())
         {

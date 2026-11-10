@@ -1,3 +1,5 @@
+import { ProfileEditor } from "../components/ProfileEditor";
+import { ReportButton } from "../components/ContentTools";
 import { useEffect, useState } from "react";
 import { ArrowLeft, Bike as BikeIcon, Check, Plus } from "lucide-react";
 import { api, number } from "../api";
@@ -18,6 +20,7 @@ export function UserProfile({
   reload: () => void;
   version: number;
 }) {
+  const [editing, setEditing] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [bikes, setBikes] = useState<Bike[]>([]);
   const [error, setError] = useState("");
@@ -68,6 +71,9 @@ export function UserProfile({
       <a className="back-link" href="#/">
         <ArrowLeft size={16} />В сообщество
       </a>
+      {editing && <ProfileEditor user={user} close={() => setEditing(false)} saved={reload} />}
+      {id === me?.id ? <button className="text-button" onClick={() => setEditing(true)}>Редактировать профиль</button> : me && <ReportButton type={4} id={id} notify={notify} />}
+      {me?.id === id && me.isModerator && <a className="text-button" href="#/moderation">Модерация</a>}
       <section className="profile-card">
         <div className="profile-cover">
           <span>ЧЕЛОВЕК. ВЕЛОСИПЕД. ДОРОГА.</span>

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BikeHub.Application.Community;
 using BikeHub.Dal.Entities;
 using BikeHub.Api.Authentication;
 using BikeHub.Api.Services;
@@ -15,7 +16,7 @@ namespace BikeHub.Api.Controllers;
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class AuthController(EmailAuthenticationService authentication, IAuthenticationStore store,
     ICurrentUser current, IAntiforgery antiforgery, OtpSecurity security, DevelopmentMessages messages,
-    IHostEnvironment environment, IOptions<AuthOptions> configuration, MockCommunityStore community) : ControllerBase
+    IHostEnvironment environment, IOptions<AuthOptions> configuration, IUserService community) : ControllerBase
 {
     private const string ChallengeCookieName = "BikeHub.Challenge";
     private const string SecureChallengeCookieName = "__Host-BikeHub.Challenge";
@@ -28,6 +29,7 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
     private const string SignedOutEvent = "signed_out";
     private const string AccountExistsTitle = "Эта почта уже зарегистрирована. Перейдите ко входу.";
     private const string AccountNotFoundTitle = "Аккаунт с этой почтой не найден. Зарегистрируйтесь.";
+    private const string BlockedTitle = "Аккаунт заблокирован.";
     private const string EmailMask = "***";
     private const string DevelopmentCodeTemplate = "Ваш код: {0}";
 
@@ -78,6 +80,10 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
             return AccountNotFound();
         }
 
+        if (existing?.IsBlocked == true)
+        {
+            return Problem(statusCode: 403, title: BlockedTitle);
+        }
         var name = request.Name?.Trim();
         if (!string.IsNullOrEmpty(name) && name.Length < Constants.MinimumDisplayNameLength)
         {
@@ -149,6 +155,10 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
         {
             return AccountNotFound();
         }
+        if (result.Failure == ConfirmationFailure.AccountBlocked)
+        {
+            return Problem(statusCode: 403, title: BlockedTitle);
+        }
         if (result.Session is not { } session)
         {
             return InvalidCode();
@@ -205,7 +215,7 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
     private AuthBootstrap Bootstrap()
     {
         var account = current.Account;
-        var user = account is null ? null : community.EnsureUser(account.Id, account.DisplayName);
+        var user = account is null ? null : community.GetCurrentUser();
         var at = account?.Email.IndexOf('@') ?? 0;
         var masked = account is null ? null : account.Email[..1] + EmailMask + account.Email[at..];
         return new(user, account is not null, masked, false,

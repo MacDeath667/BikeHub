@@ -1,3 +1,4 @@
+import { ContentTools } from "../components/ContentTools";
 import { useEffect, useState } from "react";
 import {
   ArrowDown,
@@ -154,6 +155,7 @@ export function BikeDetail({
   onCreate: () => void;
   notify: (s: string) => void;
 }) {
+  const [revision, setRevision] = useState(0);
   const [bike, setBike] = useState<Bike | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [total, setTotal] = useState(0);
@@ -182,7 +184,7 @@ export function BikeDetail({
     return () => {
       active = false;
     };
-  }, [id, version, page]);
+  }, [id, version, page, revision]);
   if (error) return <ErrorBox message={error} />;
   if (!bike) return <Loading />;
   return (
@@ -190,6 +192,7 @@ export function BikeDetail({
       <a className="back-link" href="#/bikes">
         <ArrowLeft size={16} />К велосипедам
       </a>
+      <ContentTools bike={bike} me={me} saved={() => { setPage(1); setRevision(v => v + 1); }} notify={notify} />
       <section className="bike-detail">
         <div className="detail-cover">
           <img src={bike.imageUrl} alt={bike.name} />

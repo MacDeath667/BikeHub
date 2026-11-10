@@ -19,18 +19,20 @@ services:
       Authentication__EmailProvider: MailService
       Authentication__OtpSecret: bikehub-local-development-otp-key
       Authentication__DataProtectionPath: /app/data/auth/keys
+      Media__RootPath: /app/data/media
       MailService__BaseUrl: http://mail:8080/
       MailService__ApiKey: *mail-api-key
       Observability__Enabled: "false"
     volumes:
       - auth-keys:/app/data/auth
+      - media-data:/app/data/media
     depends_on:
       postgres:
         condition: service_healthy
       mail:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/api/health"]
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/api/health/ready"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -175,6 +177,7 @@ services:
     command: ["--bootstrap-server", "kafka:9092", "--create", "--if-not-exists", "--topic", "bikehub.mail.send.v1", "--partitions", "3", "--replication-factor", "1", "--config", "retention.ms=3600000"]
 
 volumes:
+  media-data:
   postgres-data:
   auth-keys:
   mailpit-data:

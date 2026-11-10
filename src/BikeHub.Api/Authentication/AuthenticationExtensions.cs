@@ -135,6 +135,12 @@ public static class AuthenticationExtensions
         });
         builder.Services.AddRateLimiter(options =>
         {
+            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+                HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method) || HttpMethods.IsOptions(context.Request.Method)
+                    ? RateLimitPartition.GetNoLimiter("read")
+                    : RateLimitPartition.GetFixedWindowLimiter(context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ??
+                        context.Connection.RemoteIpAddress?.ToString() ?? UnknownClientAddress,
+                        _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             options.AddPolicy(Constants.RateLimitPolicies.RequestCode, context => RateLimitPartition.GetFixedWindowLimiter(
                 context.Connection.RemoteIpAddress?.ToString() ?? UnknownClientAddress, _ => new FixedWindowRateLimiterOptions

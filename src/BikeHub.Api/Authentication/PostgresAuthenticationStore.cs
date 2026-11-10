@@ -90,6 +90,11 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
             await transaction.CommitAsync(cancellationToken);
             return new(null, ConfirmationFailure.AccountNotFound);
         }
+        if (account?.IsBlocked == true)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return new(null, ConfirmationFailure.AccountBlocked);
+        }
         if (account is null)
         {
             account = new AuthAccountEntity
@@ -120,7 +125,7 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
     {
         await using var context = await contexts.CreateDbContextAsync(cancellationToken);
         var session = await context.Sessions.AsNoTracking().Include(s => s.Account)
-            .SingleOrDefaultAsync(s => s.Id == id && s.ExpiresAt > now, cancellationToken);
+            .SingleOrDefaultAsync(s => s.Id == id && s.ExpiresAt > now && !s.Account.IsBlocked, cancellationToken);
         return session is null ? null : new(session.Id, MapAccount(session.Account), session.ExpiresAt);
     }
 
@@ -155,5 +160,5 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
     }
 
     private static AuthAccount MapAccount(AuthAccountEntity value) =>
-        new(value.Id, value.Email, value.DisplayName, value.EmailConfirmedAt);
+        new(value.Id, value.Email, value.DisplayName, value.EmailConfirmedAt, value.IsBlocked);
 }

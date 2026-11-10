@@ -28,6 +28,7 @@ import { Feed } from "./pages/Feed";
 import { BikeDetail, BikeDirectory } from "./pages/Bikes";
 import { PostDetail } from "./pages/PostDetail";
 import { UserProfile } from "./pages/UserProfile";
+import { Moderation } from "./pages/Moderation";
 import { Communities } from "./pages/Communities";
 
 function navigate(path: string) {
@@ -107,8 +108,13 @@ export default function App() {
   };
   useEffect(() => {
     const requireLogin = () => { setMe(null); setAuthOpen(true); setVersion((value) => value + 1); };
+    const changed = () => setVersion(value => value + 1);
     window.addEventListener("bikehub:auth-required", requireLogin);
-    return () => window.removeEventListener("bikehub:auth-required", requireLogin);
+    window.addEventListener("bikehub:content-changed", changed);
+    return () => {
+      window.removeEventListener("bikehub:auth-required", requireLogin);
+      window.removeEventListener("bikehub:content-changed", changed);
+    };
   }, []);
   const create = (type: "post" | "bike") => {
     if (me) setModal(type);
@@ -259,7 +265,7 @@ export default function App() {
           <div className="topbar-right">
             <span className="demo-label">
               <span />
-              Демо
+              Бета
             </span>
             {me && (
               <>
@@ -341,6 +347,7 @@ export default function App() {
                       version={version}
                     />
                   )}
+                  {section === "moderation" && <Moderation me={me} />}
                   {section === "communities" && (
                     <Communities
                       communities={communities}
@@ -357,6 +364,7 @@ export default function App() {
                       "post",
                       "user",
                       "communities",
+                      "moderation",
                     ].includes(section) && (
                       <Empty
                         title="Такой страницы нет"

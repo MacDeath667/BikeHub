@@ -14,7 +14,7 @@ export function Avatar({
       className={`avatar ${user.color} ${small ? "small" : ""}`}
       aria-hidden="true"
     >
-      {user.initials}
+      {user.avatarUrl ? <img src={user.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} /> : user.initials}
     </span>
   );
 }

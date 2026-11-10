@@ -47,6 +47,12 @@ spec:
               containerPort: {{ bikehub_app_port }}
               protocol: TCP
           env:
+            - name: Media__RootPath
+              value: /app/data/media
+{% for email in bikehub_moderator_emails | default([]) %}
+            - name: Moderation__ModeratorEmails__{{ loop.index0 }}
+              value: {{ email | to_json }}
+{% endfor %}
             - name: ASPNETCORE_ENVIRONMENT
               value: {{ bikehub_environment | default('Production') | to_json }}
 {% if bikehub_tls_enabled | bool %}
@@ -108,6 +114,8 @@ spec:
 {% endif %}
 {% if bikehub_auth_enabled | bool %}
           volumeMounts:
+            - name: media
+              mountPath: /app/data/media
             - name: auth-keys
               mountPath: /app/data/auth
 {% endif %}
@@ -119,7 +127,7 @@ spec:
             failureThreshold: 60
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /api/health/ready
               port: http
             periodSeconds: 5
             failureThreshold: 3
@@ -142,6 +150,9 @@ spec:
         - name: auth-keys
           persistentVolumeClaim:
             claimName: {{ bikehub_auth_key_claim }}
+        - name: media
+          persistentVolumeClaim:
+            claimName: {{ bikehub_auth_key_claim }}-media
 {% endif %}
 ---
 apiVersion: v1

@@ -10,6 +10,8 @@ export interface User {
   isFollowing: boolean;
   bikesCount: number;
   postsCount: number;
+  avatarUrl?: string | null;
+  isModerator?: boolean;
 }
 export interface AuthSession {
   user: User | null;
@@ -28,7 +30,7 @@ function resolveImages(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(resolveImages);
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
-      key === "imageUrl" && typeof item === "string" && item.startsWith("/") && !item.startsWith("//")
+      (key === "imageUrl" || key === "avatarUrl") && typeof item === "string" && item.startsWith("/") && !item.startsWith("//")
         ? new URL(item.slice(1), siteBase).href : resolveImages(item),
     ]));
   }
@@ -50,6 +52,7 @@ export interface Bike {
   year: number;
   mileage: number;
   imageUrl: string;
+  imageId?: string | null;
   color: string;
   owner: User;
 }
@@ -61,6 +64,7 @@ export interface Post {
   content: string;
   category: string;
   imageUrl: string;
+  imageId?: string | null;
   tags: string[];
   createdAt: string;
   likes: number;
@@ -80,6 +84,7 @@ export interface Community {
   description: string;
   category: string;
   imageUrl: string;
+  imageId?: string | null;
   members: number;
   isJoined: boolean;
 }
@@ -95,7 +100,7 @@ export interface Overview {
   bikes: number;
   posts: number;
   tags: string[];
-  featuredBike: Bike;
+  featuredBike: Bike | null;
 }
 export const categories: Record<string, string> = {
   road: "Шоссе",
@@ -129,7 +134,7 @@ export async function api<T>(
 ): Promise<T> {
   const method = (options.method || "GET").toUpperCase();
   const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
+  if (!(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
     if (!csrfToken) {
       csrfRequest ??= api<AuthSession>("/auth/session")
@@ -166,7 +171,7 @@ export async function api<T>(
         : response.status === 429
         ? problem?.title || "Слишком много запросов. Попробуйте позже."
         : response.status === 404
-        ? "Эта страница не найдена."
+        ? problem?.title || "Эта страница не найдена."
         : validation ||
           problem?.title ||
           "Не удалось выполнить действие. Попробуйте ещё раз.",

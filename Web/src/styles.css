@@ -2502,3 +2502,7 @@ textarea {
 @media (max-width: 480px) { .auth-dialog { padding: 26px 22px; } .auth-secondary { gap: 8px; } .auth-comment-prompt { align-items: flex-start; flex-direction: column; } }
 
 .auth-name-hint { margin: 0; color: #64756b; font-size: 12px; line-height: 1.6; }
+
+.content-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 16px 0; }
+.photo-upload { display: grid; gap: 10px; }
+.moderation-report { padding: 24px; margin: 20px 0; overflow-wrap: anywhere; }

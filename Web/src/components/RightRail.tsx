@@ -46,10 +46,10 @@ export function RightRail({
           Перейти в мой гараж <ArrowRight size={14} />
         </a>
       </section>
-      {overview && (
+      {overview?.featuredBike && (
         <section className="rail-section featured">
           <div className="rail-title">
-            <h3>Велосипед недели</h3>
+            <h3>Новый в гараже</h3>
             <span className="tiny-badge">
               <Sparkles size={12} />
             </span>
@@ -62,7 +62,7 @@ export function RightRail({
               src={overview.featuredBike.imageUrl}
               alt={overview.featuredBike.name}
             />
-            <span>ВЫБОР СООБЩЕСТВА</span>
+            <span>ВЕЛОСИПЕД УЧАСТНИКА</span>
           </a>
           <a
             className="featured-name"

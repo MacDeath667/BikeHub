@@ -1,6 +1,6 @@
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /app/data/auth/keys && chown -R $APP_UID:$APP_UID /app/data/auth
+    && mkdir -p /app/data/auth/keys /app/data/media && chown -R $APP_UID:$APP_UID /app/data
 USER $APP_UID
 WORKDIR /app
 EXPOSE 8080

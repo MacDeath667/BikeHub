@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using BikeHub.Api.Services;
 
 namespace BikeHub.Api.Middleware;
 
@@ -16,6 +17,10 @@ public sealed class ExceptionHandlingMiddleware(
         try
         {
             await next(context);
+        }
+        catch (CommunityProblem problem)
+        {
+            await Results.Problem(statusCode: problem.Status, title: problem.Message).ExecuteAsync(context);
         }
         catch (Exception exception)
         {

@@ -20,7 +20,7 @@ public sealed class EfPersistenceTests
         await new DatabaseMigrator(database).MigrateAsync(default);
         await new DatabaseMigrator(database).MigrateAsync(default);
         await using var context = database.CreateDbContext();
-        Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(4, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.False(context.Database.HasPendingModelChanges());
         Assert.Empty(await context.Bikes.ToListAsync());
         Assert.Empty(await context.Accounts.ToListAsync());
@@ -39,7 +39,7 @@ public sealed class EfPersistenceTests
         await context.SaveChangesAsync();
         await Assert.ThrowsAsync<NotSupportedException>(() => context.GetService<IMigrator>().MigrateAsync("0"));
         Assert.True(await context.Bikes.AnyAsync(x => x.Id == bike.Id));
-        Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(4, (await context.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Fact]
@@ -90,8 +90,13 @@ public sealed class EfPersistenceTests
             Attempts = 2,
             Delivered = true
         };
-        context.AddRange(account, session, bike);
-        await context.SaveChangesAsync();
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO auth_accounts (id, email, display_name, email_confirmed_at, phone_e164, phone_confirmed_at, created_at)
+            VALUES ({account.Id}, {account.Email}, {account.DisplayName}, {now}, {account.PhoneNumber}, {now}, {now});
+            INSERT INTO auth_sessions (id, account_id, created_at, expires_at)
+            VALUES ({session.Id}, {account.Id}, {now}, {session.ExpiresAt});
+            INSERT INTO bikes (id, owner_id, name, description) VALUES ({bike.Id}, {account.Id}, {bike.Name}, {bike.Description});
+            """);
         // Seed using legacy columns: the new purpose column must be added by EF afterwards.
         await context.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO auth_email_challenges
@@ -107,7 +112,7 @@ public sealed class EfPersistenceTests
             """);
         await new DatabaseMigrator(database).MigrateAsync(default);
         context.ChangeTracker.Clear();
-        Assert.Equal(3, (await context.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(4, (await context.Database.GetAppliedMigrationsAsync()).Count());
         Assert.Equal("Keep me", (await context.Bikes.SingleAsync()).Description);
         Assert.Equal("+79990000000", (await context.Accounts.SingleAsync()).PhoneNumber);
         Assert.Equal(2, (await context.EmailChallenges.SingleAsync()).Attempts);
@@ -129,8 +134,7 @@ public sealed class EfPersistenceTests
         using var reader = new StreamReader(assembly.GetManifestResourceStream(resource)!);
         await context.Database.ExecuteSqlRawAsync(await reader.ReadToEndAsync());
         var bikeId = Guid.NewGuid();
-        context.Bikes.Add(new Bike { Id = bikeId, OwnerId = Guid.NewGuid(), Name = "Partial schema bike" });
-        await context.SaveChangesAsync();
+        await context.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO bikes (id, owner_id, name) VALUES ({bikeId}, {Guid.NewGuid()}, {"Partial schema bike"})");
         await new DatabaseMigrator(database).MigrateAsync(default);
         Assert.True(await context.Bikes.AnyAsync(x => x.Id == bikeId));
         Assert.Empty(await context.Accounts.ToListAsync());

@@ -11,3 +11,6 @@ src/BikeHub.Api/wwwroot/
 **/gmail-oauth*.json
 .local/
 __pycache__/
+
+# Uploaded media in native development
+**/App_Data/

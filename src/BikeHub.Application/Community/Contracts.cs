@@ -8,19 +8,31 @@ public record Page<T>(IReadOnlyList<T> Items, int Total, int PageNumber, int Pag
 }
 
 public record UserDto(Guid Id, string Name, string Handle, string City, string Initials,
-    string Color, string Bio, int Followers, bool IsFollowing, int BikesCount, int PostsCount);
+    string Color, string Bio, int Followers, bool IsFollowing, int BikesCount, int PostsCount, string? AvatarUrl = null, bool IsModerator = false)
+{
+    public UserDto() : this(default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!) { }
+}
 
 public record BikeDto(Guid Id, Guid OwnerId, string Name, string Description, string Brand,
-    BikeCategory Category, int Year, decimal Mileage, string ImageUrl, string Color, UserDto Owner);
+    BikeCategory Category, int Year, decimal Mileage, string ImageUrl, string Color, UserDto Owner, Guid? ImageId = null)
+{
+    public BikeDto() : this(default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!) { }
+}
 
 public record PostDto(Guid Id, UserDto Author, BikeDto Bike, string Title, string Content,
     string Category, string ImageUrl, string[] Tags, DateTimeOffset CreatedAt,
-    int Likes, int CommentsCount, bool IsLiked, bool IsSaved);
+    int Likes, int CommentsCount, bool IsLiked, bool IsSaved, Guid? ImageId = null)
+{
+    public PostDto() : this(default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!) { }
+}
 
 public record CommentDto(Guid Id, UserDto Author, string Text, DateTimeOffset CreatedAt);
 public record CommunityDto(Guid Id, string Name, string Description, BikeCategory Category,
-    string ImageUrl, int Members, bool IsJoined);
-public record OverviewDto(int Riders, int Bikes, int Posts, string[] Tags, BikeDto FeaturedBike);
+    string ImageUrl, int Members, bool IsJoined)
+{
+    public CommunityDto() : this(default!, default!, default!, default!, default!, default!, default!) { }
+}
+public record OverviewDto(int Riders, int Bikes, int Posts, string[] Tags, BikeDto? FeaturedBike);
 
 public sealed record CreateBikeRequest(
     [Required, StringLength(100, MinimumLength = 2)] string Name,
@@ -28,13 +40,13 @@ public sealed record CreateBikeRequest(
     [EnumDataType(typeof(BikeCategory))] BikeCategory Category,
     [Range(1950, 2100)] int Year,
     [Range(0, 1000000)] decimal Mileage,
-    [StringLength(2000)] string Description);
+    [StringLength(2000)] string Description, Guid? ImageId = null);
 
 public sealed record CreatePostRequest(
     Guid BikeId,
     [Required, StringLength(160, MinimumLength = 3)] string Title,
     [Required, StringLength(20000, MinimumLength = 10)] string Content,
-    [Required, RegularExpression("^(ride|maintenance|upgrade|story)$")] string Category);
+    [Required, RegularExpression("^(ride|maintenance|upgrade|story)$")] string Category, Guid? ImageId = null);
 
 public sealed record CreateCommentRequest([Required, StringLength(2000)] string Text);
 

@@ -1,3 +1,4 @@
+import { ContentTools, ReportButton } from "../components/ContentTools";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { ArrowLeft, Send } from "lucide-react";
@@ -15,6 +16,9 @@ export function PostDetail({
   me: User | null;
   notify: (s: string) => void;
 }) {
+  const [revision, setRevision] = useState(0);
+  const [editingComment, setEditingComment] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState("");
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [page, setPage] = useState(1);
@@ -49,7 +53,7 @@ export function PostDetail({
     return () => {
       active = false;
     };
-  }, [id, page]);
+  }, [id, page, revision]);
   useEffect(() => {
     if (post && window.location.hash.includes("comments=1"))
       document
@@ -82,6 +86,7 @@ export function PostDetail({
       <a className="back-link" href="#/">
         <ArrowLeft size={16} />В ленту
       </a>
+      <ContentTools post={post} me={me} saved={() => setRevision(v => v + 1)} notify={notify} />
       <article className="post-detail">
         <div className="detail-article-head">
           <span className={`post-kind ${post.category}`}>
@@ -157,7 +162,18 @@ export function PostDetail({
                   <a href={`#/user/${c.author.id}`}>{c.author.name}</a>
                   <time>{relativeTime(c.createdAt)}</time>
                 </div>
-                <p>{c.text}</p>
+                {editingComment === c.id ? <form onSubmit={async e => {
+                  e.preventDefault(); if (sending) return; setSending(true);
+                  try { const next = await api<Comment>(`/posts/${id}/comments/${c.id}`, { method: "PUT", body: JSON.stringify({ text: commentText }) }); setComments(list => list.map(item => item.id === c.id ? next : item)); setEditingComment(null); }
+                  catch (error) { notify((error as Error).message); } finally { setSending(false); }
+                }}><textarea aria-label="Текст комментария" required maxLength={2000} value={commentText} onChange={e => setCommentText(e.target.value)} />
+                  <button className="text-button" disabled={sending}>Сохранить</button><button type="button" className="text-button" onClick={() => setEditingComment(null)}>Отмена</button></form> : <p>{c.text}</p>}
+                {c.author.id === me?.id ? <><button className="text-button" onClick={() => { setEditingComment(c.id); setCommentText(c.text); }}>Изменить</button>
+                  <button className="text-button" disabled={sending} onClick={async () => {
+                    if (!window.confirm("Удалить комментарий?")) return; setSending(true);
+                    try { await api(`/posts/${id}/comments/${c.id}`, { method: "DELETE" }); setComments(list => list.filter(item => item.id !== c.id)); setPost(p => p && ({ ...p, commentsCount: Math.max(0, p.commentsCount - 1) })); }
+                    catch (error) { notify((error as Error).message); } finally { setSending(false); }
+                  }}>Удалить</button></> : me && <ReportButton type={3} id={c.id} notify={notify} />}
               </div>
             </div>
           ))}

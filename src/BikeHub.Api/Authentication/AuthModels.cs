@@ -34,12 +34,12 @@ public sealed record VerifyEmailCode(
 public sealed record EmailCodeResponse(Guid ChallengeId, DateTimeOffset ExpiresAt, DateTimeOffset ResendAt);
 public sealed record AuthBootstrap(UserDto? User, bool EmailConfirmed, string? MaskedEmail,
     bool PhoneConfirmed, string CsrfToken, bool Enabled, bool DevelopmentMailbox);
-public sealed record AuthAccount(Guid Id, string Email, string DisplayName, DateTimeOffset EmailConfirmedAt);
+public sealed record AuthAccount(Guid Id, string Email, string DisplayName, DateTimeOffset EmailConfirmedAt, bool IsBlocked = false);
 public sealed record AuthSession(Guid Id, AuthAccount Account, DateTimeOffset ExpiresAt);
 public sealed record EmailChallenge(Guid Id, string Email, string DisplayName, string CodeHash,
     string BindingHash, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt,
     int Attempts = 0, bool Delivered = false, bool Consumed = false, AuthenticationPurpose Purpose = AuthenticationPurpose.Legacy);
-public enum ConfirmationFailure { None, Invalid, TooManyAttempts, AccountExists, AccountNotFound }
+public enum ConfirmationFailure { None, Invalid, TooManyAttempts, AccountExists, AccountNotFound, AccountBlocked }
 public sealed record ConfirmationResult(AuthSession? Session, ConfirmationFailure Failure);
 public sealed record VerificationMessage(Guid ChallengeId, string Destination, string Code,
     string BindingHash, DateTimeOffset ExpiresAt, int ValidMinutes);

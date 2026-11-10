@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ArrowUpRight, Bike as BikeIcon, MessageCircle, X } from "lucide-react";
 import { api, categories, postCategories } from "../api";
-import type { Bike, Page, User } from "../api";
+import type { Bike, Page, Post, User } from "../api";
+import { PhotoUpload } from "./PhotoUpload";
 import { Empty, ErrorBox, Loading } from "./ui";
 
 export function CreateModal({
@@ -10,12 +11,19 @@ export function CreateModal({
   me,
   close,
   onSuccess,
+  initialBike,
+  initialPost,
 }: {
   type: "post" | "bike";
+  initialBike?: Bike;
+  initialPost?: Post;
   me: User;
   close: () => void;
   onSuccess: (id: string) => void;
 }) {
+  const initial = initialPost || initialBike;
+  const [imageId, setImageId] = useState<string | null>(initial?.imageId || null);
+  const [uploading, setUploading] = useState(false);
   const [bikes, setBikes] = useState<Bike[]>([]);
   const [loading, setLoading] = useState(type === "post");
   const [error, setError] = useState("");
@@ -45,7 +53,7 @@ export function CreateModal({
   }, [type, me.id]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (saving) return;
+    if (saving || uploading) return;
     const fields = Object.fromEntries(new FormData(event.currentTarget));
     const values =
       type === "bike"
@@ -59,8 +67,8 @@ export function CreateModal({
     setError("");
     try {
       const result = await api<{ id: string }>(
-        type === "post" ? "/posts" : "/bikes",
-        { method: "POST", body: JSON.stringify(values) },
+        (type === "post" ? "/posts" : "/bikes") + (initial ? `/${initial.id}` : ""),
+        { method: initial ? "PUT" : "POST", body: JSON.stringify({ ...values, imageId }) },
       );
       onSuccess(result.id);
     } catch (e) {
@@ -78,10 +86,10 @@ export function CreateModal({
       ref={dialogRef}
       onCancel={(e) => {
         e.preventDefault();
-        if (!saving) close();
+        if (!saving && !uploading) close();
       }}
       onClick={(e) => {
-        if (e.target !== dialogRef.current || saving) return;
+        if (e.target !== dialogRef.current || saving || uploading) return;
         const bounds = e.currentTarget.getBoundingClientRect();
         if (
           e.clientX < bounds.left ||
@@ -105,7 +113,7 @@ export function CreateModal({
           type="button"
           className="icon-button"
           onClick={close}
-          disabled={saving}
+          disabled={saving || uploading}
           aria-label="Закрыть"
         >
           <X size={22} />
@@ -113,7 +121,7 @@ export function CreateModal({
       </div>
       <div className="eyebrow">ЕЩЁ ОДНА ХОРОШАЯ ИСТОРИЯ</div>
       <h2 id="dialog-title">
-        {type === "post" ? "Поделитесь своим опытом" : "Пополнение в гараже"}
+        {initial ? "Редактирование" : type === "post" ? "Поделитесь своим опытом" : "Пополнение в гараже"}
       </h2>
       <p className="dialog-description">
         {type === "post"
@@ -144,9 +152,7 @@ export function CreateModal({
                   name="bikeId"
                   required
                   defaultValue={
-                    bikes.some((b) => b.id === selectedBike)
-                      ? selectedBike
-                      : bikes[0]?.id
+                    initialPost?.bike.id || (bikes.some((b) => b.id === selectedBike) ? selectedBike : bikes[0]?.id)
                   }
                 >
                   {bikes.map((b) => (
@@ -159,6 +165,7 @@ export function CreateModal({
               <label>
                 Заголовок
                 <input
+                  defaultValue={initialPost?.title}
                   name="title"
                   placeholder="С чего началась ваша история?"
                   minLength={3}
@@ -168,7 +175,7 @@ export function CreateModal({
               </label>
               <label>
                 Тип записи
-                <select name="category" defaultValue="ride">
+                <select name="category" defaultValue={initialPost?.category || "ride"}>
                   {Object.entries(postCategories).map(([key, label]) => (
                     <option value={key} key={key}>
                       {label}
@@ -179,6 +186,7 @@ export function CreateModal({
               <label>
                 Ваша история
                 <textarea
+                  defaultValue={initialPost?.content}
                   name="content"
                   rows={7}
                   minLength={10}
@@ -196,6 +204,7 @@ export function CreateModal({
               <label>
                 Название велосипеда
                 <input
+                  defaultValue={initialBike?.name}
                   name="name"
                   placeholder="Например, Canyon Grizl CF SL 7"
                   required
@@ -207,6 +216,7 @@ export function CreateModal({
                 <label>
                   Марка
                   <input
+                    defaultValue={initialBike?.brand}
                     name="brand"
                     placeholder="Canyon"
                     required
@@ -215,7 +225,7 @@ export function CreateModal({
                 </label>
                 <label>
                   Тип велосипеда
-                  <select name="category" defaultValue="gravel">
+                  <select name="category" defaultValue={initialBike?.category || "gravel"}>
                     {Object.entries(categories).map(([key, label]) => (
                       <option key={key} value={key}>
                         {label}
@@ -232,7 +242,7 @@ export function CreateModal({
                     type="number"
                     min={1950}
                     max={2100}
-                    defaultValue={2024}
+                    defaultValue={initialBike?.year || new Date().getFullYear()}
                     required
                   />
                 </label>
@@ -244,7 +254,7 @@ export function CreateModal({
                     min={0}
                     max={1000000}
                     step="0.1"
-                    defaultValue={0}
+                    defaultValue={initialBike?.mileage || 0}
                     required
                   />
                 </label>
@@ -256,29 +266,29 @@ export function CreateModal({
                   placeholder="Почему именно он? Что уже поменяли и куда собираетесь?"
                   rows={4}
                   maxLength={2000}
-                  defaultValue=""
+                  defaultValue={initialBike?.description || ""}
                 />
               </label>
               <span className="form-hint">
-                Для первой версии подберём демонстрационную обложку по типу
-                велосипеда.
+                Добавьте свою фотографию или оставьте обложку по типу велосипеда.
               </span>
             </>
           )}
+          <PhotoUpload value={initial?.imageUrl} onChange={setImageId} onBusy={setUploading} />
           {error && <ErrorBox message={error} />}
           <div className="dialog-footer">
             <button
               type="button"
               className="button secondary"
               onClick={close}
-              disabled={saving}
+              disabled={saving || uploading}
             >
               Отмена
             </button>
-            <button className="button primary" disabled={saving}>
+            <button className="button primary" disabled={saving || uploading}>
               {saving
                 ? "Сохраняем…"
-                : type === "post"
+                : initial ? "Сохранить" : type === "post"
                   ? "Опубликовать запись"
                   : "Добавить велосипед"}
               <ArrowUpRight size={17} />
