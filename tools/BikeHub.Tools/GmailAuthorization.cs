@@ -13,7 +13,7 @@ public static class GmailAuthorization
     private const string GmailScope = "https://www.googleapis.com/auth/gmail.send";
     private const string TokenEndpoint = "https://oauth2.googleapis.com/token";
     private const string ClientIdSuffix = ".apps.googleusercontent.com";
-    private const string CallbackMessage = "Авторизация получена. Вернитесь в терминал BikeHub.";
+    private const string CallbackMessage = "Authorization received. Return to the BikeHub terminal.";
     private static readonly string[] Scopes = ["openid", "https://www.googleapis.com/auth/userinfo.email", GmailScope];
 
     public static ClientSecrets LoadClient(string filename, string repositoryRoot)
@@ -59,7 +59,7 @@ public static class GmailAuthorization
         var response = await receiver.ReceiveCodeAsync(request, timeout.Token);
         if (response.State != state || !string.IsNullOrEmpty(response.Error) || string.IsNullOrEmpty(response.Code))
         {
-            throw new InvalidOperationException();
+            throw new GmailAuthorizationException("callback_rejected");
         }
         var token = await flow.ExchangeCodeForTokenAsync("BikeHub.Tools", response.Code, verifier, receiver.RedirectUri, timeout.Token);
         var identity = await GoogleJsonWebSignature.ValidateAsync(token.IdToken,
@@ -76,10 +76,25 @@ public static class GmailAuthorization
     public static void ValidateIdentity(string email, bool verified, string nonce, string expectedSender,
         string expectedNonce, string? scopes, string? refreshToken)
     {
-        if (!verified || nonce != expectedNonce || CanonicalEmail(email) != CanonicalEmail(expectedSender) ||
-            !(scopes ?? string.Empty).Split(' ').Contains(GmailScope) || string.IsNullOrEmpty(refreshToken))
+        if (!verified)
         {
-            throw new InvalidOperationException();
+            throw new GmailAuthorizationException("email_not_verified");
+        }
+        if (nonce != expectedNonce)
+        {
+            throw new GmailAuthorizationException("nonce_mismatch");
+        }
+        if (CanonicalEmail(email) != CanonicalEmail(expectedSender))
+        {
+            throw new GmailAuthorizationException("sender_mismatch");
+        }
+        if (!(scopes ?? string.Empty).Split(' ').Contains(GmailScope))
+        {
+            throw new GmailAuthorizationException("gmail_scope_missing");
+        }
+        if (string.IsNullOrEmpty(refreshToken))
+        {
+            throw new GmailAuthorizationException("refresh_token_missing");
         }
     }
 
@@ -102,4 +117,9 @@ public static class GmailAuthorization
             return true;
         }
     }
+}
+
+public sealed class GmailAuthorizationException(string reason) : InvalidOperationException
+{
+    public string Reason { get; } = reason;
 }

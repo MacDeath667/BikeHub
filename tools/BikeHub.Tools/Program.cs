@@ -106,6 +106,16 @@ public static class Program
             }
             return 0;
         }
+        catch (GmailAuthorizationException error)
+        {
+            Console.Error.WriteLine($"Google OAuth: {error.Reason}. Настройки не сохранены; содержимое токенов скрыто.");
+            return 1;
+        }
+        catch (OperatorCommandException error)
+        {
+            Console.Error.WriteLine($"Команда {error.Command} завершилась ошибкой; этап: {error.Stage}. Исходный вывод скрыт, чтобы не раскрыть секреты.");
+            return 1;
+        }
         catch (OperationCanceledException)
         {
             Console.Error.WriteLine("Операция прервана или истекло время ожидания. Секреты не выводятся.");
@@ -206,8 +216,16 @@ public static class Program
         await Task.WhenAll(stdout, stderr);
         if (process.ExitCode != 0)
         {
-            // Neither stream is echoed: validation errors may repeat submitted credentials.
-            throw new InvalidOperationException();
+            // Only task names from our own playbook are reported; neither stream nor stdin is echoed.
+            var tasks = System.Text.RegularExpressions.Regex.Matches(await stdout, @"(?m)^TASK \[([A-Za-z0-9 ,._-]+)\]");
+            var stage = tasks.Count > 0 ? tasks[^1].Groups[1].Value : "process_exit";
+            throw new OperatorCommandException(executable, stage);
         }
     }
+}
+
+public sealed class OperatorCommandException(string command, string stage) : InvalidOperationException
+{
+    public string Command { get; } = command;
+    public string Stage { get; } = stage;
 }

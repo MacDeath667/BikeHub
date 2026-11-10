@@ -10,11 +10,11 @@ public sealed class OperatorToolsTests
     public void Google_identity_requires_expected_account_nonce_scope_and_refresh_token()
     {
         GmailAuthorization.ValidateIdentity("rider.name@gmail.com", true, "nonce", "ridername@googlemail.com", "nonce", GmailScope, "test-token");
-        Assert.Throws<InvalidOperationException>(() => GmailAuthorization.ValidateIdentity("other@gmail.com", true, "nonce", "rider@gmail.com", "nonce", GmailScope, "test-token"));
-        Assert.Throws<InvalidOperationException>(() => GmailAuthorization.ValidateIdentity("rider@gmail.com", false, "nonce", "rider@gmail.com", "nonce", GmailScope, "test-token"));
-        Assert.Throws<InvalidOperationException>(() => GmailAuthorization.ValidateIdentity("rider@gmail.com", true, "wrong", "rider@gmail.com", "nonce", GmailScope, "test-token"));
-        Assert.Throws<InvalidOperationException>(() => GmailAuthorization.ValidateIdentity("rider@gmail.com", true, "nonce", "rider@gmail.com", "nonce", "openid", "test-token"));
-        Assert.Throws<InvalidOperationException>(() => GmailAuthorization.ValidateIdentity("rider@gmail.com", true, "nonce", "rider@gmail.com", "nonce", GmailScope, null));
+        Assert.Throws<GmailAuthorizationException>(() => GmailAuthorization.ValidateIdentity("other@gmail.com", true, "nonce", "rider@gmail.com", "nonce", GmailScope, "test-token"));
+        Assert.Throws<GmailAuthorizationException>(() => GmailAuthorization.ValidateIdentity("rider@gmail.com", false, "nonce", "rider@gmail.com", "nonce", GmailScope, "test-token"));
+        Assert.Throws<GmailAuthorizationException>(() => GmailAuthorization.ValidateIdentity("rider@gmail.com", true, "wrong", "rider@gmail.com", "nonce", GmailScope, "test-token"));
+        Assert.Throws<GmailAuthorizationException>(() => GmailAuthorization.ValidateIdentity("rider@gmail.com", true, "nonce", "rider@gmail.com", "nonce", "openid", "test-token"));
+        Assert.Throws<GmailAuthorizationException>(() => GmailAuthorization.ValidateIdentity("rider@gmail.com", true, "nonce", "rider@gmail.com", "nonce", GmailScope, null));
     }
 
     [Fact]
