@@ -448,9 +448,23 @@ namespace BikeHub.Dal.Migrations
                         .HasColumnType("text")
                         .HasColumnName("email");
 
+                    b.Property<bool>("EventPublished")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("event_published");
+
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
+
+                    b.Property<DateTimeOffset?>("LastResendAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_resend_at");
+
+                    b.Property<string>("ProtectedMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("protected_message");
 
                     b.Property<int>("Purpose")
                         .ValueGeneratedOnAdd()

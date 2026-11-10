@@ -13,6 +13,7 @@ public static class AuthenticationExtensions
     private const string UnsupportedAuthenticationMessage = "Select a supported authentication store and email provider.";
     private const string ProductionConfigurationMessage = "Production authentication requires PostgreSQL, a real email transport, a 32-character or longer OTP secret and an absolute persistent Data Protection path.";
     private const string ConnectionStringMessage = "Configure ConnectionStrings:BikeHub for authentication storage.";
+    private const string KafkaConfigurationMessage = "Configure Kafka:BootstrapServers and Kafka:Topic for verification events.";
     private const string MailServiceConfigurationMessage = "Configure a valid MailService:BaseUrl and a 32-character or longer MailService:ApiKey.";
     private const string AuthCookieName = "BikeHub.Auth";
     private const string SecureAuthCookieName = "__Host-BikeHub.Auth";
@@ -27,11 +28,12 @@ public static class AuthenticationExtensions
         var section = builder.Configuration.GetSection(ConfigurationSection);
         var authOptions = section.Get<AuthOptions>() ?? new();
         var mailOptions = builder.Configuration.GetSection("MailService").Get<MailServiceOptions>() ?? new();
+        var kafkaOptions = builder.Configuration.GetSection("Kafka").Get<VerificationKafkaOptions>() ?? new();
         var development = builder.Environment.IsDevelopment();
         if (authOptions.Enabled)
         {
             if (authOptions.CodeMinutes is < 1 or > 15 || authOptions.MaxAttempts is < 1 or > 10 ||
-                authOptions.ResendSeconds is < 1 or > 3600 || authOptions.SessionDays is < 1 or > 30 ||
+                authOptions.ResendSeconds is < 60 or > 3600 || authOptions.SessionDays is < 1 or > 30 ||
                 authOptions.MaxPerEmailHour is < 1 or > 20 || authOptions.MaxPerDay is < 1 or > 10_000)
             {
                 throw new InvalidOperationException(AuthenticationLimitsMessage);
@@ -62,6 +64,16 @@ public static class AuthenticationExtensions
                 throw new InvalidOperationException(MailServiceConfigurationMessage);
             }
         }
+        if (authOptions.Enabled && authOptions.EmailProvider == Constants.EmailProviders.MailService &&
+            (string.IsNullOrWhiteSpace(kafkaOptions.BootstrapServers) || string.IsNullOrWhiteSpace(kafkaOptions.Topic)))
+        {
+            throw new InvalidOperationException(KafkaConfigurationMessage);
+        }
+        builder.Services.Configure<VerificationKafkaOptions>(builder.Configuration.GetSection("Kafka"));
+        builder.Services.AddSingleton<VerificationPayload>();
+        builder.Services.AddSingleton<IVerificationEventPublisher, KafkaVerificationPublisher>();
+        builder.Services.AddSingleton<VerificationOutbox>();
+        builder.Services.AddHostedService(s => s.GetRequiredService<VerificationOutbox>());
         builder.Services.Configure<AuthOptions>(section);
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<OtpSecurity>();

@@ -43,6 +43,16 @@ internal static class Constants
         public const string VerifyCode = "auth-verify";
     }
 
+    public static class VerificationStatuses
+    {
+        public const string Pending = "pending";
+        public const string Sent = "sent";
+        public const string Failed = "failed";
+        public const string Expired = "expired";
+        public const string Unknown = "unknown";
+        public const string Unavailable = "unavailable";
+    }
+
     public static class FeedTabs
     {
         public const string Popular = "popular";

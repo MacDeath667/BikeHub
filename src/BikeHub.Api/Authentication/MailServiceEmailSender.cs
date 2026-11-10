@@ -11,13 +11,10 @@ public sealed class MailServiceOptions
     public string ApiKey { get; set; } = string.Empty;
 }
 
-public sealed class MailServiceEmailSender(HttpClient client) : IVerificationEmailSender
+public sealed class MailServiceEmailSender(HttpClient client) : IVerificationEmailSender, IVerificationDeliveryStatus
 {
     private const string ApiKeyHeader = "X-Api-Key";
     private const string IdempotencyHeader = "Idempotency-Key";
-    private const string BodyTemplate = "Код для входа в BikeHub: {0}\n\n" +
-        "Код действует {1} минут и подходит только для того браузера, где вы запросили вход.\n\n" +
-        "Если вы не запрашивали вход, проигнорируйте это письмо.";
     private const string SubmissionFailed = "Mail service did not accept the verification email.";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -31,10 +28,25 @@ public sealed class MailServiceEmailSender(HttpClient client) : IVerificationEma
         client.DefaultRequestHeaders.Add(ApiKeyHeader, options.ApiKey);
     }
 
+    public async Task<DeliveryStatus?> GetStatusAsync(Guid id, CancellationToken cancellationToken)
+    {
+        using var response = await client.GetAsync($"api/emails/{id}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<EmailStatus>(JsonOptions, cancellationToken);
+        if (result?.MessageId != id)
+        {
+            throw new EmailDeliveryException();
+        }
+        return result.Status;
+    }
+
     public async Task SendAsync(VerificationMessage message, CancellationToken cancellationToken)
     {
-        var email = new SendEmailRequest(message.ChallengeId, message.Destination, Constants.VerificationEmailSubject,
-            string.Format(BodyTemplate, message.Code, message.ValidMinutes), message.ExpiresAt);
+        var email = VerificationEmail.Create(message);
         // The challenge ID remains stable if the caller retries an uncertain HTTP submission.
         for (var attempt = 0; ; attempt++)
         {

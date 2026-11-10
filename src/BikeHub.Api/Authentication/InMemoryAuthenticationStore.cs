@@ -25,10 +25,56 @@ public sealed class InMemoryAuthenticationStore : IAuthenticationStore
             foreach (var previous in challenges.Values.Where(c => !c.Consumed &&
                          (c.Email == challenge.Email || c.BindingHash == challenge.BindingHash)).ToList())
             {
-                challenges[previous.Id] = previous with { Consumed = true };
+                challenges[previous.Id] = previous with { Consumed = true, ProtectedMessage = null };
             }
 
             challenges.Add(challenge.Id, challenge);
+            return Task.FromResult(true);
+        }
+    }
+
+    public Task<EmailChallenge?> FindChallengeAsync(Guid id, CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            return Task.FromResult(challenges.GetValueOrDefault(id));
+        }
+    }
+
+    public Task<IReadOnlyList<EmailChallenge>> PendingPublicationsAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            return Task.FromResult<IReadOnlyList<EmailChallenge>>(challenges.Values.Where(c => c.ProtectedMessage != null &&
+                !c.EventPublished && !c.Consumed && c.ExpiresAt > now).OrderBy(c => c.CreatedAt).Take(10).ToArray());
+        }
+    }
+
+    public Task MarkPublishedAsync(Guid id, CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            if (challenges.TryGetValue(id, out var value))
+            {
+                challenges[id] = value with { EventPublished = true };
+            }
+            return Task.CompletedTask;
+        }
+    }
+
+    public Task<bool> TryReserveResendAsync(Guid id, string bindingHash, DateTimeOffset now, int cooldownSeconds,
+        int maxAttempts, CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            var cutoff = now.AddSeconds(-cooldownSeconds);
+            if (!challenges.TryGetValue(id, out var value) || value.Consumed || value.ExpiresAt <= now ||
+                value.Attempts >= maxAttempts || value.CreatedAt > cutoff || value.LastResendAt > cutoff ||
+                !OtpSecurity.EqualsHash(value.BindingHash, bindingHash))
+            {
+                return Task.FromResult(false);
+            }
+            challenges[id] = value with { LastResendAt = now };
             return Task.FromResult(true);
         }
     }
@@ -69,7 +115,7 @@ public sealed class InMemoryAuthenticationStore : IAuthenticationStore
                 return Task.FromResult(new ConfirmationResult(null,
                     value.Attempts >= maxAttempts ? ConfirmationFailure.TooManyAttempts : ConfirmationFailure.Invalid));
             }
-            challenges[id] = value with { Consumed = true };
+            challenges[id] = value with { Consumed = true, ProtectedMessage = null };
             accounts.TryGetValue(value.Email, out var account);
             if (value.Purpose == AuthenticationPurpose.Registration && account is not null)
             {

@@ -44,6 +44,35 @@ public sealed class QueueTests
     }
 
     [Fact]
+    public async Task Verification_event_and_http_fallback_send_once_even_when_the_event_arrives_late()
+    {
+        await using var database = await MailTestDatabase.CreateAsync();
+        var clock = new TestClock();
+        var queue = new MailQueue(database, clock);
+        var verification = new BikeHub.Api.Authentication.VerificationMessage(Guid.NewGuid(), "fallback@example.test", "123456",
+            "private-binding", clock.GetUtcNow().AddMinutes(5), 5);
+        var message = BikeHub.Api.Authentication.VerificationEmail.Create(verification);
+        var ingress = new KafkaIngress(queue);
+        var transport = new RecordingTransport();
+        await using var app = new MailFactory(database.ConnectionString);
+        using var http = app.Client();
+        // The event can remain in flight while the browser falls back to the HTTP endpoint.
+        var eventTask = ingress.HandleAsync("topic", 0, 1, JsonSerializer.Serialize(message), default);
+        using var fallback = await http.PostAsJsonAsync("/api/emails", message);
+        await eventTask;
+        Assert.Equal(HttpStatusCode.Accepted, fallback.StatusCode);
+        await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Worker(queue, transport, clock).ProcessOneAsync(default)));
+        Assert.Equal(1, transport.Count);
+        Assert.Equal(DeliveryStatus.Sent, (await queue.FindAsync(message.MessageId, default))!.Status);
+        await ingress.HandleAsync("topic", 0, 2, JsonSerializer.Serialize(message), default);
+        using var retry = await http.PostAsJsonAsync("/api/emails", message);
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        Assert.Equal(DeliveryStatus.Sent, (await queue.FindAsync(message.MessageId, default))!.Status);
+        Assert.False(await Worker(queue, transport, clock).ProcessOneAsync(default));
+        Assert.Equal(1, transport.Count);
+    }
+
+    [Fact]
     public async Task Http_and_kafka_share_idempotency_and_conflicting_payload_is_rejected()
     {
         await using var database = await MailTestDatabase.CreateAsync();

@@ -20,6 +20,8 @@ services:
       Authentication__OtpSecret: bikehub-local-development-otp-key
       Authentication__DataProtectionPath: /app/data/auth/keys
       Media__RootPath: /app/data/media
+      Kafka__BootstrapServers: kafka:9092
+      Kafka__Topic: bikehub.mail.send.v1
       MailService__BaseUrl: http://mail:8080/
       MailService__ApiKey: *mail-api-key
       Observability__Enabled: "false"

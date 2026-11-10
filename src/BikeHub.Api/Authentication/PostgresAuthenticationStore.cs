@@ -26,11 +26,14 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
             return false;
         }
         await context.EmailChallenges.Where(c => !c.Consumed && (c.Email == value.Email || c.BindingHash == value.BindingHash))
-            .ExecuteUpdateAsync(update => update.SetProperty(c => c.Consumed, true), cancellationToken);
+            .ExecuteUpdateAsync(update => update.SetProperty(c => c.Consumed, true)
+                .SetProperty(c => c.ProtectedMessage, (string?)null), cancellationToken);
         context.EmailChallenges.Add(new EmailChallengeEntity
         {
             Id = value.Id,
             Purpose = value.Purpose,
+            ProtectedMessage = value.ProtectedMessage,
+            Delivered = value.Delivered,
             Email = value.Email,
             DisplayName = value.DisplayName,
             CodeHash = value.CodeHash,
@@ -41,6 +44,41 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
         await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return true;
+    }
+
+    private static EmailChallenge MapChallenge(EmailChallengeEntity value) => new(value.Id, value.Email, value.DisplayName,
+        value.CodeHash, value.BindingHash, value.CreatedAt, value.ExpiresAt, value.Attempts, value.Delivered,
+        value.Consumed, value.Purpose, value.ProtectedMessage, value.EventPublished, value.LastResendAt);
+
+    public async Task<EmailChallenge?> FindChallengeAsync(Guid id, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var value = await db.EmailChallenges.AsNoTracking().SingleOrDefaultAsync(c => c.Id == id, cancellationToken);
+        return value is null ? null : MapChallenge(value);
+    }
+
+    public async Task<IReadOnlyList<EmailChallenge>> PendingPublicationsAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var rows = await db.EmailChallenges.AsNoTracking().Where(c => c.ProtectedMessage != null && !c.EventPublished &&
+            !c.Consumed && c.ExpiresAt > now).OrderBy(c => c.CreatedAt).Take(10).ToListAsync(cancellationToken);
+        return rows.Select(MapChallenge).ToArray();
+    }
+
+    public async Task MarkPublishedAsync(Guid id, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        await db.EmailChallenges.Where(c => c.Id == id).ExecuteUpdateAsync(u => u.SetProperty(c => c.EventPublished, true), cancellationToken);
+    }
+
+    public async Task<bool> TryReserveResendAsync(Guid id, string bindingHash, DateTimeOffset now, int cooldownSeconds,
+        int maxAttempts, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var cutoff = now.AddSeconds(-cooldownSeconds);
+        return await db.EmailChallenges.Where(c => c.Id == id && c.BindingHash == bindingHash && !c.Consumed &&
+            c.ExpiresAt > now && c.Attempts < maxAttempts && c.CreatedAt <= cutoff &&
+            (c.LastResendAt == null || c.LastResendAt <= cutoff)).ExecuteUpdateAsync(u => u.SetProperty(c => c.LastResendAt, now), cancellationToken) == 1;
     }
 
     public async Task SetDeliveredAsync(Guid id, bool delivered, CancellationToken cancellationToken)
@@ -70,6 +108,10 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
         var valid = OtpSecurity.EqualsHash(value.CodeHash, codeHash);
         value.Attempts++;
         value.Consumed = valid;
+        if (valid)
+        {
+            value.ProtectedMessage = null;
+        }
         await context.SaveChangesAsync(cancellationToken);
         if (!valid)
         {
@@ -154,6 +196,8 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
         await using var context = await contexts.CreateDbContextAsync(cancellationToken);
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         var day = now.AddDays(-1);
+        await context.EmailChallenges.Where(c => c.ExpiresAt <= now && c.ProtectedMessage != null)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.ProtectedMessage, (string?)null), cancellationToken);
         await context.EmailChallenges.Where(c => c.CreatedAt < day).ExecuteDeleteAsync(cancellationToken);
         await context.Sessions.Where(s => s.ExpiresAt <= now).ExecuteDeleteAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

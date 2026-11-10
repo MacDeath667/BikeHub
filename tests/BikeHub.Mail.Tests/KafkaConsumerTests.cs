@@ -1,4 +1,5 @@
 using System.Net;
+using BikeHub.Api.Authentication;
 using System.Net.Http.Json;
 using System.Text.Json;
 using BikeHub.Mail.Contracts;
@@ -30,7 +31,8 @@ public sealed class KafkaConsumerTests
             await using var database = await MailTestDatabase.CreateAsync();
             await using var app = new MailFactory(database.ConnectionString);
             using var http = app.Client();
-            var message = new SendEmailRequest(Guid.NewGuid(), "kafka@example.test", "Subject", "private-code");
+            var message = VerificationEmail.Create(new VerificationMessage(Guid.NewGuid(), "kafka@example.test", "123456",
+                "private-browser-binding", DateTimeOffset.UtcNow.AddMinutes(5), 5));
             Assert.Equal(HttpStatusCode.Accepted, (await http.PostAsJsonAsync("/api/emails", message)).StatusCode);
             var factory = new RecoverableFactory(database);
             var queue = new MailQueue(factory, TimeProvider.System);
@@ -42,7 +44,9 @@ public sealed class KafkaConsumerTests
             await consumer.StartAsync(default);
             try
             {
-                await producer.ProduceAsync(topic, new() { Value = JsonSerializer.Serialize(message) });
+                using var apiPublisher = new KafkaVerificationPublisher(Options.Create(new VerificationKafkaOptions
+                { BootstrapServers = broker, Topic = topic }));
+                await apiPublisher.PublishAsync(message, default);
                 await WaitAsync(() => Task.FromResult(factory.Failures > 0));
                 var partition = new TopicPartition(topic, 0);
                 var before = observer.Committed([partition], TimeSpan.FromSeconds(5)).Single().Offset;

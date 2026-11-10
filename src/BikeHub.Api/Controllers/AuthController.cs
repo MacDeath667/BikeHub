@@ -121,6 +121,45 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
         }
     }
 
+    [HttpPost("email/challenges/{id:guid}/resend")]
+    [EnableRateLimiting(Constants.RateLimitPolicies.RequestCode)]
+    public async Task<ActionResult<EmailCodeResponse>> Resend(Guid id, CancellationToken cancellationToken)
+    {
+        if (!configuration.Value.Enabled)
+        {
+            return Problem(statusCode: 503, title: Constants.AuthenticationUnavailableTitle);
+        }
+        if (configuration.Value.EmailProvider == Constants.EmailProviders.Development && !DevelopmentMailbox)
+        {
+            return NotFound();
+        }
+        if (Request.Cookies[BindingCookie] is not { Length: Constants.BrowserBindingLength } binding)
+        {
+            return NotFound();
+        }
+        Response.Headers.RetryAfter = Math.Max(60, configuration.Value.ResendSeconds).ToString();
+        try
+        {
+            return Accepted(await authentication.ResendAsync(id, binding, cancellationToken));
+        }
+        catch (EmailDeliveryException)
+        {
+            return Problem(statusCode: 503, title: DeliveryFailedTitle);
+        }
+    }
+
+    [HttpGet("email/challenges/{id:guid}/delivery")]
+    public async Task<ActionResult<VerificationDeliveryStatus>> Delivery(Guid id, CancellationToken cancellationToken)
+    {
+        if (!configuration.Value.Enabled ||
+            (configuration.Value.EmailProvider == Constants.EmailProviders.Development && !DevelopmentMailbox) ||
+            Request.Cookies[BindingCookie] is not { Length: Constants.BrowserBindingLength } binding)
+        {
+            return NotFound();
+        }
+        return Ok(await authentication.DeliveryAsync(id, binding, cancellationToken));
+    }
+
     [HttpPost("email/verify")]
     [EnableRateLimiting(Constants.RateLimitPolicies.VerifyCode)]
     public async Task<ActionResult<AuthBootstrap>> Verify(VerifyEmailCode request, CancellationToken cancellationToken)

@@ -16,7 +16,7 @@ npm --prefix Web run dev
 
 ## Конфигурация
 
-Основной API хранит параметры входа в `Authentication`. `Authentication:EmailProvider=Development` включает локальную тестовую почту, `MailService` — HTTP-клиент отдельного отправителя. Его подключение: `MailService:BaseUrl` и `MailService:ApiKey`.
+Основной API хранит параметры входа в `Authentication`. `Authentication:EmailProvider=Development` включает локальную тестовую почту, `MailService` — первичная отправка через Kafka (`Kafka:BootstrapServers`, `Kafka:Topic`) и HTTP fallback после минуты (`MailService:BaseUrl`, `MailService:ApiKey`). Повтор использует тот же код и `messageId`; срок и число попыток ввода не сбрасываются.
 
 У `BikeHub.Mail` транспорт выбирается через `Mail:Provider=Smtp/GmailApi`. Секции `Smtp` и `GmailApi` находятся на верхнем уровне конфигурации **почтового сервиса**. Для user-secrets применяются ключи `Smtp:Username`, `Smtp:Password`, `GmailApi:RefreshToken`; для окружения — `Smtp__Username`, `Smtp__Password`, `GmailApi__RefreshToken`.
 

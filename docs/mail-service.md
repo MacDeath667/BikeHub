@@ -1,6 +1,6 @@
 # Почтовый сервис BikeHub.Mail
 
-`BikeHub.Mail` — отдельный процесс и Docker-образ. SMTP и Gmail API с OAuth2 находятся только здесь. Основной API формирует текст кода и вызывает HTTP API почтового сервиса. Другие отправители могут публиковать тот же контракт в Kafka. Доставка асинхронная: HTTP 202 означает, что письмо надёжно принято в очередь, а не что почтовый сервер уже принял его.
+`BikeHub.Mail` — отдельный процесс и Docker-образ. SMTP и Gmail API с OAuth2 находятся только здесь. Основной API сохраняет зашифрованное задание в PostgreSQL и публикует событие в Kafka через outbox. Через минуту пользователь может повторить отправку через HTTP API почтового сервиса с тем же кодом и `messageId`. Доставка асинхронная: HTTP 202 означает, что письмо надёжно принято в очередь, а не что почтовый сервер уже принял его.
 
 На NAS доступен [отдельный staging](../infra/README.md#staging-рядом-с-основным-инстансом) с собственной очередью в схеме PostgreSQL `staging`, Kafka и Mailpit. Он использует тестовую доставку без Gmail-учётных данных; письма видны на `https://bikehub-staging.local/mailpit/`.
 
@@ -38,6 +38,7 @@ dotnet run --project tools/BikeHub.Tools -- mail gmail --target local --client-j
 ```bash
 Authentication__EmailProvider=MailService \
 MailService__ApiKey=bikehub-local-mail-api-key-for-development \
+Kafka__BootstrapServers=127.0.0.1:59092 \
 dotnet run --project src/BikeHub.Api --launch-profile http
 ```
 
@@ -48,6 +49,17 @@ dotnet run --project src/BikeHub.Api --launch-profile http
 ```bash
 docker compose down
 ```
+
+## Подтверждение почты: Kafka и HTTP fallback
+
+1. Запрос входа/регистрации создаёт challenge и зашифрованный payload одним сохранением PostgreSQL. Браузер получает `challengeId`, `expiresAt`, `resendAt`; это не подтверждение отправки письма.
+2. Outbox API публикует `SendEmailRequest` в `Kafka:Topic` (`bikehub.mail.send.v1` по умолчанию). Producer использует `acks=all`, идемпотентность Kafka и ключ `messageId`. После подтверждения брокера запись помечается опубликованной. Сбой брокера/перезапуск не теряет задание; потерянный ack может дать повтор того же события.
+3. `POST /api/auth/email/challenges/{id}/resend` доступен через 60 секунд (или больший `Authentication:ResendSeconds`). Он обращается к HTTP API почты с исходным текстом, кодом, сроком и `messageId`. Проверяются cookie браузера, CSRF, срок кода и лимит попыток; конкурентные повторы резервируются атомарно в БД. Успешный HTTP приём останавливает ещё не опубликованное задание. Уже летящие события безопасны благодаря общему inbox почты.
+4. `GET /api/auth/email/challenges/{id}/delivery` возвращает только `pending/sent/failed/expired/unknown/unavailable`, без кода, адреса и внутренних причин отказа. Форма опрашивает статус, а при ошибке доставки показывает её пользователю.
+
+`messageId` равен `challengeId`. Повтор не продлевает жизнь кода и не сбрасывает попытки ввода. Если письмо уже `sent`, HTTP возвращает существующий статус и не отправляет новое. Терминальные `failed/expired/unknown` также не переотправляются: это не попытка обойти ограничения провайдера. Для нового кода требуется новый challenge. Первичная публикация и HTTP fallback используют один конструктор контракта, поэтому fingerprint совпадает.
+
+Зашифрованный payload хранится в `auth_email_challenges.protected_message`. Payload очищается при подтверждении, замене challenge и плановой очистке истёкших кодов. Ключи ASP.NET Data Protection должны сохраняться между рестартами и быть общими у реплик API. Открытый OTP не хранится в таблице API и не пишется в логи, но присутствует в Kafka и очереди почты до обработки — брокер и его хранилище должны оставаться приватными. Нативный `EmailProvider=Development` сохраняет прежнюю тестовую доставку без Kafka.
 
 ## HTTP API
 

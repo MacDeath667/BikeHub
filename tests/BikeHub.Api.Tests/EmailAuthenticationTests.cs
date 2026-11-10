@@ -132,7 +132,7 @@ public sealed class EmailAuthenticationTests
     }
 
     [Fact]
-    public async Task Resend_enforces_cooldown_and_invalidates_previous_code()
+    public async Task New_challenge_enforces_cooldown_and_invalidates_previous_code()
     {
         await using var app = new AuthFactory();
         using var browser = app.Browser();

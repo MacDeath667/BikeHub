@@ -11,6 +11,9 @@ public sealed class EmailChallengeEntity
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public int Attempts { get; set; }
+    public string? ProtectedMessage { get; set; }
+    public bool EventPublished { get; set; }
+    public DateTimeOffset? LastResendAt { get; set; }
     public bool Delivered { get; set; }
     public bool Consumed { get; set; }
 }

@@ -53,6 +53,7 @@ public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options)
         challenges.HasKey(x => x.Id).HasName("auth_email_challenges_pkey");
         challenges.Property(x => x.Id).ValueGeneratedNever();
         challenges.Property(x => x.Purpose).HasDefaultValue(AuthenticationPurpose.Legacy);
+        challenges.Property(x => x.EventPublished).HasDefaultValue(false);
         challenges.Property(x => x.Attempts).HasDefaultValue(0);
         challenges.Property(x => x.Delivered).HasDefaultValue(false);
         challenges.Property(x => x.Consumed).HasDefaultValue(false);

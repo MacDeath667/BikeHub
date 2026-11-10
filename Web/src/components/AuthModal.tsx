@@ -21,7 +21,9 @@ export function AuthModal({ session, close, onSuccess }: {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [devCode, setDevCode] = useState("");
+  const [delivery, setDelivery] = useState("pending");
   const [now, setNow] = useState(Date.now());
+  const deliveryStatus = challenge && now >= Date.parse(challenge.expiresAt) ? "expired" : delivery;
   const remaining = challenge ? Math.max(0, Math.ceil((Date.parse(challenge.resendAt) - now) / 1000)) : 0;
 
   useEffect(() => {
@@ -35,20 +37,42 @@ export function AuthModal({ session, close, onSuccess }: {
   }, []);
   useEffect(() => { if (challenge) codeInput.current?.focus(); }, [challenge]);
 
+  useEffect(() => {
+    if (!challenge) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      if (Date.now() >= Date.parse(challenge.expiresAt)) { if (active) setDelivery("expired"); return; }
+      try {
+        const result = await api<{ status: string }>(`/auth/email/challenges/${challenge.challengeId}/delivery`);
+        if (!active) return;
+        setDelivery(result.status);
+        if (["sent", "failed", "expired", "unknown"].includes(result.status)) return;
+      } catch { if (active) setDelivery("unavailable"); }
+      if (active) timer = setTimeout(poll, 4000);
+    };
+    void poll();
+    return () => { active = false; clearTimeout(timer); };
+  }, [challenge]);
+
   async function send(event?: FormEvent) {
     event?.preventDefault();
     if (busy) return;
     setBusy(true);
     setError("");
     try {
-      const next = await api<Challenge>(registering ? "/auth/registration/email/challenges" : "/auth/login/email/challenges", {
-        method: "POST", body: JSON.stringify(registering ? { email: email.trim(), name: name.trim() || null } : { email: email.trim() }),
+      const next = await api<Challenge>(challenge ? `/auth/email/challenges/${challenge.challengeId}/resend` :
+        registering ? "/auth/registration/email/challenges" : "/auth/login/email/challenges", {
+        method: "POST", body: JSON.stringify(challenge ? {} : registering ? { email: email.trim(), name: name.trim() || null } : { email: email.trim() }),
       });
       setChallenge(next);
-      setCode("");
-      setDevCode("");
+      if (!challenge) { setCode(""); setDevCode(""); }
+      setDelivery("pending");
       setNow(Date.now());
-    } catch (error) { setError((error as Error).message); }
+    } catch (error) {
+      setError((error as Error).message);
+      if (challenge) setChallenge({ ...challenge, resendAt: new Date(Date.now() + 60000).toISOString() });
+    }
     finally { setBusy(false); }
   }
 
@@ -108,7 +132,10 @@ export function AuthModal({ session, close, onSuccess }: {
         <button className="button primary" disabled={busy || code.length !== 6}>{busy ? "Проверяем…" : registering ? "Подтвердить и зарегистрироваться" : "Войти"}<Check size={17} /></button>
         <div className="auth-secondary">
           <button type="button" disabled={busy} onClick={() => { setChallenge(null); setError(""); setDevCode(""); }}><ArrowLeft size={14} /> Другая почта</button>
-          <button type="button" disabled={busy || remaining > 0} onClick={() => send()}>{remaining ? `Ещё раз через ${remaining} с` : "Отправить ещё раз"}</button>
+          <button type="button" disabled={busy || (remaining > 0 && deliveryStatus !== "expired")} onClick={() => {
+            if (deliveryStatus === "expired") { setChallenge(null); setError(""); setCode(""); setDevCode(""); }
+            else void send();
+          }}>{deliveryStatus === "expired" ? "Запросить новый код" : remaining ? `Ещё раз через ${remaining} с` : "Повторить запрос"}</button>
         </div>
       </form>}
       <div className="auth-secondary">
@@ -116,6 +143,14 @@ export function AuthModal({ session, close, onSuccess }: {
           {registering ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Зарегистрироваться"}
         </button>
       </div>
+      {challenge && <p className={deliveryStatus === "failed" || deliveryStatus === "expired" ? "auth-error" : "auth-footnote"} role="status">
+        {deliveryStatus === "sent" ? "Почтовый сервис отправил письмо. Если его нет, проверьте папку «Спам». Повтор не создаст дубликат." :
+          deliveryStatus === "failed" ? "Почтовый сервис не смог отправить письмо. Попробуйте позже." :
+          deliveryStatus === "expired" ? "Срок действия кода истёк. Вернитесь к форме и запросите новый код." :
+          deliveryStatus === "unknown" ? "Результат отправки неизвестен. Если письмо пришло, код можно использовать." :
+          deliveryStatus === "unavailable" ? "Статус доставки временно недоступен. Через минуту можно повторить запрос." :
+          "Письмо ожидает отправки. Если код не придёт, через минуту можно повторить запрос."}
+      </p>}
       {error && <p className="auth-error" role="alert">{error}</p>}
       {session.developmentMailbox && <div className="auth-development">
         <strong>Тестовая почта</strong>

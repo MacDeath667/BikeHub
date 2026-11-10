@@ -70,6 +70,10 @@ spec:
               value: Postgres
             - name: Authentication__EmailProvider
               value: MailService
+            - name: Kafka__BootstrapServers
+              value: {{ bikehub_mail_kafka_servers | to_json }}
+            - name: Kafka__Topic
+              value: {{ bikehub_mail_topic | to_json }}
             - name: MailService__BaseUrl
               value: http://{{ prefix }}-mail:8080/
             - name: MailService__ApiKey

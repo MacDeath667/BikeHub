@@ -49,6 +49,8 @@ public sealed class AuthFactory : WebApplicationFactory<Program>
         ["Authentication:DataProtectionPath"] = "",
         ["Authentication:Store"] = "Memory",
         ["Community:Store"] = "Memory",
+        ["Kafka:BootstrapServers"] = "localhost:1",
+        ["Kafka:Topic"] = "bikehub.mail.test.v1",
         ["Authentication:EmailProvider"] = "Development",
         // Tests must not inherit real mail credentials from environment variables or user-secrets.
         ["Smtp:Username"] = string.Empty,
@@ -60,6 +62,7 @@ public sealed class AuthFactory : WebApplicationFactory<Program>
         ["GmailApi:FromAddress"] = string.Empty
     };
     public Microsoft.EntityFrameworkCore.IDbContextFactory<BikeHub.Dal.BikeHubDbContext>? Database { get; init; }
+    public IVerificationEventPublisher? Publisher { get; init; }
     public IVerificationEmailSender? Sender { get; init; }
 
     protected override IHost CreateHost(IHostBuilder builder)
@@ -83,6 +86,11 @@ public sealed class AuthFactory : WebApplicationFactory<Program>
             services.AddSingleton<TimeProvider>(Clock);
             services.AddSingleton<ILoggerProvider>(Logs);
             services.AddSingleton<IStartupFilter, LocalConnection>();
+            if (Publisher is not null)
+            {
+                services.RemoveAll<IVerificationEventPublisher>();
+                services.AddSingleton(Publisher);
+            }
             if (Sender is not null)
             {
                 services.RemoveAll<IVerificationEmailSender>();

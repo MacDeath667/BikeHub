@@ -38,7 +38,8 @@ public sealed record AuthAccount(Guid Id, string Email, string DisplayName, Date
 public sealed record AuthSession(Guid Id, AuthAccount Account, DateTimeOffset ExpiresAt);
 public sealed record EmailChallenge(Guid Id, string Email, string DisplayName, string CodeHash,
     string BindingHash, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt,
-    int Attempts = 0, bool Delivered = false, bool Consumed = false, AuthenticationPurpose Purpose = AuthenticationPurpose.Legacy);
+    int Attempts = 0, bool Delivered = false, bool Consumed = false, AuthenticationPurpose Purpose = AuthenticationPurpose.Legacy,
+    string? ProtectedMessage = null, bool EventPublished = false, DateTimeOffset? LastResendAt = null);
 public enum ConfirmationFailure { None, Invalid, TooManyAttempts, AccountExists, AccountNotFound, AccountBlocked }
 public sealed record ConfirmationResult(AuthSession? Session, ConfirmationFailure Failure);
 public sealed record VerificationMessage(Guid ChallengeId, string Destination, string Code,
@@ -58,6 +59,10 @@ public interface ISmsSender
 public interface IAuthenticationStore
 {
     Task<bool> TryCreateChallengeAsync(EmailChallenge challenge, AuthOptions limits, CancellationToken cancellationToken);
+    Task<EmailChallenge?> FindChallengeAsync(Guid id, CancellationToken cancellationToken);
+    Task<IReadOnlyList<EmailChallenge>> PendingPublicationsAsync(DateTimeOffset now, CancellationToken cancellationToken);
+    Task MarkPublishedAsync(Guid id, CancellationToken cancellationToken);
+    Task<bool> TryReserveResendAsync(Guid id, string bindingHash, DateTimeOffset now, int cooldownSeconds, int maxAttempts, CancellationToken cancellationToken);
     Task SetDeliveredAsync(Guid id, bool delivered, CancellationToken cancellationToken);
     Task<ConfirmationResult> ConfirmAsync(Guid id, string codeHash, string bindingHash,
         DateTimeOffset now, DateTimeOffset sessionExpiresAt, int maxAttempts, CancellationToken cancellationToken);
