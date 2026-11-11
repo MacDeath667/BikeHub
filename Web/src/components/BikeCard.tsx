@@ -1,3 +1,4 @@
+import { userHref } from "../api";
 import { ArrowUpRight, MapPin } from "lucide-react";
 import { categories, number } from "../api";
 import type { Bike } from "../api";
@@ -21,7 +22,7 @@ export function BikeCard({ bike }: { bike: Bike }) {
           <h2>{bike.name}</h2>
         </a>
         <p>{number(bike.mileage)} км своей истории</p>
-        <a className="bike-owner" href={`#/user/${bike.ownerId}`}>
+        <a className="bike-owner" href={userHref(bike.owner)}>
           <Avatar user={bike.owner} small />
           {bike.owner.name}
           <span>

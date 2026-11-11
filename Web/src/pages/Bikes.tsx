@@ -1,3 +1,4 @@
+import { userHref } from "../api";
 import { PhotoGallery } from "../components/PhotoGallery";
 import { ContentTools } from "../components/ContentTools";
 import { useEffect, useState } from "react";
@@ -218,7 +219,7 @@ export function BikeDetail({
           </div>
           <a
             className="bike-owner detail-owner"
-            href={`#/user/${bike.ownerId}`}
+            href={userHref(bike.owner)}
           >
             <Avatar user={bike.owner} />
             <span>
