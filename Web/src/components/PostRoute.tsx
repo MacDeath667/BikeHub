@@ -31,11 +31,12 @@ export function PostRoute({ route }: { route?: RouteData | null }) {
 }
 export function RouteEditor({ value, onChange, disabled, onBusy }: { value: RouteData | null; onChange: (route: RouteData | null) => void; disabled: boolean; onBusy: (busy: boolean) => void }) {
   const [mode, setMode] = useState<"gpx" | "manual">(value?.segments.length ? "gpx" : "manual");
+  const [connect, setConnect] = useState(!!value?.segments.length);
   const [editing, setEditing] = useState(!!value), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [lat, setLat] = useState("55.75"), [lng, setLng] = useState("37.62");
   const route = value || emptyRoute();
-  function manual(markers: RouteData["markers"]) {
-    onChange({ ...route, markers, segments: markers.length >= 2 ? [markers.map(({ lat, lng }) => ({ lat, lng }))] : [] });
+  function manual(markers: RouteData["markers"], linked = connect) {
+    onChange({ ...route, markers, segments: linked && markers.length >= 2 ? [markers.map(({ lat, lng }) => ({ lat, lng }))] : [] });
   }
   function add(point: GeoPoint) {
     if (disabled || busy || mode !== "manual") return;
@@ -48,7 +49,7 @@ export function RouteEditor({ value, onChange, disabled, onBusy }: { value: Rout
     {editing && <><div className="content-tools">{(["gpx", "manual"] as const).map(m => <button key={m} type="button" className={`button ${mode === m ? "primary" : "secondary"}`} disabled={disabled || busy} onClick={() => {
       if (m === mode) return;
       if (value && !window.confirm("Сменить способ добавления? Текущий маршрут будет очищен.")) return;
-      setMode(m); onChange(null); setError("");
+      setMode(m); setConnect(false); onChange(null); setError("");
     }}>{m === "gpx" ? "Загрузить GPX" : "Поставить точки"}</button>)}</div>
       {mode === "gpx" && <label>GPX-файл<input type="file" accept=".gpx,application/gpx+xml" disabled={disabled || busy} onChange={async event => {
         const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (!file) return;
@@ -57,7 +58,7 @@ export function RouteEditor({ value, onChange, disabled, onBusy }: { value: Rout
         catch (e) { setError((e as Error).message); } finally { setBusy(false); onBusy(false); }
       }} /><span className="form-hint">До 5 МБ и 30 000 точек. Перед публикацией проверьте, нет ли на маршруте вашего домашнего адреса.</span></label>}
       {value && <label>Название маршрута<input maxLength={120} required disabled={disabled || busy} value={route.name} onChange={e => onChange({ ...route, name: e.target.value })} /></label>}
-      {mode === "manual" && <><p className="form-hint">Нажимайте на карту или добавляйте координаты ниже. Точки соединяются прямыми линиями, без построения пути по дорогам.</p><div className="route-coordinate-inputs"><label>Широта<input type="number" min={-90} max={90} step="any" value={lat} disabled={disabled} onChange={e => setLat(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add({ lat: Number(lat), lng: Number(lng) }); } }} /></label>
+      {mode === "manual" && <><label className="route-connect"><input type="checkbox" checked={connect} disabled={disabled || busy} onChange={e => { setConnect(e.target.checked); if (value) manual(route.markers, e.target.checked); }} />Соединять точки линией</label><p className="form-hint">Нажимайте на карту или добавляйте координаты ниже. Точки можно оставить отдельными или соединить прямой линией, без построения пути по дорогам.</p><div className="route-coordinate-inputs"><label>Широта<input type="number" min={-90} max={90} step="any" value={lat} disabled={disabled} onChange={e => setLat(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add({ lat: Number(lat), lng: Number(lng) }); } }} /></label>
         <label>Долгота<input type="number" min={-180} max={180} step="any" value={lng} disabled={disabled} onChange={e => setLng(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add({ lat: Number(lat), lng: Number(lng) }); } }} /></label>
         <button type="button" className="button secondary" disabled={disabled || !lat.trim() || !lng.trim()} onClick={() => add({ lat: Number(lat), lng: Number(lng) })}>Добавить точку</button></div></>}
       {(mode === "manual" || value) && <Suspense fallback={<Loading />}><RouteMap route={route} onPoint={mode === "manual" && !disabled ? add : undefined} /></Suspense>}

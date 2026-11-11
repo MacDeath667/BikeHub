@@ -2621,3 +2621,6 @@ textarea {
   .route-marker-editor small { order: 2; width: 100%; }
   .route-map { height: 300px; }
 }
+
+.route-editor .route-connect { display: flex; align-items: center; gap: 8px; }
+.route-editor .route-connect input { width: 18px; height: 18px; margin: 0; padding: 0; accent-color: #386e49; }
