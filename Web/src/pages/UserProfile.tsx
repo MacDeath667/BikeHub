@@ -1,4 +1,3 @@
-import { AccountDeletion } from "../components/AccountDeletion";
 import { ProfileEditor } from "../components/ProfileEditor";
 import { ReportButton } from "../components/ContentTools";
 import { useEffect, useState } from "react";
@@ -71,7 +70,6 @@ export function UserProfile({
       </a>
       {editing && <ProfileEditor user={user} close={() => setEditing(false)} saved={reload} />}
       {user.id === me?.id ? <button className="text-button" onClick={() => setEditing(true)}>Редактировать профиль</button> : me && <ReportButton type={4} id={user.id} notify={notify} />}
-      {me?.id === user.id && <AccountDeletion />}
       {me?.id === user.id && me.isModerator && <a className="text-button" href="#/moderation">Модерация</a>}
       <section className="profile-card">
         <div className="profile-cover">

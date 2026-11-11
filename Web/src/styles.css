@@ -2680,3 +2680,15 @@ textarea {
   .route-marker-coordinates { order: 2; width: 100%; }
   .route-marker-coordinates input { flex: 1; width: 0; }
 }
+
+.settings-link { display: flex; align-items: center; gap: 16px; padding: 22px; }
+.settings-link > span { flex: 1; min-width: 0; }
+.settings-link strong { display: block; font-size: 17px; }
+.settings-link small { display: block; margin-top: 6px; color: var(--theme-muted, #64756b); font-size: 12px; line-height: 1.6; }
+.settings-link:hover { border-color: var(--theme-border, #a8bb9b); }
+.settings-account, .settings-account-management { padding: 24px; margin-bottom: 24px; }
+.settings-account h2, .settings-account-management h2 { font-size: 19px; margin-bottom: 14px; }
+.settings-account dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px 24px; font-size: 13px; margin-bottom: 18px; }
+.settings-account dt { color: var(--theme-muted, #64756b); }
+.settings-account dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .settings-link, .settings-account, .settings-account-management { padding: 18px; } }

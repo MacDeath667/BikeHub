@@ -15,6 +15,7 @@ import {
   MailCheck,
   Mountain,
   Search,
+  Settings as SettingsIcon,
   Users,
   X,
 } from "lucide-react";
@@ -33,6 +34,7 @@ import { PostDetail } from "./pages/PostDetail";
 import { UserProfile } from "./pages/UserProfile";
 import { Moderation } from "./pages/Moderation";
 import { CommunityDetail, GroupEntryDetail } from "./pages/CommunityDetail";
+import { Settings } from "./pages/Settings";
 import { Communities } from "./pages/Communities";
 
 function navigate(path: string) {
@@ -208,6 +210,7 @@ export default function App() {
             <ChevronRight size={16} />
           </a>
         )}
+        {me && <a href="#/settings" className={`garage-link ${section === "settings" ? "active" : ""}`}><SettingsIcon size={19} />Настройки</a>}
         <div className="sidebar-invite">
           <span className="invite-icon">
             <Mountain size={25} strokeWidth={1.3} />
@@ -252,6 +255,7 @@ export default function App() {
                   garage: "Мой гараж",
                   user: "Профиль",
                   u: "Профиль",
+                  settings: "Настройки",
                   post: "История",
                 } as Record<string, string>
               )[section] || "Лента"}
@@ -354,6 +358,7 @@ export default function App() {
                       version={version}
                     />
                   )}
+                  {section === "settings" && <Settings me={me} maskedEmail={authSession?.maskedEmail || null} account={path.split("/")[2] === "account"} />}
                   {section === "moderation" && <Moderation me={me} />}
                   {section === "community" && <CommunityDetail key={path} id={path.split("/")[2]} me={me} reload={reload} />}
                   {section === "group-entry" && <GroupEntryDetail key={path} id={path.split("/")[2]} me={me} />}
@@ -378,6 +383,7 @@ export default function App() {
                       "community",
                       "group-entry",
                       "moderation",
+                      "settings",
                     ].includes(section) && (
                       <Empty
                         title="Такой страницы нет"
