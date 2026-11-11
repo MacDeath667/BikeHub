@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { api } from "../api";
 
-export function PhotoUpload({ value, onChange, onBusy }: {
+export function PhotoUpload({ value, onChange, onBusy, label = "Фотография", disabled = false, avatar = false }: {
+  label?: string; disabled?: boolean; avatar?: boolean;
   value?: string | null; onChange: (id: string | null) => void; onBusy: (busy: boolean) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState(value || "");
   return <div className="photo-upload">
-    <label>Фотография
-      <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={async e => {
-        const file = e.target.files?.[0];
+    <label>{label}
+      <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || disabled} onChange={async e => {
+        const file = e.currentTarget.files?.[0];
+        e.currentTarget.value = "";
         if (!file) return;
         if (file.size > 10 * 1024 * 1024) { setError("Максимальный размер — 10 МБ."); return; }
         setBusy(true); onBusy(true); setError("");
@@ -23,8 +25,8 @@ export function PhotoUpload({ value, onChange, onBusy }: {
       }} />
     </label>
     {busy && <p role="status">Загружаем фотографию…</p>}
-    {preview && <><img src={preview} alt="Выбранная фотография" style={{ maxWidth: "100%", maxHeight: 180, borderRadius: 12 }} />
-      <button type="button" className="text-button" disabled={busy} onClick={() => { setPreview(""); onChange(null); }}>Убрать фотографию</button></>}
+    {preview && <><img src={preview} alt="Выбранная фотография" style={{ width: avatar ? 96 : undefined, height: avatar ? 96 : undefined, maxWidth: "100%", maxHeight: 180, borderRadius: avatar ? "50%" : 12 }} />
+      <button type="button" className="text-button" disabled={busy || disabled} onClick={() => { setPreview(""); onChange(null); }}>Убрать фотографию</button></>}
     {error && <p role="alert">{error}</p>}
     <small className="form-hint">JPEG, PNG или WebP, до 10 МБ. Геометки удаляются.</small>
   </div>;

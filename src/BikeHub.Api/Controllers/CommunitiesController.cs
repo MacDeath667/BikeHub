@@ -16,6 +16,11 @@ public sealed class CommunitiesController(ICommunityService service, GroupServic
     [HttpGet("{id:guid}")]
     public ActionResult<CommunityDto> Detail(Guid id) => Ok(groups.Get(id));
 
+    [HttpGet("{id:guid}/members")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public ActionResult<Page<UserDto>> Members(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 20) =>
+        Ok(groups.Members(id, page, pageSize));
+
     [Authorize, HttpPost]
     public ActionResult<CommunityDto> Create(SaveGroupRequest request) => Ok(groups.Save(null, request));
 

@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { CommunityMembers } from "./CommunityMembers";
+import { CommunityAvatar } from "./CommunityAvatar";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -19,8 +22,10 @@ export function RightRail({
   communities: Community[];
   onCreate: () => void;
 }) {
+  const [membersOf, setMembersOf] = useState<Community | null>(null);
   return (
     <aside className="right-rail">
+      {membersOf && <CommunityMembers community={membersOf} close={() => setMembersOf(null)} />}
       <section className="garage-promo">
         <div className="eyebrow">
           <span /> ВАША ИСТОРИЯ НАЧИНАЕТСЯ ЗДЕСЬ
@@ -87,14 +92,14 @@ export function RightRail({
           </a>
         </div>
         {communities.slice(0, 3).map((c) => (
-          <a className="mini-community" href="#/communities" key={c.id}>
-            <img src={c.imageUrl} alt="" />
+          <div className="mini-community" key={c.id}>
+            <a href={`#/community/${c.id}`} aria-label={`Открыть сообщество ${c.name}`}><CommunityAvatar community={c} /></a>
             <span>
-              <strong>{c.name}</strong>
-              <small>{number(c.members)} участников</small>
+              <a href={`#/community/${c.id}`}><strong>{c.name}</strong></a>
+              <button type="button" className="community-members-button" onClick={() => setMembersOf(c)} aria-label={`Участники сообщества ${c.name}: ${number(c.members)}`}>{number(c.members)} участников</button>
             </span>
-            <ChevronRight size={15} />
-          </a>
+            <a className="mini-community-arrow" href={`#/community/${c.id}`} aria-label={`Открыть сообщество ${c.name}`}><ChevronRight size={15} /></a>
+          </div>
         ))}
       </section>
       {overview && (

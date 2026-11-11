@@ -1,3 +1,5 @@
+import { CommunityAvatar } from "../components/CommunityAvatar";
+import { CommunityMembers } from "../components/CommunityMembers";
 import { GroupEditor } from "./CommunityDetail";
 import { requestLogin } from "../api";
 import type { User } from "../api";
@@ -18,6 +20,7 @@ export function Communities({
   notify: (s: string) => void;
   reload: () => void;
 }) {
+  const [membersOf, setMembersOf] = useState<Community | null>(null);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -59,21 +62,19 @@ export function Communities({
           onChange={(e) => setSearch(e.target.value)}
         />
       </label>
-      <div className="community-grid">
+      {membersOf && <CommunityMembers community={membersOf} close={() => setMembersOf(null)} />}
+      <div className="community-list">
         {filtered.map((c) => (
-          <article className="community-card" key={c.id}>
-            <div className="community-image">
-              <img src={c.imageUrl} alt={c.name} />
-              <span className="image-category">{categories[c.category]}</span>
-            </div>
-            <div className="community-body">
+          <article className="community-row" key={c.id}>
+            <a className="community-avatar-link" href={`#/community/${c.id}`} aria-label={`Открыть сообщество ${c.name}`}><CommunityAvatar community={c} /></a>
+            <div className="community-row-body">
+              <span className="eyebrow">{categories[c.category]}</span>
               <a href={`#/community/${c.id}`}><h2>{c.name}</h2></a>
               <p>{c.description}</p>
               <div className="community-bottom">
-                <span>
-                  <Users size={15} />
-                  {number(c.members)}
-                </span>
+                <button type="button" className="community-members-button" onClick={() => setMembersOf(c)} aria-label={`Участники сообщества ${c.name}: ${number(c.members)}`}>
+                  <Users size={15} />{number(c.members)} участников
+                </button>
                 <button
                   disabled={busy === c.id}
                   className={`button ${c.isJoined ? "secondary" : "primary"}`}

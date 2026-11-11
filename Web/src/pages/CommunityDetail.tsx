@@ -1,3 +1,6 @@
+import { PhotoUpload } from "../components/PhotoUpload";
+import { CommunityAvatar } from "../components/CommunityAvatar";
+import { CommunityMembers } from "../components/CommunityMembers";
 import { PostRoute, RouteEditor } from "../components/PostRoute";
 import type { RouteData } from "../api";
 import { useEffect, useState } from "react";
@@ -10,18 +13,21 @@ import { ReportButton } from "../components/ContentTools";
 
 type Entry = { route?: RouteData | null; id: string; groupId: string; groupName: string; author: User; kind: number; title: string; content: string; photos: Photo[]; imageIds: string[]; createdAt: string; repliesCount: number };
 export function GroupEditor({ group, saved, close }: { group?: Community; saved: (g: Community) => void; close: () => void }) {
+  const [imageId, setImageId] = useState<string | null>(group?.imageId || null);
+  const [uploading, setUploading] = useState(false);
   const [name, setName] = useState(group?.name || "");
   const [description, setDescription] = useState(group?.description || "");
   const [category, setCategory] = useState(group?.category || "gravel");
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   return <section className="profile-card group-editor"><h2>{group ? "Настройки сообщества" : "Новое сообщество"}</h2>
-    <form onSubmit={async e => { e.preventDefault(); if (busy) return; setBusy(true); setError(""); try {
-      saved(await api<Community>(`/communities${group ? `/${group.id}` : ""}`, { method: group ? "PUT" : "POST", body: JSON.stringify({ name, description, category, imageId: group?.imageId || null }) }));
+    <form onSubmit={async e => { e.preventDefault(); if (busy || uploading) return; setBusy(true); setError(""); try {
+      saved(await api<Community>(`/communities${group ? `/${group.id}` : ""}`, { method: group ? "PUT" : "POST", body: JSON.stringify({ name, description, category, imageId }) }));
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}>
+      <PhotoUpload avatar label="Аватарка сообщества" value={group?.imageId ? group.imageUrl : null} onChange={setImageId} onBusy={setUploading} disabled={busy} />
       <label>Название<input required minLength={2} maxLength={100} value={name} onChange={e => setName(e.target.value)} /></label>
       <label>О сообществе<textarea required maxLength={2000} value={description} onChange={e => setDescription(e.target.value)} /></label>
       <label>Направление<select value={category} onChange={e => setCategory(e.target.value)}>{Object.entries(categories).map(([key, value]) => <option key={key} value={key}>{value}</option>)}</select></label>
-      {error && <ErrorBox message={error} />}<div className="content-tools"><button className="button primary" disabled={busy}>Сохранить</button><button type="button" className="text-button" onClick={close}>Отмена</button></div>
+      {error && <ErrorBox message={error} />}<div className="content-tools"><button className="button primary" disabled={busy || uploading}>Сохранить</button><button type="button" className="text-button" disabled={busy || uploading} onClick={close}>Отмена</button></div>
     </form></section>;
 }
 function EntryEditor({ groupId, kind, entry, saved, close }: { groupId: string; kind: number; entry?: Entry; saved: (e: Entry) => void; close: () => void }) {
@@ -43,6 +49,7 @@ function EntryEditor({ groupId, kind, entry, saved, close }: { groupId: string; 
   </form></section>;
 }
 export function CommunityDetail({ id, me, reload }: { id: string; me: User | null; reload: () => void }) {
+  const [showMembers, setShowMembers] = useState(false);
   const [group, setGroup] = useState<Community | null>(null), [entries, setEntries] = useState<Page<Entry> | null>(null);
   const [kind, setKind] = useState(1), [page, setPage] = useState(1), [revision, setRevision] = useState(0);
   const [editing, setEditing] = useState(false), [creating, setCreating] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -50,7 +57,7 @@ export function CommunityDetail({ id, me, reload }: { id: string; me: User | nul
   useEffect(() => { let active = true; setEntries(null); Promise.all([api<Community>(`/communities/${id}`), api<Page<Entry>>(`/communities/${id}/entries?kind=${kind}&page=${page}`)])
     .then(([g, e]) => { if (active) { setGroup(g); setEntries(e); setError(""); } }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [id, kind, page, revision, me?.id]);
   if (!group) return error ? <ErrorBox message={error} /> : <Loading />;
-  return <><a className="back-link" href="#/communities">← Все сообщества</a><div className="page-heading"><div className="eyebrow">{categories[group.category]} · {group.members} участников</div><h1>{group.name}</h1><p>{group.description}</p></div>
+  return <><a className="back-link" href="#/communities">← Все сообщества</a>{showMembers && <CommunityMembers community={group} close={() => setShowMembers(false)} />}<div className="page-heading community-heading"><CommunityAvatar community={group} large /><div><div className="eyebrow">{categories[group.category]} · <button type="button" className="community-members-button" onClick={() => setShowMembers(true)} aria-label={`Участники сообщества ${group.name}: ${group.members}`}>{group.members} участников</button></div><h1>{group.name}</h1><p>{group.description}</p></div></div>
     <div className="content-tools"><button className={`button ${group.isJoined ? "secondary" : "primary"}`} disabled={busy} onClick={async () => { if (!me) { requestLogin(); return; } setBusy(true); try {
       await api(`/communities/${id}/membership`, { method: group.isJoined ? "DELETE" : "PUT" }); refresh();
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}>{group.isJoined ? "Выйти из сообщества" : "Вступить"}</button>

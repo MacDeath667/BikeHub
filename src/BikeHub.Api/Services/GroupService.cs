@@ -44,6 +44,16 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
     }
     public CommunityDto Get(Guid id) => community.GetCommunities(null).SingleOrDefault(g => g.Id == id)
         ?? throw new CommunityProblem(404, Missing);
+    public Page<UserDto> Members(Guid id, int page, int pageSize)
+    {
+        using var db = contexts.CreateDbContext();
+        Find(db, id);
+        page = Math.Clamp(page, 1, 1000000);
+        pageSize = Math.Clamp(pageSize, 1, 50);
+        var users = community.Users(db).Where(u => db.Relations.Any(r => r.UserId == u.Id && r.TargetId == id && r.Kind == RelationKind.Membership));
+        return new(users.OrderBy(u => u.Name).ThenBy(u => u.Id).Skip((page - 1) * pageSize).Take(pageSize).ToArray(),
+            users.Count(), page, pageSize);
+    }
     public CommunityDto Save(Guid? id, SaveGroupRequest request)
     {
         using var db = contexts.CreateDbContext();
@@ -60,7 +70,7 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
         }
         group.Name = request.Name.Trim(); group.Description = request.Description.Trim(); group.Category = (int)request.Category;
         group.ImageId = request.ImageId;
-        group.ImageUrl = Constants.Images.Gravel;
+        group.ImageUrl = string.Empty;
         if (!id.HasValue)
         {
             db.Communities.Add(group);

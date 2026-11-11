@@ -447,7 +447,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             Name = g.Name,
             Description = g.Description,
             Category = (BikeCategory)g.Category,
-            ImageUrl = g.ImageId.HasValue ? Constants.MediaPathPrefix + g.ImageId.Value.ToString() : g.ImageUrl,
+            ImageUrl = g.ImageId.HasValue ? Constants.MediaPathPrefix + g.ImageId.Value.ToString() : string.Empty,
             OwnerId = g.OwnerId,
             ImageId = g.ImageId,
             Members = db.Relations.Count(r => r.Kind == RelationKind.Membership && r.TargetId == g.Id && db.Accounts.Any(a => a.Id == r.UserId && !a.IsBlocked)),

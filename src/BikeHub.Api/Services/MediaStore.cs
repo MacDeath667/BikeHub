@@ -116,7 +116,7 @@ public sealed class MediaStore(IDbContextFactory<BikeHubDbContext> contexts, ICu
     {
         using var db = contexts.CreateDbContext();
         var asset = db.Media.AsNoTracking().SingleOrDefault(m => m.Id == id && !m.IsDeleted);
-        if (asset is null)
+        if (asset is null || !db.Accounts.Any(a => a.Id == asset.OwnerId && !a.IsBlocked))
         {
             return null;
         }
