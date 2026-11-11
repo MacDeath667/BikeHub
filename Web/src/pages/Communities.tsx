@@ -1,3 +1,6 @@
+import { GroupEditor } from "./CommunityDetail";
+import { requestLogin } from "../api";
+import type { User } from "../api";
 import { useState } from "react";
 import { Check, Plus, Search, Users } from "lucide-react";
 import { api, categories, number } from "../api";
@@ -6,13 +9,16 @@ import { Empty } from "../components/ui";
 
 export function Communities({
   communities,
+  me,
   notify,
   reload,
 }: {
   communities: Community[];
+  me: User | null;
   notify: (s: string) => void;
   reload: () => void;
 }) {
+  const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   async function join(c: Community) {
@@ -42,6 +48,8 @@ export function Communities({
         <h1>Свои найдутся.</h1>
         <p>Общий ритм, любимые маршруты и разговоры без финиша.</p>
       </div>
+      <button className="button primary" onClick={() => { if (!me) { requestLogin(); return; } setCreating(!creating); }}>Создать сообщество</button>
+      {creating && <GroupEditor close={() => setCreating(false)} saved={g => { reload(); window.location.hash = `/community/${g.id}`; }} />}
       <label className="directory-search">
         <Search size={18} />
         <input
@@ -59,7 +67,7 @@ export function Communities({
               <span className="image-category">{categories[c.category]}</span>
             </div>
             <div className="community-body">
-              <h2>{c.name}</h2>
+              <a href={`#/community/${c.id}`}><h2>{c.name}</h2></a>
               <p>{c.description}</p>
               <div className="community-bottom">
                 <span>

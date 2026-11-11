@@ -96,7 +96,7 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         var value = await context.EmailChallenges.FromSqlRaw(SelectChallengeForUpdateSql, id)
             .SingleOrDefaultAsync(cancellationToken);
-        if (value is null || value.Consumed || !value.Delivered || value.ExpiresAt <= now ||
+        if (value is null || value.Purpose == AuthenticationPurpose.AccountDeletion || value.Consumed || !value.Delivered || value.ExpiresAt <= now ||
             !OtpSecurity.EqualsHash(value.BindingHash, bindingHash))
         {
             return new(null, ConfirmationFailure.Invalid);

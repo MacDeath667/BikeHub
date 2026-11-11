@@ -38,6 +38,12 @@
         group: root
         mode: "u=rwX,g=rX,o=rX"
 
+    - name: Trim unused builder cache before building on the NAS VM
+      ansible.builtin.command:
+        argv: [docker, builder, prune, --force, --keep-storage, 2GB]
+      register: bikehub_cache_before_build
+      changed_when: "'Total: 0B' not in bikehub_cache_before_build.stdout"
+
     - name: Build the BikeHub application container
       ansible.builtin.command:
         argv:
@@ -88,6 +94,12 @@
         executable: /bin/bash
       when: bikehub_mail_enabled | bool
       changed_when: true
+    - name: Bound unused builder cache after importing all application images
+      ansible.builtin.command:
+        argv: [docker, builder, prune, --force, --keep-storage, 2GB]
+      register: bikehub_cache_after_build
+      changed_when: "'Total: 0B' not in bikehub_cache_after_build.stdout"
+
   always:
     - name: Remove the controller's temporary source archive
       ansible.builtin.file:

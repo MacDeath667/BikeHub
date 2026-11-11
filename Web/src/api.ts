@@ -84,6 +84,7 @@ export interface Comment {
   createdAt: string;
 }
 export interface Community {
+  ownerId?: string | null;
   id: string;
   name: string;
   description: string;

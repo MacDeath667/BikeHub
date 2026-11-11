@@ -74,3 +74,7 @@ bikehub_web_image_repository: docker.io/library/bikehub-web
 bikehub_web_node_port: 30083
 bikehub_staging_web_node_port: 30084
 bikehub_web_replica_count: 1
+
+# Verified account authorized to moderate both BikeHub instances.
+bikehub_moderator_emails:
+  - gashkovrom@gmail.com

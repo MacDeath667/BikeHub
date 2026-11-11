@@ -4,7 +4,7 @@ import type { Page, User } from "../api";
 import { Empty, ErrorBox, Loading } from "../components/ui";
 
 type Report = { id: string; targetType: number; targetId: string; reason: string; createdAt: string; reporterId: string };
-const names: Record<number, string> = { 1: "Велосипед", 2: "Запись", 3: "Комментарий", 4: "Пользователь", 5: "Обратная связь" };
+const names: Record<number, string> = { 1: "Велосипед", 2: "Запись", 3: "Комментарий", 4: "Пользователь", 5: "Обратная связь", 6: "Сообщество", 7: "Запись сообщества", 8: "Ответ в сообществе" };
 export function Moderation({ me }: { me: User | null }) {
   const [reports, setReports] = useState<Report[] | null>(null);
   const [error, setError] = useState("");
@@ -34,8 +34,9 @@ export function Moderation({ me }: { me: User | null }) {
       <strong>{names[report.targetType]}</strong><p>{report.reason}</p>
       <small>{new Date(report.createdAt).toLocaleString("ru-RU")} · {report.targetId}</small>
       <div className="content-tools">
+        {[6, 7].includes(report.targetType) && <a className="text-button" href={`#/${report.targetType === 6 ? "community" : "group-entry"}/${report.targetId}`}>Открыть</a>}
         {report.targetType <= 2 && <a className="text-button" href={`#/${report.targetType === 1 ? "bike" : "post"}/${report.targetId}`}>Открыть</a>}
-        {report.targetType <= 3 && <><button className="text-button" disabled={busy} onClick={() => act(`/moderation/${report.targetType}/${report.targetId}/visibility`, "PUT", { hidden: true })}>Скрыть</button>
+        {[1, 2, 3, 6, 7, 8].includes(report.targetType) && <><button className="text-button" disabled={busy} onClick={() => act(`/moderation/${report.targetType}/${report.targetId}/visibility`, "PUT", { hidden: true })}>Скрыть</button>
           <button className="text-button" disabled={busy} onClick={() => act(`/moderation/${report.targetType}/${report.targetId}/visibility`, "PUT", { hidden: false })}>Восстановить</button></>}
         {report.targetType === 4 && <><button className="text-button" disabled={busy} onClick={() => { if (window.confirm("Заблокировать аккаунт и завершить его сессии?")) act(`/moderation/users/${report.targetId}/block`, "PUT", { blocked: true }); }}>Заблокировать</button>
           <button className="text-button" disabled={busy} onClick={() => act(`/moderation/users/${report.targetId}/block`, "PUT", { blocked: false })}>Разблокировать</button></>}

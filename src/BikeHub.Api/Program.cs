@@ -20,6 +20,13 @@ if (!migrationsOnly)
     builder.Services.AddControllers(options => options.Filters.Add<CsrfValidationFilter>());
     builder.Services.AddScoped<PostgresCommunityService>();
     builder.Services.AddScoped<MediaStore>();
+    builder.Services.AddScoped<GroupService>();
+    builder.Services.AddScoped<AccountDeletionService>();
+    builder.Services.AddScoped<MediaCleanup>();
+    if (builder.Configuration["Community:Store"] != "Memory")
+    {
+        builder.Services.AddHostedService<MediaCleanupWorker>();
+    }
     if (builder.Configuration.GetValue<string>("Community:Store") == "Memory")
     {
         builder.Services.AddSingleton<MockCommunityStore>();

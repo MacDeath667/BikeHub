@@ -26,8 +26,10 @@ public static class VerificationEmail
         "Код действует {1} минут и подходит только для того браузера, где вы запросили вход.\n\n" +
         "Если вы не запрашивали вход, проигнорируйте это письмо.";
     public static SendEmailRequest Create(VerificationMessage message) => new(message.ChallengeId,
-        message.Destination, Constants.VerificationEmailSubject,
-        string.Format(BodyTemplate, message.Code, message.ValidMinutes), message.ExpiresAt);
+        message.Destination, message.Purpose == BikeHub.Dal.Entities.AuthenticationPurpose.AccountDeletion ? "Удаление аккаунта BikeHub" : Constants.VerificationEmailSubject,
+        message.Purpose == BikeHub.Dal.Entities.AuthenticationPurpose.AccountDeletion
+            ? $"Код для безвозвратного удаления аккаунта BikeHub: {message.Code}\nКод действует {message.ValidMinutes} минут. Если вы не запрашивали удаление, не сообщайте код никому."
+            : string.Format(BodyTemplate, message.Code, message.ValidMinutes), message.ExpiresAt);
 }
 
 public interface IVerificationDeliveryStatus

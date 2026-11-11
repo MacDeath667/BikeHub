@@ -1,7 +1,7 @@
 namespace BikeHub.Dal.Entities;
 
 public enum RelationKind { Like = 1, Bookmark = 2, Follow = 3, Membership = 4 }
-public enum ReportTarget { Bike = 1, Post = 2, Comment = 3, User = 4, Site = 5 }
+public enum ReportTarget { Bike = 1, Post = 2, Comment = 3, User = 4, Site = 5, Group = 6, GroupEntry = 7, GroupReply = 8 }
 
 public sealed class CommunityPost
 {
@@ -34,6 +34,10 @@ public sealed class CommunityComment
 
 public sealed class CommunityGroup
 {
+    public Guid? OwnerId { get; set; }
+    public Guid? ImageId { get; set; }
+    public bool IsDeleted { get; set; }
+    public bool IsHidden { get; set; }
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
@@ -70,4 +74,38 @@ public sealed class ModerationReport
     public bool Resolved { get; set; }
     public Guid? ResolvedBy { get; set; }
     public string? Resolution { get; set; }
+}
+
+public enum GroupEntryKind { Post = 1, Discussion = 2 }
+
+public sealed class GroupEntry
+{
+    public Guid Id { get; set; }
+    public Guid GroupId { get; set; }
+    public Guid AuthorId { get; set; }
+    public GroupEntryKind Kind { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+    public Guid[] ImageIds { get; set; } = [];
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public bool IsDeleted { get; set; }
+    public bool IsHidden { get; set; }
+}
+
+public sealed class GroupReply
+{
+    public Guid Id { get; set; }
+    public Guid EntryId { get; set; }
+    public Guid AuthorId { get; set; }
+    public string Text { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public bool IsDeleted { get; set; }
+    public bool IsHidden { get; set; }
+}
+
+public sealed class MediaDeletion
+{
+    public Guid Id { get; set; }
 }

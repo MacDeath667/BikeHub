@@ -7,6 +7,9 @@ namespace BikeHub.Dal;
 
 public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options) : DbContext(options)
 {
+    public DbSet<MediaDeletion> MediaDeletions => Set<MediaDeletion>();
+    public DbSet<GroupEntry> GroupEntries => Set<GroupEntry>();
+    public DbSet<GroupReply> GroupReplies => Set<GroupReply>();
     public DbSet<CommunityPost> Posts => Set<CommunityPost>();
     public DbSet<CommunityComment> Comments => Set<CommunityComment>();
     public DbSet<CommunityGroup> Communities => Set<CommunityGroup>();

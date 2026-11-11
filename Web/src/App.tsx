@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import type { AuthSession } from "./api";
+import { ThemePicker } from "./components/ThemePicker";
 import { AuthModal } from "./components/AuthModal";
 import type { Community, Overview, User } from "./api";
 import { Avatar, Empty, ErrorBox, Loading } from "./components/ui";
@@ -29,6 +30,7 @@ import { BikeDetail, BikeDirectory } from "./pages/Bikes";
 import { PostDetail } from "./pages/PostDetail";
 import { UserProfile } from "./pages/UserProfile";
 import { Moderation } from "./pages/Moderation";
+import { CommunityDetail, GroupEntryDetail } from "./pages/CommunityDetail";
 import { Communities } from "./pages/Communities";
 
 function navigate(path: string) {
@@ -263,6 +265,7 @@ export default function App() {
             <kbd>↵</kbd>
           </form>
           <div className="topbar-right">
+            <ThemePicker />
             <span className="demo-label">
               <span />
               Бета
@@ -348,9 +351,12 @@ export default function App() {
                     />
                   )}
                   {section === "moderation" && <Moderation me={me} />}
+                  {section === "community" && <CommunityDetail key={path} id={path.split("/")[2]} me={me} reload={reload} />}
+                  {section === "group-entry" && <GroupEntryDetail key={path} id={path.split("/")[2]} me={me} />}
                   {section === "communities" && (
                     <Communities
                       communities={communities}
+                      me={me}
                       notify={notify}
                       reload={reload}
                     />
@@ -364,6 +370,8 @@ export default function App() {
                       "post",
                       "user",
                       "communities",
+                      "community",
+                      "group-entry",
                       "moderation",
                     ].includes(section) && (
                       <Empty

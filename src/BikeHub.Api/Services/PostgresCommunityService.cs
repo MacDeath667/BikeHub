@@ -33,7 +33,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     public bool IsModerator => current.Account is { } account && moderators.Contains(account.Email);
     private AuthAccount Actor() => current.Account ?? throw new CommunityProblem(401, SignInTitle);
 
-    private IQueryable<UserDto> Users(BikeHubDbContext db) => db.Accounts.AsNoTracking().Where(a => !a.IsBlocked)
+    internal IQueryable<UserDto> Users(BikeHubDbContext db) => db.Accounts.AsNoTracking().Where(a => !a.IsBlocked)
         .Select(a => new UserDto
         {
             Id = a.Id,
@@ -174,7 +174,13 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     public BikeDto CreateBike(CreateBikeRequest request)
     {
         using var db = contexts.CreateDbContext();
+        using var transaction = db.Database.BeginTransaction();
         var actor = Actor();
+        // Legacy bikes have no owner FK: hold the account row until creation commits.
+        if (!db.Accounts.FromSqlInterpolated($"SELECT * FROM auth_accounts WHERE id = {actor.Id} FOR KEY SHARE").Any())
+        {
+            throw new CommunityProblem(401, SignInTitle);
+        }
         var images = CheckImages(db, request.ImageIds, request.ImageId, actor.Id);
         var bike = new Bike
         {
@@ -191,13 +197,14 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             CreatedAt = clock.GetUtcNow()
         };
         db.Bikes.Add(bike);
-        db.SaveChanges();
+        db.SaveChanges(); transaction.Commit();
         return Bikes(db).Single(b => b.Id == bike.Id);
     }
 
     public BikeDto UpdateBike(Guid id, CreateBikeRequest request)
     {
         using var db = contexts.CreateDbContext();
+        using var transaction = db.Database.BeginTransaction();
         var bike = db.Bikes.SingleOrDefault(b => b.Id == id && !b.IsDeleted) ?? throw new CommunityProblem(404, MissingTitle);
         Own(bike.OwnerId);
         if (bike.IsHidden)
@@ -208,7 +215,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         bike.Name = request.Name.Trim(); bike.Description = request.Description?.Trim() ?? string.Empty;
         bike.Brand = request.Brand.Trim(); bike.Category = (int)request.Category; bike.Year = request.Year;
         bike.Mileage = request.Mileage; bike.ImageId = images.Length > 0 ? images[0] : null; bike.ImageIds = images;
-        db.SaveChanges();
+        db.SaveChanges(); transaction.Commit();
         return Bikes(db).SingleOrDefault(b => b.Id == id) ?? throw new CommunityProblem(409, HiddenTitle);
     }
 
@@ -216,7 +223,12 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     {
         using var db = contexts.CreateDbContext();
         var bike = db.Bikes.SingleOrDefault(b => b.Id == id && !b.IsDeleted) ?? throw new CommunityProblem(404, MissingTitle);
-        Own(bike.OwnerId); bike.IsDeleted = true; db.SaveChanges();
+        Own(bike.OwnerId);
+        using var transaction = db.Database.BeginTransaction();
+        bike.IsDeleted = true; bike.ImageId = null; bike.ImageIds = [];
+        db.Posts.Where(p => p.BikeId == id).ExecuteUpdate(u => u.SetProperty(p => p.IsDeleted, true)
+            .SetProperty(p => p.ImageId, (Guid?)null).SetProperty(p => p.ImageIds, Array.Empty<Guid>()));
+        db.SaveChanges(); transaction.Commit();
     }
 
     public Page<PostDto>? GetHistory(Guid id, int page, int pageSize)
@@ -235,6 +247,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     public PostDto? CreatePost(CreatePostRequest request)
     {
         using var db = contexts.CreateDbContext();
+        using var transaction = db.Database.BeginTransaction();
         var actor = Actor();
         if (!Bikes(db).Any(b => b.Id == request.BikeId && b.OwnerId == actor.Id))
         {
@@ -254,7 +267,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             ImageIds = images,
             CreatedAt = clock.GetUtcNow()
         };
-        db.Posts.Add(post); db.SaveChanges();
+        db.Posts.Add(post); db.SaveChanges(); transaction.Commit();
         return Posts(db).Single(p => p.Id == post.Id);
     }
 
@@ -264,6 +277,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     public PostDto UpdatePost(Guid id, CreatePostRequest request)
     {
         using var db = contexts.CreateDbContext();
+        using var transaction = db.Database.BeginTransaction();
         var actor = Actor();
         var post = db.Posts.SingleOrDefault(p => p.Id == id && !p.IsDeleted) ?? throw new CommunityProblem(404, MissingTitle);
         Own(post.AuthorId);
@@ -278,7 +292,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         var images = CheckImages(db, request.ImageIds, request.ImageId, actor.Id);
         post.Title = request.Title.Trim(); post.Content = request.Content.Trim(); post.Category = request.Category;
         post.BikeId = request.BikeId; post.ImageId = images.Length > 0 ? images[0] : null; post.ImageIds = images; post.Tags = Tags(request.Content); post.UpdatedAt = clock.GetUtcNow();
-        db.SaveChanges();
+        db.SaveChanges(); transaction.Commit();
         return Posts(db).SingleOrDefault(p => p.Id == id) ?? throw new CommunityProblem(409, HiddenTitle);
     }
 
@@ -286,7 +300,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     {
         using var db = contexts.CreateDbContext();
         var post = db.Posts.SingleOrDefault(p => p.Id == id && !p.IsDeleted) ?? throw new CommunityProblem(404, MissingTitle);
-        Own(post.AuthorId); post.IsDeleted = true; db.SaveChanges();
+        Own(post.AuthorId); post.IsDeleted = true; post.ImageId = null; post.ImageIds = []; db.SaveChanges();
     }
 
     public PostDto? SetLike(Guid id, bool active) => SetPostRelation(id, RelationKind.Like, active);
@@ -380,6 +394,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     public UserDto UpdateProfile(UpdateProfileRequest request)
     {
         using var db = contexts.CreateDbContext();
+        using var transaction = db.Database.BeginTransaction();
         var id = Actor().Id;
         CheckImage(db, request.AvatarId, id);
         var account = db.Accounts.Single(a => a.Id == id);
@@ -395,6 +410,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         {
             throw new CommunityProblem(409, HandleTakenTitle);
         }
+        transaction.Commit();
         return Users(db).Single(u => u.Id == id);
     }
 
@@ -417,7 +433,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     }
     private IQueryable<CommunityDto> Groups(BikeHubDbContext db, string? query)
     {
-        var groups = db.Communities.AsNoTracking();
+        var groups = db.Communities.AsNoTracking().Where(g => !g.IsDeleted && !g.IsHidden);
         if (Search(query) is { } search)
         {
             groups = groups.Where(g => EF.Functions.ILike(g.Name + " " + g.Description, search));
@@ -428,7 +444,9 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             Name = g.Name,
             Description = g.Description,
             Category = (BikeCategory)g.Category,
-            ImageUrl = g.ImageUrl,
+            ImageUrl = g.ImageId.HasValue ? Constants.MediaPathPrefix + g.ImageId.Value.ToString() : g.ImageUrl,
+            OwnerId = g.OwnerId,
+            ImageId = g.ImageId,
             Members = db.Relations.Count(r => r.Kind == RelationKind.Membership && r.TargetId == g.Id && db.Accounts.Any(a => a.Id == r.UserId && !a.IsBlocked)),
             IsJoined = Viewer.HasValue && db.Relations.Any(r => r.Kind == RelationKind.Membership && r.UserId == Viewer && r.TargetId == g.Id)
         });
@@ -436,7 +454,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     public CommunityDto? SetMembership(Guid id, bool active)
     {
         using var db = contexts.CreateDbContext();
-        if (!db.Communities.Any(g => g.Id == id))
+        if (!db.Communities.Any(g => g.Id == id && !g.IsDeleted && !g.IsHidden))
         {
             return null;
         }
@@ -464,14 +482,15 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             throw new CommunityProblem(403, OwnContentTitle);
         }
     }
-    private static Guid[] CheckImages(BikeHubDbContext db, Guid[]? ids, Guid? legacyCover, Guid owner)
+    internal static Guid[] CheckImages(BikeHubDbContext db, Guid[]? ids, Guid? legacyCover, Guid owner)
     {
         var images = ids ?? (legacyCover.HasValue ? [legacyCover.Value] : []);
         if (images.Length > BikeHub.Application.Constants.MaximumContentPhotos || images.Distinct().Count() != images.Length || images.Contains(Guid.Empty))
         {
             throw new CommunityProblem(400, InvalidPhotosTitle);
         }
-        if (db.Media.Count(m => images.Contains(m.Id) && m.OwnerId == owner && !m.IsDeleted) != images.Length)
+        if (db.Media.FromSqlInterpolated($"SELECT * FROM media_assets WHERE id = ANY({images}) ORDER BY id FOR UPDATE")
+            .Count(m => m.OwnerId == owner && !m.IsDeleted) != images.Length)
         {
             throw new CommunityProblem(400, MediaOwnershipTitle);
         }
@@ -480,7 +499,8 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
 
     private static void CheckImage(BikeHubDbContext db, Guid? id, Guid owner)
     {
-        if (id.HasValue && !db.Media.Any(m => m.Id == id && m.OwnerId == owner && !m.IsDeleted))
+        if (id.HasValue && !db.Media.FromSqlInterpolated($"SELECT * FROM media_assets WHERE id = {id.Value} FOR UPDATE")
+            .Any(m => m.OwnerId == owner && !m.IsDeleted))
         {
             throw new CommunityProblem(400, MediaOwnershipTitle);
         }
@@ -498,6 +518,9 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             ReportTarget.Post => Posts(db).Any(p => p.Id == request.TargetId),
             ReportTarget.Comment => db.Comments.Any(c => c.Id == request.TargetId && !c.IsDeleted && !c.IsHidden && Posts(db).Any(p => p.Id == c.PostId)),
             ReportTarget.User => Users(db).Any(u => u.Id == request.TargetId),
+            ReportTarget.Group => db.Communities.Any(g => g.Id == request.TargetId && !g.IsDeleted && !g.IsHidden),
+            ReportTarget.GroupEntry => db.GroupEntries.Any(e => e.Id == request.TargetId && !e.IsDeleted && !e.IsHidden && db.Communities.Any(g => g.Id == e.GroupId && !g.IsDeleted && !g.IsHidden)),
+            ReportTarget.GroupReply => db.GroupReplies.Any(r => r.Id == request.TargetId && !r.IsDeleted && !r.IsHidden && db.GroupEntries.Any(e => e.Id == r.EntryId && !e.IsDeleted && !e.IsHidden && db.Communities.Any(g => g.Id == e.GroupId && !g.IsDeleted && !g.IsHidden))),
             ReportTarget.Site => request.TargetId == Guid.Empty,
             _ => false
         };
@@ -561,6 +584,9 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             ReportTarget.Bike => db.Bikes.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
             ReportTarget.Post => db.Posts.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
             ReportTarget.Comment => db.Comments.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
+            ReportTarget.Group => db.Communities.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
+            ReportTarget.GroupEntry => db.GroupEntries.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
+            ReportTarget.GroupReply => db.GroupReplies.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
             _ => throw new CommunityProblem(400, MaterialTypeTitle)
         };
         if (count == 0)

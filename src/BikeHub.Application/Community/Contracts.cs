@@ -30,7 +30,7 @@ public record PostDto(Guid Id, UserDto Author, BikeDto Bike, string Title, strin
 
 public record CommentDto(Guid Id, UserDto Author, string Text, DateTimeOffset CreatedAt);
 public record CommunityDto(Guid Id, string Name, string Description, BikeCategory Category,
-    string ImageUrl, int Members, bool IsJoined)
+    string ImageUrl, int Members, bool IsJoined, Guid? OwnerId = null, Guid? ImageId = null)
 {
     public CommunityDto() : this(default!, default!, default!, default!, default!, default!, default!) { }
 }

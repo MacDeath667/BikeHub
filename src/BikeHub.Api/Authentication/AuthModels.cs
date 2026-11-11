@@ -43,7 +43,7 @@ public sealed record EmailChallenge(Guid Id, string Email, string DisplayName, s
 public enum ConfirmationFailure { None, Invalid, TooManyAttempts, AccountExists, AccountNotFound, AccountBlocked }
 public sealed record ConfirmationResult(AuthSession? Session, ConfirmationFailure Failure);
 public sealed record VerificationMessage(Guid ChallengeId, string Destination, string Code,
-    string BindingHash, DateTimeOffset ExpiresAt, int ValidMinutes);
+    string BindingHash, DateTimeOffset ExpiresAt, int ValidMinutes, AuthenticationPurpose Purpose = AuthenticationPurpose.Legacy);
 
 public interface IVerificationEmailSender
 {

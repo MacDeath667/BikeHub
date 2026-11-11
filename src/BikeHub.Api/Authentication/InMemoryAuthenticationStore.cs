@@ -97,7 +97,7 @@ public sealed class InMemoryAuthenticationStore : IAuthenticationStore
     {
         lock (gate)
         {
-            if (!challenges.TryGetValue(id, out var value) || value.Consumed || !value.Delivered ||
+            if (!challenges.TryGetValue(id, out var value) || value.Purpose == AuthenticationPurpose.AccountDeletion || value.Consumed || !value.Delivered ||
                 value.ExpiresAt <= now || !OtpSecurity.EqualsHash(value.BindingHash, bindingHash))
             {
                 return Task.FromResult(new ConfirmationResult(null, ConfirmationFailure.Invalid));
