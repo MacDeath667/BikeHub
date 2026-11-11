@@ -1,3 +1,5 @@
+import { PostRoute, RouteEditor } from "../components/PostRoute";
+import type { RouteData } from "../api";
 import { useEffect, useState } from "react";
 import { api, categories, relativeTime, requestLogin } from "../api";
 import type { Community, User, Page, Photo, Comment } from "../api";
@@ -6,7 +8,7 @@ import { PhotoCollection } from "../components/PhotoCollection";
 import { PhotoGallery } from "../components/PhotoGallery";
 import { ReportButton } from "../components/ContentTools";
 
-type Entry = { id: string; groupId: string; groupName: string; author: User; kind: number; title: string; content: string; photos: Photo[]; imageIds: string[]; createdAt: string; repliesCount: number };
+type Entry = { route?: RouteData | null; id: string; groupId: string; groupName: string; author: User; kind: number; title: string; content: string; photos: Photo[]; imageIds: string[]; createdAt: string; repliesCount: number };
 export function GroupEditor({ group, saved, close }: { group?: Community; saved: (g: Community) => void; close: () => void }) {
   const [name, setName] = useState(group?.name || "");
   const [description, setDescription] = useState(group?.description || "");
@@ -24,17 +26,20 @@ export function GroupEditor({ group, saved, close }: { group?: Community; saved:
 }
 function EntryEditor({ groupId, kind, entry, saved, close }: { groupId: string; kind: number; entry?: Entry; saved: (e: Entry) => void; close: () => void }) {
   const [title, setTitle] = useState(entry?.title || ""), [content, setContent] = useState(entry?.content || "");
+  const [route, setRoute] = useState<RouteData | null>(entry?.route || null);
+  const [routeBusy, setRouteBusy] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>(entry?.photos || []);
   const [uploading, setUploading] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
   return <section className="profile-card group-editor"><h2>{entry ? "Редактирование" : kind === 1 ? "Новый пост" : "Новое обсуждение"}</h2><form onSubmit={async e => {
-    e.preventDefault(); if (busy || uploading) return; setBusy(true); setError(""); try {
-      saved(await api<Entry>(`/communities/${groupId}/entries${entry ? `/${entry.id}` : ""}`, { method: entry ? "PUT" : "POST", body: JSON.stringify({ kind, title, content, imageIds: photos.map(p => p.id) }) }));
+    e.preventDefault(); if (busy || uploading || routeBusy) return; setBusy(true); setError(""); try {
+      saved(await api<Entry>(`/communities/${groupId}/entries${entry ? `/${entry.id}` : ""}`, { method: entry ? "PUT" : "POST", body: JSON.stringify({ kind, title, content, imageIds: photos.map(p => p.id), route }) }));
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }}>
     <label>Заголовок<input required minLength={2} maxLength={160} value={title} onChange={e => setTitle(e.target.value)} /></label>
     <label>{kind === 1 ? "Текст поста" : "Что обсудим?"}<textarea required maxLength={20000} rows={7} value={content} onChange={e => setContent(e.target.value)} /></label>
     <PhotoCollection photos={photos} onChange={setPhotos} onBusy={setUploading} disabled={busy} />
-    {error && <ErrorBox message={error} />}<div className="content-tools"><button className="button primary" disabled={busy || uploading}>{entry ? "Сохранить" : "Опубликовать"}</button><button type="button" className="text-button" onClick={close}>Отмена</button></div>
+    <RouteEditor value={route} onChange={setRoute} onBusy={setRouteBusy} disabled={busy || uploading} />
+    {error && <ErrorBox message={error} />}<div className="content-tools"><button className="button primary" disabled={busy || uploading || routeBusy}>{entry ? "Сохранить" : "Опубликовать"}</button><button type="button" className="text-button" onClick={close}>Отмена</button></div>
   </form></section>;
 }
 export function CommunityDetail({ id, me, reload }: { id: string; me: User | null; reload: () => void }) {
@@ -70,6 +75,7 @@ export function GroupEntryDetail({ id, me }: { id: string; me: User | null }) {
   const manager = group.ownerId === me?.id || me?.isModerator;
   return <><a className="back-link" href={`#/community/${entry.groupId}`}>← {entry.groupName}</a><div className="eyebrow">{entry.kind === 1 ? "ПОСТ" : "ОБСУЖДЕНИЕ"}</div><h1>{entry.title}</h1><div className="content-tools"><Avatar user={entry.author} /><a href={`#/user/${entry.author.id}`}>{entry.author.name}</a><span>{relativeTime(entry.createdAt)}</span></div>
     <p className="group-content">{entry.content}</p>{entry.photos.length > 0 && <PhotoGallery photos={entry.photos} fallback={entry.photos[0].imageUrl} title={entry.title} />}
+    <PostRoute route={entry.route} />
     <div className="content-tools">{entry.author.id === me?.id && <button className="text-button" onClick={() => setEditing(!editing)}>Редактировать</button>}{(entry.author.id === me?.id || manager) && <button className="text-button" disabled={busy} onClick={() => remove(`/group-entries/${id}`, true)}>Удалить</button>}{me && <ReportButton type={7} id={id} notify={setError} />}</div>
     {editing && <EntryEditor groupId={entry.groupId} kind={entry.kind} entry={entry} close={() => setEditing(false)} saved={() => { setEditing(false); setRevision(v => v + 1); }} />}
     {error && <ErrorBox message={error} />}<h2>Ответы · {entry.repliesCount}</h2>

@@ -25,6 +25,7 @@ internal static class CommunityModel
         bike.HasOne<MediaAsset>().WithMany().HasForeignKey(x => x.ImageId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_bike_image");
         var post = model.Entity<CommunityPost>();
         post.ToTable("posts");
+        post.Property(x => x.RouteJson).HasColumnType("jsonb");
         post.HasKey(x => x.Id).HasName("pk_posts");
         post.Property(x => x.Id).ValueGeneratedNever();
         post.Property(x => x.Title).HasMaxLength(160);
@@ -54,6 +55,7 @@ internal static class CommunityModel
         group.HasOne<MediaAsset>().WithMany().HasForeignKey(x => x.ImageId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_group_image");
         var entry = model.Entity<GroupEntry>();
         entry.ToTable("group_entries");
+        entry.Property(x => x.RouteJson).HasColumnType("jsonb");
         entry.HasKey(x => x.Id).HasName("pk_group_entries");
         entry.Property(x => x.Id).ValueGeneratedNever();
         entry.Property(x => x.Title).HasMaxLength(160);

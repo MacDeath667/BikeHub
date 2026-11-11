@@ -24,6 +24,9 @@ public record PostDto(Guid Id, UserDto Author, BikeDto Bike, string Title, strin
     string Category, string ImageUrl, string[] Tags, DateTimeOffset CreatedAt,
     int Likes, int CommentsCount, bool IsLiked, bool IsSaved, Guid? ImageId = null, Guid[]? ImageIds = null)
 {
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? RouteJson { get; init; }
+    public MapRoute? Route => BikeHub.Application.Community.RouteJson.Read(RouteJson);
     public PhotoDto[] Photos => ContentPhotos.FromIds(ImageIds, ImageId);
     public PostDto() : this(default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!) { }
 }
@@ -50,7 +53,7 @@ public sealed record CreatePostRequest(
     [Required, StringLength(160, MinimumLength = 3)] string Title,
     [Required, StringLength(20000, MinimumLength = 10)] string Content,
     [Required, RegularExpression("^(ride|maintenance|upgrade|story)$")] string Category, Guid? ImageId = null,
-    [MaxLength(Constants.MaximumContentPhotos)] Guid[]? ImageIds = null);
+    [MaxLength(Constants.MaximumContentPhotos)] Guid[]? ImageIds = null, MapRoute? Route = null);
 
 public sealed record CreateCommentRequest([Required, StringLength(2000)] string Text);
 

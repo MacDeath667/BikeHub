@@ -11,9 +11,9 @@ public sealed record SaveGroupRequest([Required, StringLength(100, MinimumLength
     [Required, StringLength(2000)] string Description, [EnumDataType(typeof(BikeCategory))] BikeCategory Category, Guid? ImageId);
 public sealed record SaveGroupEntryRequest([EnumDataType(typeof(GroupEntryKind))] GroupEntryKind Kind,
     [Required, StringLength(160, MinimumLength = 2)] string Title,
-    [Required, StringLength(20000)] string Content, Guid[]? ImageIds);
+    [Required, StringLength(20000)] string Content, Guid[]? ImageIds, MapRoute? Route = null);
 public sealed record GroupEntryDto(Guid Id, Guid GroupId, string GroupName, UserDto Author, GroupEntryKind Kind,
-    string Title, string Content, Guid[] ImageIds, DateTimeOffset CreatedAt, int RepliesCount)
+    string Title, string Content, Guid[] ImageIds, DateTimeOffset CreatedAt, int RepliesCount, MapRoute? Route = null)
 {
     public IReadOnlyList<PhotoDto> Photos => ImageIds.Select(id => new PhotoDto(id, BikeHub.Application.Constants.MediaPathPrefix + id)).ToArray();
 }
@@ -80,17 +80,17 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
     }
     private IQueryable<GroupEntry> Visible(BikeHubDbContext db) => db.GroupEntries.AsNoTracking().Where(e => !e.IsDeleted && !e.IsHidden &&
         db.Communities.Any(g => g.Id == e.GroupId && !g.IsDeleted && !g.IsHidden) && db.Accounts.Any(a => a.Id == e.AuthorId && !a.IsBlocked));
-    private GroupEntryDto View(BikeHubDbContext db, GroupEntry e) => new(e.Id, e.GroupId,
+    private GroupEntryDto View(BikeHubDbContext db, GroupEntry e, bool includeRoute = true) => new(e.Id, e.GroupId,
         db.Communities.Where(g => g.Id == e.GroupId).Select(g => g.Name).Single(), community.Users(db).Single(u => u.Id == e.AuthorId),
         e.Kind, e.Title, e.Content, e.ImageIds, e.CreatedAt,
-        db.GroupReplies.Count(r => r.EntryId == e.Id && !r.IsDeleted && !r.IsHidden && db.Accounts.Any(a => a.Id == r.AuthorId && !a.IsBlocked)));
+        db.GroupReplies.Count(r => r.EntryId == e.Id && !r.IsDeleted && !r.IsHidden && db.Accounts.Any(a => a.Id == r.AuthorId && !a.IsBlocked)), includeRoute ? RouteJson.Read(e.RouteJson) : null);
     public Page<GroupEntryDto> Entries(Guid groupId, GroupEntryKind kind, int page)
     {
         using var db = contexts.CreateDbContext(); Find(db, groupId);
         page = Math.Clamp(page, 1, 1000000);
         var query = Visible(db).Where(e => e.GroupId == groupId && e.Kind == kind);
         return new(query.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id).Skip((page - 1) * 20).Take(20)
-            .ToList().Select(e => View(db, e)).ToArray(), query.Count(), page, 20);
+            .ToList().Select(e => View(db, e, false)).ToArray(), query.Count(), page, 20);
     }
     public GroupEntryDto Entry(Guid id)
     {
@@ -108,6 +108,7 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
         {
             throw new CommunityProblem(403, Forbidden);
         }
+        entry.RouteJson = RouteService.Save(request.Route);
         entry.Kind = request.Kind; entry.Title = request.Title.Trim(); entry.Content = request.Content.Trim();
         entry.ImageIds = PostgresCommunityService.CheckImages(db, request.ImageIds, null, actor);
         if (id.HasValue)

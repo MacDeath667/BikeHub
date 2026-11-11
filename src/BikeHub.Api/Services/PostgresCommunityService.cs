@@ -75,7 +75,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             Owner = u
         };
 
-    private IQueryable<PostDto> Posts(BikeHubDbContext db) =>
+    private IQueryable<PostDto> Posts(BikeHubDbContext db, bool includeRoute = false) =>
         from p in db.Posts.AsNoTracking()
         join b in Bikes(db) on p.BikeId equals b.Id
         where !p.IsDeleted && !p.IsHidden
@@ -85,6 +85,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             Author = b.Owner,
             Bike = b,
             Title = p.Title,
+            RouteJson = includeRoute ? p.RouteJson : null,
             Content = p.Content,
             Category = p.Category,
             ImageUrl = p.ImageId.HasValue ? Constants.MediaPathPrefix + p.ImageId.Value.ToString() : b.ImageUrl,
@@ -241,7 +242,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     public PostDto? GetPost(Guid id)
     {
         using var db = contexts.CreateDbContext();
-        return Posts(db).SingleOrDefault(p => p.Id == id);
+        return Posts(db, true).SingleOrDefault(p => p.Id == id);
     }
 
     public PostDto? CreatePost(CreatePostRequest request)
@@ -259,6 +260,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             Id = Guid.CreateVersion7(),
             AuthorId = actor.Id,
             BikeId = request.BikeId,
+            RouteJson = RouteService.Save(request.Route),
             Title = request.Title.Trim(),
             Content = request.Content.Trim(),
             Category = request.Category,
@@ -268,7 +270,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             CreatedAt = clock.GetUtcNow()
         };
         db.Posts.Add(post); db.SaveChanges(); transaction.Commit();
-        return Posts(db).Single(p => p.Id == post.Id);
+        return Posts(db, true).Single(p => p.Id == post.Id);
     }
 
     private static string[] Tags(string content) => Regex.Matches(content, @"#([\p{L}\p{N}_-]{1,40})")
@@ -290,10 +292,11 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             throw new CommunityProblem(400, OwnBikeTitle);
         }
         var images = CheckImages(db, request.ImageIds, request.ImageId, actor.Id);
+        post.RouteJson = RouteService.Save(request.Route);
         post.Title = request.Title.Trim(); post.Content = request.Content.Trim(); post.Category = request.Category;
         post.BikeId = request.BikeId; post.ImageId = images.Length > 0 ? images[0] : null; post.ImageIds = images; post.Tags = Tags(request.Content); post.UpdatedAt = clock.GetUtcNow();
         db.SaveChanges(); transaction.Commit();
-        return Posts(db).SingleOrDefault(p => p.Id == id) ?? throw new CommunityProblem(409, HiddenTitle);
+        return Posts(db, true).SingleOrDefault(p => p.Id == id) ?? throw new CommunityProblem(409, HiddenTitle);
     }
 
     public void DeletePost(Guid id)

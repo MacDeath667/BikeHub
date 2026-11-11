@@ -1,3 +1,4 @@
+import { PostRoute } from "../components/PostRoute";
 import { PhotoGallery } from "../components/PhotoGallery";
 import { ContentTools, ReportButton } from "../components/ContentTools";
 import { useEffect, useState } from "react";
@@ -115,6 +116,7 @@ export function PostDetail({
           {post.content.split("\n\n").map((paragraph, i) => (
             <p key={i}>{paragraph}</p>
           ))}
+          <PostRoute route={post.route} />
           <div className="post-tags">
             {post.tags.map((tag) => (
               <a key={tag} href={`#/?q=${encodeURIComponent(tag)}`}>

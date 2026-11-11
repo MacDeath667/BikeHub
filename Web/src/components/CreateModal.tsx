@@ -3,6 +3,8 @@ import type { FormEvent } from "react";
 import { ArrowUpRight, Bike as BikeIcon, MessageCircle, X } from "lucide-react";
 import { api, categories, postCategories } from "../api";
 import type { Bike, Page, Photo, Post, User } from "../api";
+import { RouteEditor } from "./PostRoute";
+import type { RouteData } from "../api";
 import { PhotoCollection } from "./PhotoCollection";
 import { Empty, ErrorBox, Loading } from "./ui";
 
@@ -23,6 +25,8 @@ export function CreateModal({
 }) {
   const initial = initialPost || initialBike;
   const [photos, setPhotos] = useState<Photo[]>(initial?.photos?.length ? initial.photos : initial?.imageId ? [{ id: initial.imageId, imageUrl: initial.imageUrl }] : []);
+  const [route, setRoute] = useState<RouteData | null>(initialPost?.route || null);
+  const [routeBusy, setRouteBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [bikes, setBikes] = useState<Bike[]>([]);
   const [loading, setLoading] = useState(type === "post");
@@ -53,7 +57,7 @@ export function CreateModal({
   }, [type, me.id]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (saving || uploading) return;
+    if (saving || uploading || routeBusy) return;
     const fields = Object.fromEntries(new FormData(event.currentTarget));
     const values =
       type === "bike"
@@ -68,7 +72,7 @@ export function CreateModal({
     try {
       const result = await api<{ id: string }>(
         (type === "post" ? "/posts" : "/bikes") + (initial ? `/${initial.id}` : ""),
-        { method: initial ? "PUT" : "POST", body: JSON.stringify({ ...values, imageIds: photos.map(photo => photo.id) }) },
+        { method: initial ? "PUT" : "POST", body: JSON.stringify({ ...values, imageIds: photos.map(photo => photo.id), ...(type === "post" ? { route } : {}) }) },
       );
       onSuccess(result.id);
     } catch (e) {
@@ -86,10 +90,10 @@ export function CreateModal({
       ref={dialogRef}
       onCancel={(e) => {
         e.preventDefault();
-        if (!saving && !uploading) close();
+        if (!saving && !uploading && !routeBusy) close();
       }}
       onClick={(e) => {
-        if (e.target !== dialogRef.current || saving || uploading) return;
+        if (e.target !== dialogRef.current || saving || uploading || routeBusy) return;
         const bounds = e.currentTarget.getBoundingClientRect();
         if (
           e.clientX < bounds.left ||
@@ -113,7 +117,7 @@ export function CreateModal({
           type="button"
           className="icon-button"
           onClick={close}
-          disabled={saving || uploading}
+          disabled={saving || uploading || routeBusy}
           aria-label="Закрыть"
         >
           <X size={22} />
@@ -196,6 +200,7 @@ export function CreateModal({
                   required
                 />
               </label>
+              <RouteEditor value={route} onChange={setRoute} disabled={saving || uploading} onBusy={setRouteBusy} />
               <span className="form-hint">
                 Без своих фотографий запись возьмёт обложку велосипеда.
               </span>
@@ -281,11 +286,11 @@ export function CreateModal({
               type="button"
               className="button secondary"
               onClick={close}
-              disabled={saving || uploading}
+              disabled={saving || uploading || routeBusy}
             >
               Отмена
             </button>
-            <button className="button primary" disabled={saving || uploading}>
+            <button className="button primary" disabled={saving || uploading || routeBusy}>
               {saving
                 ? "Сохраняем…"
                 : initial ? "Сохранить" : type === "post"

@@ -5,6 +5,7 @@ public enum ReportTarget { Bike = 1, Post = 2, Comment = 3, User = 4, Site = 5, 
 
 public sealed class CommunityPost
 {
+    public string? RouteJson { get; set; }
     public Guid Id { get; set; }
     public Guid BikeId { get; set; }
     public Guid AuthorId { get; set; }
@@ -80,6 +81,7 @@ public enum GroupEntryKind { Post = 1, Discussion = 2 }
 
 public sealed class GroupEntry
 {
+    public string? RouteJson { get; set; }
     public Guid Id { get; set; }
     public Guid GroupId { get; set; }
     public Guid AuthorId { get; set; }

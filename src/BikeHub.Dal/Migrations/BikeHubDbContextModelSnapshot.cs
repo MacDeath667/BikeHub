@@ -379,6 +379,10 @@ namespace BikeHub.Dal.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_hidden");
 
+                    b.Property<string>("RouteJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("route_json");
+
                     b.PrimitiveCollection<string[]>("Tags")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -575,6 +579,10 @@ namespace BikeHub.Dal.Migrations
                     b.Property<int>("Kind")
                         .HasColumnType("integer")
                         .HasColumnName("kind");
+
+                    b.Property<string>("RouteJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("route_json");
 
                     b.Property<string>("Title")
                         .IsRequired()

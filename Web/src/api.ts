@@ -59,7 +59,10 @@ export interface Bike {
   color: string;
   owner: User;
 }
+export interface GeoPoint { lat: number; lng: number; }
+export interface RouteData { name: string; segments: GeoPoint[][]; markers: (GeoPoint & { label: string })[]; }
 export interface Post {
+  route?: RouteData | null;
   id: string;
   author: User;
   bike: Bike;
