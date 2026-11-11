@@ -71,9 +71,9 @@ export function CommunityDetail({ id, me, reload }: { id: string; me: User | nul
       {group.isJoined && <button className="text-button" onClick={() => setCreating(!creating)}>{kind === 1 ? "Написать пост" : "Начать обсуждение"}</button>}</div>
     {creating && <EntryEditor groupId={id} kind={kind} close={() => setCreating(false)} saved={e => { window.location.hash = `/group-entry/${e.id}`; }} />}
     {error && <ErrorBox message={error} />}{!entries ? <Loading /> : entries.items.length ? entries.items.map(e => {
-      const gallery = galleryPhotos(e.content, e.photos);
+      const cover = e.photos[0];
       return <article className="profile-card group-entry-card" key={e.id}><div className="content-tools"><Avatar user={e.author} /><a href={userHref(e.author)}>{e.author.name}</a><span className="muted">{relativeTime(e.createdAt)}</span></div>
-        <a href={`#/group-entry/${e.id}`}><h2>{e.title}</h2></a><p>{postExcerpt(e.content)}</p>{!e.photos.length && e.hasRoute && <RouteCover previewUrl={`/group-entries/${e.id}/route-preview`} href={`#/group-entry/${e.id}`} />}{gallery[0] && <a href={`#/group-entry/${e.id}`}><img className="group-entry-cover" src={gallery[0].imageUrl} alt="Фотография к записи" /></a>}<a className="text-button" href={`#/group-entry/${e.id}`}>{e.repliesCount} ответов →</a></article>;
+        <a href={`#/group-entry/${e.id}`}><h2>{e.title}</h2></a><p>{postExcerpt(e.content)}</p>{!e.photos.length && e.hasRoute && <RouteCover previewUrl={`/group-entries/${e.id}/route-preview`} href={`#/group-entry/${e.id}`} />}{cover && <a href={`#/group-entry/${e.id}`}><img className="group-entry-cover" src={cover.imageUrl} alt="Фотография к записи" /></a>}<a className="text-button" href={`#/group-entry/${e.id}`}>{e.repliesCount} ответов →</a></article>;
     }) : <Empty title={kind === 1 ? "Здесь ещё нет постов" : "Обсуждения пока не начались"} description="Поделитесь первым — участники присоединятся." />}
     {entries && <div className="content-tools"><button className="text-button" disabled={page === 1} onClick={() => setPage(v => v - 1)}>Назад</button><span>Страница {page}</span><button className="text-button" disabled={!entries.hasMore} onClick={() => setPage(v => v + 1)}>Далее</button></div>}</>;
 }

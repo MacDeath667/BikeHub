@@ -1,6 +1,6 @@
 import { userHref } from "../api";
 import { RouteCover } from "./RouteCover";
-import { galleryPhotos, postExcerpt } from "./postMarkup";
+import { postExcerpt } from "./postMarkup";
 import { useState } from "react";
 import {
   Bookmark,
@@ -89,7 +89,6 @@ export function PostCard({
   update: (post: Post) => void;
   notify: (s: string) => void;
 }) {
-  const gallery = galleryPhotos(post.content, post.photos);
   return (
     <article className="post-card">
       <div className="post-author">
@@ -117,8 +116,8 @@ export function PostCard({
           {postCategories[post.category]}
         </span>
       </div>
-      {!post.photos?.length && post.hasRoute ? <RouteCover previewUrl={`/posts/${post.id}/route-preview`} href={`#/post/${post.id}`} /> : (gallery.length > 0 || !post.photos?.length) && <a className="post-image" href={`#/post/${post.id}`}>
-        <img src={gallery[0]?.imageUrl || post.imageUrl} alt={post.bike.name} loading="lazy" />
+      {!post.photos?.length && post.hasRoute ? <RouteCover previewUrl={`/posts/${post.id}/route-preview`} href={`#/post/${post.id}`} /> : <a className="post-image" href={`#/post/${post.id}`}>
+        <img src={post.photos?.[0]?.imageUrl || post.imageUrl} alt={post.bike.name} loading="lazy" />
         <span className="image-category">{categories[post.bike.category]}</span>
         {post.category === "ride" && (
           <span className="image-caption">
