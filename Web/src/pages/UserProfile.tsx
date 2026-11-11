@@ -10,12 +10,14 @@ import { BikeCard } from "../components/BikeCard";
 
 export function UserProfile({
   id,
+  byNickname = false,
   me,
   notify,
   reload,
   version,
 }: {
   id: string;
+  byNickname?: boolean;
   me: User | null;
   notify: (s: string) => void;
   reload: () => void;
@@ -28,15 +30,10 @@ export function UserProfile({
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     let active = true;
-    Promise.all([
-      api<User>(`/users/${id}`),
-      api<Page<Bike>>(`/users/${id}/bikes?pageSize=50`),
-    ])
-      .then(([u, b]) => {
-        if (active) {
-          setUser(u);
-          setBikes(b.items);
-        }
+    api<User>(byNickname ? `/users/by-nickname/${encodeURIComponent(id)}` : `/users/${id}`)
+      .then(async u => {
+        const b = await api<Page<Bike>>(`/users/${u.id}/bikes?pageSize=50`);
+        if (active) { setUser(u); setBikes(b.items); }
       })
       .catch((e) => {
         if (active) setError(e.message);
@@ -44,12 +41,12 @@ export function UserProfile({
     return () => {
       active = false;
     };
-  }, [id, version]);
+  }, [id, byNickname, version]);
   async function follow() {
     if (!user || busy) return;
     setBusy(true);
     try {
-      const next = await api<User>(`/users/${id}/follow`, {
+      const next = await api<User>(`/users/${user.id}/follow`, {
         method: user.isFollowing ? "DELETE" : "PUT",
       });
       setUser(next);
@@ -73,9 +70,9 @@ export function UserProfile({
         <ArrowLeft size={16} />В сообщество
       </a>
       {editing && <ProfileEditor user={user} close={() => setEditing(false)} saved={reload} />}
-      {id === me?.id ? <button className="text-button" onClick={() => setEditing(true)}>Редактировать профиль</button> : me && <ReportButton type={4} id={id} notify={notify} />}
-      {me?.id === id && <AccountDeletion />}
-      {me?.id === id && me.isModerator && <a className="text-button" href="#/moderation">Модерация</a>}
+      {user.id === me?.id ? <button className="text-button" onClick={() => setEditing(true)}>Редактировать профиль</button> : me && <ReportButton type={4} id={user.id} notify={notify} />}
+      {me?.id === user.id && <AccountDeletion />}
+      {me?.id === user.id && me.isModerator && <a className="text-button" href="#/moderation">Модерация</a>}
       <section className="profile-card">
         <div className="profile-cover">
           <span>ЧЕЛОВЕК. ВЕЛОСИПЕД. ДОРОГА.</span>
@@ -87,10 +84,10 @@ export function UserProfile({
             <div>
               <h1>{user.name}</h1>
               <span className="muted">
-                @{user.handle} <span>·</span> {user.city}
+                {user.handle && <>@{user.handle} <span>·</span> </>}{user.city}
               </span>
             </div>
-            {id !== me?.id && (
+            {user.id !== me?.id && (
               <button
                 className={`button ${user.isFollowing ? "secondary" : "primary"}`}
                 disabled={busy}

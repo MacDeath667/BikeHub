@@ -78,7 +78,7 @@ export function RightRail({
           </a>
           <div className="featured-owner">
             <Avatar user={overview.featuredBike.owner} small />
-            <span>@{overview.featuredBike.owner.handle}</span>
+            <span>{overview.featuredBike.owner.handle ? `@${overview.featuredBike.owner.handle}` : overview.featuredBike.owner.name}</span>
             <span className="dot-separator">·</span>
             <span>{categories[overview.featuredBike.category]}</span>
           </div>

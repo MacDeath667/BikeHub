@@ -21,6 +21,7 @@ if (!migrationsOnly)
     builder.Services.AddScoped<PostgresCommunityService>();
     builder.Services.AddScoped<MediaStore>();
     builder.Services.AddScoped<GroupService>();
+    builder.Services.AddScoped<NicknameService>();
     builder.Services.AddScoped<AccountDeletionService>();
     builder.Services.AddScoped<MediaCleanup>();
     if (builder.Configuration["Community:Store"] != "Memory")

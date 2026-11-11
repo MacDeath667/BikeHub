@@ -1,4 +1,5 @@
 using BikeHub.Application.Community;
+using BikeHub.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 
@@ -6,8 +7,18 @@ namespace BikeHub.Api.Controllers;
 
 [ApiController]
 [Route("api/users")]
-public sealed class UsersController(IUserService service) : ControllerBase
+public sealed class UsersController(IUserService service, NicknameService nicknames) : ControllerBase
 {
+    [HttpGet("by-nickname/{nickname}")]
+    public ActionResult<UserDto> ByNickname(string nickname) => nicknames.Find(nickname) is { } user ? Ok(user) : NotFound();
+
+    [HttpGet("nicknames")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public ActionResult<IReadOnlyList<UserDto>> SearchNicknames([FromQuery] string? q) => Ok(nicknames.Search(q));
+
+    [Authorize, HttpPost("me/nickname")]
+    public ActionResult<UserDto> ChooseNickname(ChooseNicknameRequest request) => Ok(nicknames.Choose(request.Nickname));
+
     [HttpGet("me")]
     [Authorize]
     public ActionResult<UserDto> Me() => Ok(service.GetCurrentUser());

@@ -1,3 +1,4 @@
+import { userHref } from "../api";
 import { RouteCover } from "../components/RouteCover";
 import { PostRoute } from "../components/PostRoute";
 import { PhotoGallery } from "../components/PhotoGallery";
@@ -97,11 +98,11 @@ export function PostDetail({
           </span>
           <h1>{post.title}</h1>
           <div className="post-author">
-            <a href={`#/user/${post.author.id}`}>
+            <a href={userHref(post.author)}>
               <Avatar user={post.author} />
             </a>
             <div>
-              <a className="author-name" href={`#/user/${post.author.id}`}>
+              <a className="author-name" href={userHref(post.author)}>
                 {post.author.name}
               </a>
               <div className="author-meta">
@@ -159,7 +160,7 @@ export function PostDetail({
               <Avatar user={c.author} small />
               <div>
                 <div className="comment-meta">
-                  <a href={`#/user/${c.author.id}`}>{c.author.name}</a>
+                  <a href={userHref(c.author)}>{c.author.name}</a>
                   <time>{relativeTime(c.createdAt)}</time>
                 </div>
                 {editingComment === c.id ? <form onSubmit={async e => {

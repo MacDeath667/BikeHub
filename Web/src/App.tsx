@@ -1,3 +1,4 @@
+import { userHref } from "./api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
@@ -20,6 +21,7 @@ import {
 import { api } from "./api";
 import type { AuthSession } from "./api";
 import { ThemePicker } from "./components/ThemePicker";
+import { ChooseNickname } from "./components/ChooseNickname";
 import { AuthModal } from "./components/AuthModal";
 import type { Community, Overview, User } from "./api";
 import { Avatar, Empty, ErrorBox, Loading } from "./components/ui";
@@ -198,8 +200,8 @@ export default function App() {
         </a>
         {me && (
           <a
-            href={`#/user/${me.id}`}
-            className={`garage-link ${section === "user" && path.endsWith(me.id) ? "active" : ""}`}
+            href={userHref(me)}
+            className={`garage-link ${((section === "user" && path.endsWith(me.id)) || (section === "u" && path.endsWith("/" + encodeURIComponent(me.handle)))) ? "active" : ""}`}
           >
             <span className="profile-dot" />
             Мой профиль
@@ -249,6 +251,7 @@ export default function App() {
                   saved: "Закладки",
                   garage: "Мой гараж",
                   user: "Профиль",
+                  u: "Профиль",
                   post: "История",
                 } as Record<string, string>
               )[section] || "Лента"}
@@ -274,7 +277,7 @@ export default function App() {
               <>
               <a
                 className="user-menu"
-                href={`#/user/${me.id}`}
+                href={userHref(me)}
                 aria-label="Открыть мой профиль"
               >
                 <Avatar user={me} small />
@@ -340,10 +343,11 @@ export default function App() {
                       notify={notify}
                     />
                   )}
-                  {section === "user" && (
+                  {(section === "user" || section === "u") && (
                     <UserProfile
                       key={`${path}-${version}`}
                       id={path.split("/")[2]}
+                      byNickname={section === "u"}
                       me={me}
                       notify={notify}
                       reload={reload}
@@ -369,6 +373,7 @@ export default function App() {
                       "bike",
                       "post",
                       "user",
+                      "u",
                       "communities",
                       "community",
                       "group-entry",
@@ -401,13 +406,14 @@ export default function App() {
           )}
         </main>
       </div>
+      {me && !me.handle && !authOpen && <ChooseNickname saved={user => { setMe(user); reload(); }} logout={logout} />}
       {authOpen && <AuthModal session={authSession}
         close={() => { setAuthOpen(false); setAfterAuth(null); }}
         onSuccess={(session) => {
           setAuthSession(session); setMe(session.user); setAuthOpen(false);
           setModal(afterAuth); setAfterAuth(null); reload(); notify("Почта подтверждена. Добро пожаловать!");
         }} />}
-      {modal && me && (
+      {modal && me && me.handle && (
         <CreateModal
           type={modal}
           me={me}

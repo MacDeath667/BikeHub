@@ -22,7 +22,7 @@ public sealed class AuthOptions
 
 public sealed record RequestEmailCode(
     [Required, EmailAddress, StringLength(Constants.MaximumEmailLength)] string Email,
-    [StringLength(60, MinimumLength = Constants.MinimumDisplayNameLength)] string? Name);
+    [StringLength(60, MinimumLength = Constants.MinimumDisplayNameLength)] string? Name, [StringLength(32)] string? Nickname = null);
 
 public sealed record RequestLoginCode(
     [Required, EmailAddress, StringLength(Constants.MaximumEmailLength)] string Email);
@@ -34,13 +34,13 @@ public sealed record VerifyEmailCode(
 public sealed record EmailCodeResponse(Guid ChallengeId, DateTimeOffset ExpiresAt, DateTimeOffset ResendAt);
 public sealed record AuthBootstrap(UserDto? User, bool EmailConfirmed, string? MaskedEmail,
     bool PhoneConfirmed, string CsrfToken, bool Enabled, bool DevelopmentMailbox);
-public sealed record AuthAccount(Guid Id, string Email, string DisplayName, DateTimeOffset EmailConfirmedAt, bool IsBlocked = false);
+public sealed record AuthAccount(Guid Id, string Email, string DisplayName, DateTimeOffset EmailConfirmedAt, bool IsBlocked = false, string? Nickname = null);
 public sealed record AuthSession(Guid Id, AuthAccount Account, DateTimeOffset ExpiresAt);
 public sealed record EmailChallenge(Guid Id, string Email, string DisplayName, string CodeHash,
     string BindingHash, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt,
     int Attempts = 0, bool Delivered = false, bool Consumed = false, AuthenticationPurpose Purpose = AuthenticationPurpose.Legacy,
-    string? ProtectedMessage = null, bool EventPublished = false, DateTimeOffset? LastResendAt = null);
-public enum ConfirmationFailure { None, Invalid, TooManyAttempts, AccountExists, AccountNotFound, AccountBlocked }
+    string? ProtectedMessage = null, bool EventPublished = false, DateTimeOffset? LastResendAt = null, string? Nickname = null);
+public enum ConfirmationFailure { None, Invalid, TooManyAttempts, AccountExists, AccountNotFound, AccountBlocked, NicknameTaken }
 public sealed record ConfirmationResult(AuthSession? Session, ConfirmationFailure Failure);
 public sealed record VerificationMessage(Guid ChallengeId, string Destination, string Code,
     string BindingHash, DateTimeOffset ExpiresAt, int ValidMinutes, AuthenticationPurpose Purpose = AuthenticationPurpose.Legacy);
@@ -58,6 +58,7 @@ public interface ISmsSender
 
 public interface IAuthenticationStore
 {
+    Task<bool> NicknameExistsAsync(string nickname, CancellationToken cancellationToken);
     Task<bool> TryCreateChallengeAsync(EmailChallenge challenge, AuthOptions limits, CancellationToken cancellationToken);
     Task<EmailChallenge?> FindChallengeAsync(Guid id, CancellationToken cancellationToken);
     Task<IReadOnlyList<EmailChallenge>> PendingPublicationsAsync(DateTimeOffset now, CancellationToken cancellationToken);

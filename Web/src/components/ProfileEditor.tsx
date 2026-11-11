@@ -21,7 +21,7 @@ export function ProfileEditor({ user, close, saved }: { user: User; close: () =>
       finally { setSaving(false); }
     }}>
       <label>Имя<input name="name" defaultValue={user.name} minLength={2} maxLength={60} required /></label>
-      <label>Адрес профиля<input name="handle" defaultValue={user.handle} pattern="[a-z0-9_]{3,32}" required /><small>От 3 до 32 символов: латинские буквы, цифры и подчёркивание.</small></label>
+      <div className="profile-nickname"><strong>Ник: {user.handle ? `@${user.handle}` : "ещё не выбран"}</strong><p className="form-hint">Уникальный ник выбирается один раз и не меняется.</p></div>
       <label>Город<input name="city" defaultValue={user.city} maxLength={100} /></label>
       <label>О себе<textarea name="bio" defaultValue={user.bio} maxLength={2000} /></label>
       <PhotoUpload value={user.avatarUrl} onChange={setAvatarId} onBusy={setUploading} />

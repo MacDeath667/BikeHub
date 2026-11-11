@@ -29,14 +29,14 @@ public sealed class EmailAuthenticationService(IAuthenticationStore store, IVeri
     }
 
     public async Task<EmailCodeResponse?> RequestAsync(string email, string? name, string binding,
-        CancellationToken cancellationToken, AuthenticationPurpose purpose = AuthenticationPurpose.Registration)
+        CancellationToken cancellationToken, AuthenticationPurpose purpose = AuthenticationPurpose.Registration, string? nickname = null)
     {
         var options = configuration.Value;
         var now = UtcNow();
         var id = Guid.NewGuid();
         var code = OtpSecurity.NewCode();
-        var challenge = new EmailChallenge(id, email, string.IsNullOrWhiteSpace(name) ? DefaultDisplayName : name.Trim(),
-            security.HashCode(id, code), security.Hash(Constants.BrowserBindingPurpose, binding), now, now.AddMinutes(options.CodeMinutes), Purpose: purpose);
+        var challenge = new EmailChallenge(id, email, string.IsNullOrWhiteSpace(name) ? nickname ?? DefaultDisplayName : name.Trim(),
+            security.HashCode(id, code), security.Hash(Constants.BrowserBindingPurpose, binding), now, now.AddMinutes(options.CodeMinutes), Purpose: purpose, Nickname: nickname);
         var message = new VerificationMessage(id, email, code, challenge.BindingHash, challenge.ExpiresAt, options.CodeMinutes, purpose);
         challenge = challenge with { ProtectedMessage = payload.Protect(message),
             Delivered = options.EmailProvider == Constants.EmailProviders.MailService };

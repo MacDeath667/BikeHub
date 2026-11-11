@@ -10,6 +10,14 @@ public sealed class InMemoryAuthenticationStore : IAuthenticationStore
     private readonly Dictionary<string, AuthAccount> accounts = new(StringComparer.Ordinal);
     private readonly Dictionary<Guid, AuthSession> sessions = [];
 
+    public Task<bool> NicknameExistsAsync(string nickname, CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            return Task.FromResult(accounts.Values.Any(a => a.Nickname == nickname));
+        }
+    }
+
     public Task<bool> TryCreateChallengeAsync(EmailChallenge challenge, AuthOptions limits, CancellationToken cancellationToken)
     {
         lock (gate)
@@ -127,7 +135,11 @@ public sealed class InMemoryAuthenticationStore : IAuthenticationStore
             }
             if (account is null)
             {
-                account = new(Guid.CreateVersion7(), value.Email, value.DisplayName, now);
+                if (value.Nickname is not null && accounts.Values.Any(a => a.Nickname == value.Nickname))
+                {
+                    return Task.FromResult(new ConfirmationResult(null, ConfirmationFailure.NicknameTaken));
+                }
+                account = new(Guid.CreateVersion7(), value.Email, value.DisplayName, now, Nickname: value.Nickname);
                 accounts.Add(account.Email, account);
             }
             var session = new AuthSession(Guid.NewGuid(), account, sessionExpiresAt);

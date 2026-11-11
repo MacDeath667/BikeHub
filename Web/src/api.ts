@@ -201,3 +201,5 @@ export function query(values: Record<string, string | number | undefined>) {
   });
   return params.toString();
 }
+
+export const userHref = (user: User) => user.handle ? `#/u/${encodeURIComponent(user.handle)}` : `#/user/${user.id}`;

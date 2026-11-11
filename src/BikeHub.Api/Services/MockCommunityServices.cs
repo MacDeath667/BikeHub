@@ -205,7 +205,7 @@ public sealed class MockUserService(MockCommunityStore store, ICurrentUser curre
     public UserDto GetCurrentUser()
     {
         var account = current.Account ?? throw new UnauthorizedAccessException();
-        return store.EnsureUser(account.Id, account.DisplayName);
+        return store.EnsureUser(account.Id, account.DisplayName) with { Handle = account.Nickname ?? string.Empty };
     }
 
     public async Task<UserDto?> GetUserAsync(Guid id, CancellationToken cancellationToken = default)

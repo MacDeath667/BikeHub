@@ -500,6 +500,11 @@ namespace BikeHub.Dal.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_resend_at");
 
+                    b.Property<string>("Nickname")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("nickname");
+
                     b.Property<string>("ProtectedMessage")
                         .HasColumnType("text")
                         .HasColumnName("protected_message");

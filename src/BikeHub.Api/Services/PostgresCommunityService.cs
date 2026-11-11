@@ -25,7 +25,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     private const string OwnContentTitle = "Изменять можно только свои материалы.";
     private const string MediaOwnershipTitle = "Выберите свою загруженную фотографию.";
     private const string ModeratorTitle = "Необходимы права модератора.";
-    private const string HandleTakenTitle = "Этот адрес профиля уже занят.";
+    private const string HandleTakenTitle = Nicknames.TakenTitle;
     private const string ProfileColor = "green";
     private readonly string[] moderators = (configuration.GetSection("Moderation:ModeratorEmails").Get<string[]>() ?? [])
         .Select(x => x.Trim().ToLowerInvariant()).ToArray();
@@ -38,7 +38,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         {
             Id = a.Id,
             Name = a.DisplayName,
-            Handle = a.Handle ?? a.Id.ToString().Replace("-", ""),
+            Handle = a.Handle ?? string.Empty,
             City = a.City,
             Initials = a.DisplayName.Substring(0, 1).ToUpper(),
             Color = ProfileColor,
@@ -401,13 +401,21 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         using var transaction = db.Database.BeginTransaction();
         var id = Actor().Id;
         CheckImage(db, request.AvatarId, id);
-        var account = db.Accounts.Single(a => a.Id == id);
-        if (db.Accounts.Any(a => a.Id != id && (a.Handle == request.Handle ||
-            (a.Handle == null && a.Id.ToString().Replace("-", "") == request.Handle))))
+        var account = db.Accounts.FromSqlInterpolated($"SELECT * FROM auth_accounts WHERE id = {id} FOR UPDATE").Single();
+        if (request.Handle is not null)
         {
-            throw new CommunityProblem(409, HandleTakenTitle);
+            var nickname = Nicknames.Normalize(request.Handle, existing: account.Handle is not null);
+            if (account.Handle is not null && account.Handle != nickname)
+            {
+                throw new CommunityProblem(409, Nicknames.ImmutableTitle);
+            }
+            if (db.Accounts.Any(a => a.Id != id && a.Handle == nickname))
+            {
+                throw new CommunityProblem(409, Nicknames.TakenTitle);
+            }
+            account.Handle = nickname;
         }
-        account.DisplayName = RequiredText(request.Name); account.Handle = request.Handle;
+        account.DisplayName = RequiredText(request.Name);
         account.City = request.City?.Trim() ?? string.Empty; account.Bio = request.Bio?.Trim() ?? string.Empty; account.AvatarId = request.AvatarId;
         try { db.SaveChanges(); }
         catch (DbUpdateException error) when (error.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })

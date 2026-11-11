@@ -75,7 +75,7 @@ public sealed class PersistentHttpTests
             using var forged = await Put(other, "/api/bikes/" + bike.Id, new
             { name = "Stolen bike", brand = "Brand", category = "gravel", year = 2024, mileage = 5, description = "Test" });
             Assert.Equal(HttpStatusCode.Forbidden, forged.StatusCode);
-            using var profile = await Put(owner, "/api/users/me", new { name = "New name", handle = "my_profile", city = "City", bio = "Bio", avatarId = media.Id });
+            using var profile = await Put(owner, "/api/users/me", new { name = "New name", handle = session.User!.Handle, city = "City", bio = "Bio", avatarId = media.Id });
             Assert.Equal(HttpStatusCode.OK, profile.StatusCode);
             Assert.Equal("New name", (await owner.GetFromJsonAsync<AuthBootstrap>("/api/auth/session"))!.User!.Name);
             using var banned = await Put(other, $"/api/moderation/users/{session.User!.Id}/block", new { blocked = true });

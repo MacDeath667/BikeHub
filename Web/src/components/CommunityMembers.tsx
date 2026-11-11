@@ -1,3 +1,4 @@
+import { userHref } from "../api";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
@@ -22,7 +23,7 @@ export function CommunityMembers({ community, close }: { community: Community; c
     if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) close();
   }}>
     <div className="dialog-header"><div><h2 id="community-members-title">Участники</h2><p className="muted">{community.name}{members ? ` · ${number(members.total)}` : ""}</p></div><button type="button" className="icon-button" aria-label="Закрыть список участников" onClick={close}><X size={20} /></button></div>
-    {error ? <ErrorBox message={error} retry={() => setRevision(v => v + 1)} /> : !members ? <Loading /> : !members.items.length ? <Empty title="Пока нет участников" description="Участники сообщества появятся здесь." /> : <ul className="community-members-list">{members.items.map(user => <li key={user.id}><a href={`#/user/${user.id}`} onClick={close}><Avatar user={user} /><span><strong>{user.name}</strong><small>@{user.handle}{user.city ? ` · ${user.city}` : ""}</small></span>{user.id === community.ownerId && <span className="community-owner-label">Создатель</span>}</a></li>)}</ul>}
+    {error ? <ErrorBox message={error} retry={() => setRevision(v => v + 1)} /> : !members ? <Loading /> : !members.items.length ? <Empty title="Пока нет участников" description="Участники сообщества появятся здесь." /> : <ul className="community-members-list">{members.items.map(user => <li key={user.id}><a href={userHref(user)} onClick={close}><Avatar user={user} /><span><strong>{user.name}</strong><small>{user.handle ? `@${user.handle}` : "Ник ещё не выбран"}{user.city ? ` · ${user.city}` : ""}</small></span>{user.id === community.ownerId && <span className="community-owner-label">Создатель</span>}</a></li>)}</ul>}
     {members && members.total > members.pageSize && <div className="content-tools"><button type="button" className="text-button" disabled={page === 1} onClick={() => setPage(v => v - 1)}>Назад</button><span>Страница {page}</span><button type="button" className="text-button" disabled={!members.hasMore} onClick={() => setPage(v => v + 1)}>Далее</button></div>}
   </dialog>, document.body);
 }

@@ -1,6 +1,7 @@
 using BikeHub.Dal;
 using BikeHub.Dal.Entities;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace BikeHub.Api.Authentication;
 
@@ -10,6 +11,12 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
     // Two-key advisory locks use a separate namespace from the global one-key delivery lock.
     private const string AcquireAccountLockSql = "SELECT pg_advisory_xact_lock(1112099653, hashtext({0}))";
     private const string SelectChallengeForUpdateSql = "SELECT * FROM auth_email_challenges WHERE id = {0} FOR UPDATE";
+
+    public async Task<bool> NicknameExistsAsync(string nickname, CancellationToken cancellationToken)
+    {
+        await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        return await db.Accounts.AnyAsync(a => a.Handle == nickname, cancellationToken);
+    }
 
     public async Task<bool> TryCreateChallengeAsync(EmailChallenge value, AuthOptions limits, CancellationToken cancellationToken)
     {
@@ -31,6 +38,7 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
         context.EmailChallenges.Add(new EmailChallengeEntity
         {
             Id = value.Id,
+            Nickname = value.Nickname,
             Purpose = value.Purpose,
             ProtectedMessage = value.ProtectedMessage,
             Delivered = value.Delivered,
@@ -48,7 +56,7 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
 
     private static EmailChallenge MapChallenge(EmailChallengeEntity value) => new(value.Id, value.Email, value.DisplayName,
         value.CodeHash, value.BindingHash, value.CreatedAt, value.ExpiresAt, value.Attempts, value.Delivered,
-        value.Consumed, value.Purpose, value.ProtectedMessage, value.EventPublished, value.LastResendAt);
+        value.Consumed, value.Purpose, value.ProtectedMessage, value.EventPublished, value.LastResendAt, value.Nickname);
 
     public async Task<EmailChallenge?> FindChallengeAsync(Guid id, CancellationToken cancellationToken)
     {
@@ -137,12 +145,22 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
             await transaction.CommitAsync(cancellationToken);
             return new(null, ConfirmationFailure.AccountBlocked);
         }
+        if (account is null && value.Nickname is not null)
+        {
+            await context.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(1112099655, hashtext({value.Nickname}))", cancellationToken);
+            if (await context.Accounts.AnyAsync(a => a.Handle == value.Nickname, cancellationToken))
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return new(null, ConfirmationFailure.NicknameTaken);
+            }
+        }
         if (account is null)
         {
             account = new AuthAccountEntity
             {
                 Id = Guid.CreateVersion7(),
                 Email = value.Email,
+                Handle = value.Nickname,
                 DisplayName = value.DisplayName,
                 EmailConfirmedAt = now,
                 CreatedAt = now
@@ -158,7 +176,12 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
             ExpiresAt = sessionExpiresAt
         };
         context.Sessions.Add(session);
-        await context.SaveChangesAsync(cancellationToken);
+        try { await context.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException error) when (error.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "ix_auth_accounts_nickname_lower" or "ix_auth_accounts_handle" })
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return new(null, ConfirmationFailure.NicknameTaken);
+        }
         await transaction.CommitAsync(cancellationToken);
         return new(new AuthSession(session.Id, MapAccount(account), session.ExpiresAt), ConfirmationFailure.None);
     }
@@ -204,5 +227,5 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
     }
 
     private static AuthAccount MapAccount(AuthAccountEntity value) =>
-        new(value.Id, value.Email, value.DisplayName, value.EmailConfirmedAt, value.IsBlocked);
+        new(value.Id, value.Email, value.DisplayName, value.EmailConfirmedAt, value.IsBlocked, value.Handle);
 }

@@ -1,3 +1,4 @@
+import { userHref } from "../api";
 import { RouteCover } from "./RouteCover";
 import { useState } from "react";
 import {
@@ -90,11 +91,11 @@ export function PostCard({
   return (
     <article className="post-card">
       <div className="post-author">
-        <a href={`#/user/${post.author.id}`}>
+        <a href={userHref(post.author)}>
           <Avatar user={post.author} />
         </a>
         <div>
-          <a className="author-name" href={`#/user/${post.author.id}`}>
+          <a className="author-name" href={userHref(post.author)}>
             {post.author.name}
           </a>
           <div className="author-meta">

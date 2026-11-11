@@ -84,6 +84,15 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
         {
             return Problem(statusCode: 403, title: BlockedTitle);
         }
+        string? nickname = null;
+        if (purpose == AuthenticationPurpose.Registration)
+        {
+            nickname = Nicknames.Normalize(request.Nickname);
+            if (await store.NicknameExistsAsync(nickname, cancellationToken))
+            {
+                return Problem(statusCode: 409, title: Nicknames.TakenTitle);
+            }
+        }
         var name = request.Name?.Trim();
         if (!string.IsNullOrEmpty(name) && name.Length < Constants.MinimumDisplayNameLength)
         {
@@ -107,7 +116,7 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
         });
         try
         {
-            var result = await authentication.RequestAsync(email, name, binding, cancellationToken, purpose);
+            var result = await authentication.RequestAsync(email, name, binding, cancellationToken, purpose, nickname);
             if (result is null)
             {
                 Response.Headers.RetryAfter = configuration.Value.ResendSeconds.ToString();
@@ -186,6 +195,10 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
             return Problem(statusCode: StatusCodes.Status429TooManyRequests, title: AttemptsExceededTitle);
         }
 
+        if (result.Failure == ConfirmationFailure.NicknameTaken)
+        {
+            return Problem(statusCode: 409, title: Nicknames.TakenTitle);
+        }
         if (result.Failure == ConfirmationFailure.AccountExists)
         {
             return AccountExists();

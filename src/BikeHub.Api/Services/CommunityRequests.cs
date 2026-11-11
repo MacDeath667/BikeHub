@@ -5,7 +5,7 @@ namespace BikeHub.Api.Services;
 
 public sealed record UpdateProfileRequest(
     [Required, StringLength(60, MinimumLength = 2)] string Name,
-    [Required, RegularExpression("^[a-z0-9_]{3,32}$")] string Handle,
+    string? Handle,
     [StringLength(100)] string City,
     [StringLength(2000)] string Bio,
     Guid? AvatarId = null);

@@ -121,6 +121,16 @@ public static class AuthTestClient
 {
     public static async Task<HttpResponseMessage> Post(HttpClient client, string path, object? body = null, bool csrf = true)
     {
+        if (body is not null && path is "/api/auth/registration/email/challenges" or "/api/auth/email/challenges")
+        {
+            var values = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(System.Text.Json.JsonSerializer.Serialize(body))!;
+            if (!values.ContainsKey("nickname"))
+            {
+                var email = values.GetValueOrDefault("email").ToString();
+                values["nickname"] = System.Text.Json.JsonSerializer.SerializeToElement("u_" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(email.ToLowerInvariant())))[..16].ToLowerInvariant());
+            }
+            body = values;
+        }
         using var request = new HttpRequestMessage(HttpMethod.Post, path)
         { Content = JsonContent.Create(body ?? new { }) };
         if (csrf)

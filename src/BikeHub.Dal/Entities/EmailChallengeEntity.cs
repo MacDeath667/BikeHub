@@ -2,6 +2,7 @@ namespace BikeHub.Dal.Entities;
 
 public sealed class EmailChallengeEntity
 {
+    public string? Nickname { get; set; }
     public AuthenticationPurpose Purpose { get; set; }
     public Guid Id { get; set; }
     public string Email { get; set; } = string.Empty;

@@ -15,6 +15,7 @@ export function AuthModal({ session, close, onSuccess }: {
   const codeInput = useRef<HTMLInputElement>(null);
   const [registering, setRegistering] = useState(false);
   const [email, setEmail] = useState("");
+  const [nickname, setNickname] = useState("");
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [challenge, setChallenge] = useState<Challenge | null>(null);
@@ -63,7 +64,7 @@ export function AuthModal({ session, close, onSuccess }: {
     try {
       const next = await api<Challenge>(challenge ? `/auth/email/challenges/${challenge.challengeId}/resend` :
         registering ? "/auth/registration/email/challenges" : "/auth/login/email/challenges", {
-        method: "POST", body: JSON.stringify(challenge ? {} : registering ? { email: email.trim(), name: name.trim() || null } : { email: email.trim() }),
+        method: "POST", body: JSON.stringify(challenge ? {} : registering ? { email: email.trim(), name: name.trim() || null, nickname: nickname.trim().toLowerCase() } : { email: email.trim() }),
       });
       setChallenge(next);
       if (!challenge) { setCode(""); setDevCode(""); }
@@ -118,6 +119,9 @@ export function AuthModal({ session, close, onSuccess }: {
         <input id="auth-email" type="email" autoComplete="email" placeholder="you@example.com" required maxLength={254}
           autoFocus value={email} disabled={busy} onChange={(event) => setEmail(event.target.value)} />
         {registering && <>
+        <label htmlFor="auth-nickname">Ник</label>
+        <input id="auth-nickname" required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_]{3,32}" autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="Например, gravel_rider" value={nickname} disabled={busy} onChange={event => setNickname(event.target.value)} />
+        <p className="auth-name-hint">Уникальный @ник: латинские буквы, цифры и подчёркивание. Выбирается один раз; по нему вас смогут упоминать.</p>
         <label htmlFor="auth-name">Как к вам обращаться <span>необязательно</span></label>
         <input id="auth-name" aria-describedby="auth-name-hint" autoComplete="nickname" placeholder="Имя для профиля" minLength={2} maxLength={60}
           value={name} disabled={busy} onChange={(event) => setName(event.target.value)} />
@@ -131,7 +135,7 @@ export function AuthModal({ session, close, onSuccess }: {
           onChange={(event) => setCode(event.target.value.replace(/[^0-9]/g, ""))} />
         <button className="button primary" disabled={busy || code.length !== 6}>{busy ? "Проверяем…" : registering ? "Подтвердить и зарегистрироваться" : "Войти"}<Check size={17} /></button>
         <div className="auth-secondary">
-          <button type="button" disabled={busy} onClick={() => { setChallenge(null); setError(""); setDevCode(""); }}><ArrowLeft size={14} /> Другая почта</button>
+          <button type="button" disabled={busy} onClick={() => { setChallenge(null); setError(""); setDevCode(""); }}><ArrowLeft size={14} /> {registering ? "Изменить почту или ник" : "Другая почта"}</button>
           <button type="button" disabled={busy || (remaining > 0 && deliveryStatus !== "expired")} onClick={() => {
             if (deliveryStatus === "expired") { setChallenge(null); setError(""); setCode(""); setDevCode(""); }
             else void send();
