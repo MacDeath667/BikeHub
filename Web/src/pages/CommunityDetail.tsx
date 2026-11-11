@@ -9,7 +9,9 @@ import { useEffect, useState } from "react";
 import { api, categories, relativeTime, requestLogin } from "../api";
 import type { Community, User, Page, Photo, Comment } from "../api";
 import { ErrorBox, Loading, Empty, Avatar } from "../components/ui";
-import { PhotoCollection } from "../components/PhotoCollection";
+import { PostEditor } from "../components/PostEditor";
+import { PostText } from "../components/PostText";
+import { galleryPhotos, postExcerpt } from "../components/postMarkup";
 import { PhotoGallery } from "../components/PhotoGallery";
 import { ReportButton } from "../components/ContentTools";
 
@@ -44,8 +46,7 @@ function EntryEditor({ groupId, kind, entry, saved, close }: { groupId: string; 
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }}>
     <label>Заголовок<input required minLength={2} maxLength={160} value={title} onChange={e => setTitle(e.target.value)} /></label>
-    <label>{kind === 1 ? "Текст поста" : "Что обсудим?"}<textarea required maxLength={20000} rows={7} value={content} onChange={e => setContent(e.target.value)} /></label>
-    <PhotoCollection photos={photos} onChange={setPhotos} onBusy={setUploading} disabled={busy} />
+    <PostEditor label={kind === 1 ? "Текст поста" : "Что обсудим?"} value={content} onChange={setContent} photos={photos} onPhotosChange={setPhotos} onBusy={setUploading} disabled={busy} />
     <RouteEditor value={route} onChange={setRoute} onBusy={setRouteBusy} disabled={busy || uploading} />
     {error && <ErrorBox message={error} />}<div className="content-tools"><button className="button primary" disabled={busy || uploading || routeBusy}>{entry ? "Сохранить" : "Опубликовать"}</button><button type="button" className="text-button" onClick={close}>Отмена</button></div>
   </form></section>;
@@ -69,8 +70,11 @@ export function CommunityDetail({ id, me, reload }: { id: string; me: User | nul
     <div className="content-tools group-tabs">{[1, 2].map(k => <button key={k} className={`button ${kind === k ? "primary" : "secondary"}`} onClick={() => { setKind(k); setPage(1); setCreating(false); }}>{k === 1 ? "Посты" : "Обсуждения"}</button>)}
       {group.isJoined && <button className="text-button" onClick={() => setCreating(!creating)}>{kind === 1 ? "Написать пост" : "Начать обсуждение"}</button>}</div>
     {creating && <EntryEditor groupId={id} kind={kind} close={() => setCreating(false)} saved={e => { window.location.hash = `/group-entry/${e.id}`; }} />}
-    {error && <ErrorBox message={error} />}{!entries ? <Loading /> : entries.items.length ? entries.items.map(e => <article className="profile-card group-entry-card" key={e.id}><div className="content-tools"><Avatar user={e.author} /><a href={userHref(e.author)}>{e.author.name}</a><span className="muted">{relativeTime(e.createdAt)}</span></div>
-      <a href={`#/group-entry/${e.id}`}><h2>{e.title}</h2></a><p>{e.content.slice(0, 280)}{e.content.length > 280 ? "…" : ""}</p>{!e.photos.length && e.hasRoute && <RouteCover previewUrl={`/group-entries/${e.id}/route-preview`} href={`#/group-entry/${e.id}`} />}{e.photos[0] && <a href={`#/group-entry/${e.id}`}><img className="group-entry-cover" src={e.photos[0].imageUrl} alt="Фотография к записи" /></a>}<a className="text-button" href={`#/group-entry/${e.id}`}>{e.repliesCount} ответов →</a></article>) : <Empty title={kind === 1 ? "Здесь ещё нет постов" : "Обсуждения пока не начались"} description="Поделитесь первым — участники присоединятся." />}
+    {error && <ErrorBox message={error} />}{!entries ? <Loading /> : entries.items.length ? entries.items.map(e => {
+      const gallery = galleryPhotos(e.content, e.photos);
+      return <article className="profile-card group-entry-card" key={e.id}><div className="content-tools"><Avatar user={e.author} /><a href={userHref(e.author)}>{e.author.name}</a><span className="muted">{relativeTime(e.createdAt)}</span></div>
+        <a href={`#/group-entry/${e.id}`}><h2>{e.title}</h2></a><p>{postExcerpt(e.content)}</p>{!e.photos.length && e.hasRoute && <RouteCover previewUrl={`/group-entries/${e.id}/route-preview`} href={`#/group-entry/${e.id}`} />}{gallery[0] && <a href={`#/group-entry/${e.id}`}><img className="group-entry-cover" src={gallery[0].imageUrl} alt="Фотография к записи" /></a>}<a className="text-button" href={`#/group-entry/${e.id}`}>{e.repliesCount} ответов →</a></article>;
+    }) : <Empty title={kind === 1 ? "Здесь ещё нет постов" : "Обсуждения пока не начались"} description="Поделитесь первым — участники присоединятся." />}
     {entries && <div className="content-tools"><button className="text-button" disabled={page === 1} onClick={() => setPage(v => v - 1)}>Назад</button><span>Страница {page}</span><button className="text-button" disabled={!entries.hasMore} onClick={() => setPage(v => v + 1)}>Далее</button></div>}</>;
 }
 export function GroupEntryDetail({ id, me }: { id: string; me: User | null }) {
@@ -82,8 +86,9 @@ export function GroupEntryDetail({ id, me }: { id: string; me: User | null }) {
   async function remove(path: string, whole = false) { if (busy || !window.confirm("Удалить материал?")) return; setBusy(true); try { await api(path, { method: "DELETE" }); if (whole) window.location.hash = `/community/${entry!.groupId}`; else setRevision(v => v + 1); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
   if (!entry || !group) return error ? <ErrorBox message={error} /> : <Loading />;
   const manager = group.ownerId === me?.id || me?.isModerator;
+  const gallery = galleryPhotos(entry.content, entry.photos);
   return <><a className="back-link" href={`#/community/${entry.groupId}`}>← {entry.groupName}</a><div className="eyebrow">{entry.kind === 1 ? "ПОСТ" : "ОБСУЖДЕНИЕ"}</div><h1>{entry.title}</h1><div className="content-tools"><Avatar user={entry.author} /><a href={userHref(entry.author)}>{entry.author.name}</a><span>{relativeTime(entry.createdAt)}</span></div>
-    <p className="group-content">{entry.content}</p>{!entry.photos.length && entry.route ? <RouteCover route={entry.route} /> : entry.photos.length > 0 && <PhotoGallery photos={entry.photos} fallback={entry.photos[0].imageUrl} title={entry.title} />}
+    <PostText content={entry.content} photos={entry.photos} />{!entry.photos.length && entry.route ? <RouteCover route={entry.route} /> : gallery.length > 0 && <PhotoGallery photos={gallery} fallback={gallery[0].imageUrl} title={entry.title} />}
     <PostRoute route={entry.route} showMap={!!entry.photos.length} />
     <div className="content-tools">{entry.author.id === me?.id && <button className="text-button" onClick={() => setEditing(!editing)}>Редактировать</button>}{(entry.author.id === me?.id || manager) && <button className="text-button" disabled={busy} onClick={() => remove(`/group-entries/${id}`, true)}>Удалить</button>}{me && <ReportButton type={7} id={id} notify={setError} />}</div>
     {editing && <EntryEditor groupId={entry.groupId} kind={entry.kind} entry={entry} close={() => setEditing(false)} saved={() => { setEditing(false); setRevision(v => v + 1); }} />}

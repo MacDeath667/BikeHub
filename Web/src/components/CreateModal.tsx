@@ -6,6 +6,7 @@ import type { Bike, Page, Photo, Post, User } from "../api";
 import { RouteEditor } from "./PostRoute";
 import type { RouteData } from "../api";
 import { PhotoCollection } from "./PhotoCollection";
+import { PostEditor } from "./PostEditor";
 import { Empty, ErrorBox, Loading } from "./ui";
 
 export function CreateModal({
@@ -25,6 +26,7 @@ export function CreateModal({
 }) {
   const initial = initialPost || initialBike;
   const [photos, setPhotos] = useState<Photo[]>(initial?.photos?.length ? initial.photos : initial?.imageId ? [{ id: initial.imageId, imageUrl: initial.imageUrl }] : []);
+  const [content, setContent] = useState(initialPost?.content || "");
   const [route, setRoute] = useState<RouteData | null>(initialPost?.route || null);
   const [routeBusy, setRouteBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -148,7 +150,7 @@ export function CreateModal({
         />
       ) : (
         <form onSubmit={submit} className="editor-form">
-          <PhotoCollection photos={photos} onChange={setPhotos} onBusy={setUploading} disabled={saving} />
+          {type === "bike" && <PhotoCollection photos={photos} onChange={setPhotos} onBusy={setUploading} disabled={saving} />}
           {type === "post" ? (
             <>
               <label>
@@ -188,18 +190,7 @@ export function CreateModal({
                   ))}
                 </select>
               </label>
-              <label>
-                Ваша история
-                <textarea
-                  defaultValue={initialPost?.content}
-                  name="content"
-                  rows={7}
-                  minLength={10}
-                  maxLength={20000}
-                  placeholder="Поделитесь деталями. Именно они делают опыт полезным."
-                  required
-                />
-              </label>
+              <PostEditor value={content} onChange={setContent} photos={photos} onPhotosChange={setPhotos} onBusy={setUploading} disabled={saving} minLength={10} />
               <RouteEditor value={route} onChange={setRoute} disabled={saving || uploading} onBusy={setRouteBusy} />
               <span className="form-hint">
                 Без своих фотографий запись возьмёт обложку велосипеда.

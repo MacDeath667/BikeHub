@@ -2,6 +2,8 @@ import { userHref } from "../api";
 import { RouteCover } from "../components/RouteCover";
 import { PostRoute } from "../components/PostRoute";
 import { PhotoGallery } from "../components/PhotoGallery";
+import { PostText } from "../components/PostText";
+import { galleryPhotos } from "../components/postMarkup";
 import { ContentTools, ReportButton } from "../components/ContentTools";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -85,6 +87,7 @@ export function PostDetail({
   }
   if (error) return <ErrorBox message={error} />;
   if (!post) return <Loading />;
+  const gallery = galleryPhotos(post.content, post.photos);
   return (
     <>
       <a className="back-link" href="#/">
@@ -113,11 +116,9 @@ export function PostDetail({
             </div>
           </div>
         </div>
-        {!post.photos?.length && post.route ? <RouteCover route={post.route} /> : <PhotoGallery photos={post.photos} fallback={post.imageUrl} title={post.title} className="post-photo-gallery" />}
+        {!post.photos?.length && post.route ? <RouteCover route={post.route} /> : (gallery.length > 0 || !post.photos?.length) && <PhotoGallery photos={gallery} fallback={post.imageUrl} title={post.title} className="post-photo-gallery" />}
         <div className="article-text">
-          {post.content.split("\n\n").map((paragraph, i) => (
-            <p key={i}>{paragraph}</p>
-          ))}
+          <PostText content={post.content} photos={post.photos} />
           <PostRoute route={post.route} showMap={!!post.photos?.length} />
           <div className="post-tags">
             {post.tags.map((tag) => (

@@ -6,8 +6,9 @@ import type { Photo } from "../api";
 const maximumPhotos = 10;
 const maximumBytes = 10 * 1024 * 1024;
 
-export function PhotoCollection({ photos, onChange, onBusy, disabled = false }: {
+export function PhotoCollection({ photos, onChange, onBusy, disabled = false, onInsert, inlineIds }: {
   photos: Photo[]; onChange: (photos: Photo[]) => void; onBusy: (busy: boolean) => void; disabled?: boolean;
+  onInsert?: (photo: Photo) => void; inlineIds?: ReadonlySet<string>;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const uploading = useRef(false);
@@ -39,6 +40,7 @@ export function PhotoCollection({ photos, onChange, onBusy, disabled = false }: 
     }
   }
   const busy = !!progress || uploading.current || disabled;
+  const cover = photos.find(photo => !inlineIds?.has(photo.id.toLowerCase()));
   return <section className="photo-collection" aria-label="Фотографии">
     <div className="photo-collection-heading"><strong>Фотографии</strong><span>{photos.length} / {maximumPhotos}</span></div>
     <input ref={input} type="file" multiple accept="image/jpeg,image/png,image/webp" hidden onChange={event => {
@@ -47,11 +49,14 @@ export function PhotoCollection({ photos, onChange, onBusy, disabled = false }: 
     {photos.length > 0 && <div className="photo-picker-grid">
       {photos.map((photo, index) => <div className="photo-picker-item" key={photo.id}>
         <img src={photo.imageUrl} alt={`Фотография ${index + 1}`} />
-        {index === 0 && <span className="photo-cover-badge"><Star size={12} />Обложка</span>}
+        {inlineIds?.has(photo.id.toLowerCase()) ? <span className="photo-cover-badge">В тексте</span> : photo === cover && <span className="photo-cover-badge"><Star size={12} />Обложка</span>}
         <button type="button" className="photo-remove" aria-label={`Убрать фотографию ${index + 1}`} disabled={busy}
           onClick={() => onChange(photos.filter(item => item.id !== photo.id))}><X size={16} /></button>
-        {index > 0 && <button type="button" className="photo-make-cover" disabled={busy}
-          onClick={() => onChange([photo, ...photos.filter(item => item.id !== photo.id)])}>Сделать обложкой</button>}
+        <div className="photo-picker-actions">
+          {onInsert && !inlineIds?.has(photo.id.toLowerCase()) && <button type="button" disabled={busy} onClick={() => onInsert(photo)}>В текст</button>}
+          {photo !== cover && !inlineIds?.has(photo.id.toLowerCase()) && <button type="button" disabled={busy}
+            onClick={() => onChange([photo, ...photos.filter(item => item.id !== photo.id)])}>На обложку</button>}
+        </div>
       </div>)}
     </div>}
     {photos.length < maximumPhotos && <button type="button" className={`photo-dropzone ${dragging ? "dragging" : ""}`} disabled={busy}
@@ -62,6 +67,6 @@ export function PhotoCollection({ photos, onChange, onBusy, disabled = false }: 
     </button>}
     {progress && <p role="status" className="form-hint">{progress}</p>}
     {error && <p role="alert" className="auth-error">{error}</p>}
-    <small className="form-hint">До 10 фотографий, JPEG / PNG / WebP, до 10 МБ каждая. Первое фото станет обложкой.</small>
+    <small className="form-hint">До 10 фотографий, JPEG / PNG / WebP, до 10 МБ каждая. {onInsert ? "Первое фото вне текста станет обложкой. При удалении фото его вставки из текста тоже удалятся." : "Первое фото станет обложкой."}</small>
   </section>;
 }

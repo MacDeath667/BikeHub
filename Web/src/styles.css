@@ -2518,7 +2518,9 @@ textarea {
 .photo-picker-item > img { width: 100%; height: 100%; object-fit: cover; }
 .photo-cover-badge { position: absolute; top: 9px; left: 9px; display: flex; gap: 4px; align-items: center; background: var(--theme-surface, #fff); color: var(--ink); border-radius: 6px; padding: 5px 7px; font-size: 10px; }
 .photo-remove { position: absolute; top: 7px; right: 7px; border: 0; border-radius: 50%; background: #ffffffed; width: 28px; height: 28px; display: grid; place-items: center; color: var(--theme-warm, #9b3b32); }
-.photo-make-cover { position: absolute; bottom: 0; left: 0; width: 100%; border: 0; padding: 8px 3px; font-size: 10px; color: #fff; background: #203f32d9; }
+.photo-picker-actions { position: absolute; bottom: 0; left: 0; width: 100%; display: flex; flex-wrap: wrap; background: #203f32ed; }
+.photo-picker-actions > button { flex: 1 1 auto; border: 0; padding: 9px 4px; font-size: 10px; color: #fff; background: transparent; min-height: 36px; }
+.photo-picker-actions > button:hover { background: #ffffff20; }
 .photo-dropzone { display: grid; justify-items: center; gap: 8px; border: 1px dashed var(--theme-border, #b2c4b3); border-radius: 12px; background: var(--theme-soft, #f5f8f3); color: var(--theme-ink, #355c41); padding: 24px 16px; font-size: 12px; }
 .photo-dropzone > span { font-size: 11px; color: var(--theme-muted, #6c7a70); }
 .photo-dropzone.dragging { border-color: var(--theme-border, #355c41); background: var(--theme-soft, #e8f0e4); }
@@ -2711,3 +2713,25 @@ textarea {
 @media (max-width: 600px) { .avatar-cropper { padding: 12px; } .avatar-crop-layout { grid-template-columns: minmax(0, 1fr) 72px; gap: 12px; } }
 
 .create-dialog { overflow-y: auto; overscroll-behavior: contain; }
+
+.post-rich-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.9; color: var(--theme-ink, #334c3e); margin-bottom: 24px; }
+.post-inline-photo { display: block; width: fit-content; max-width: 100%; margin: 14px auto; cursor: zoom-in; }
+.post-inline-photo > img { display: block; max-width: 100%; max-height: 720px; width: auto; height: auto; border-radius: 10px; }
+.post-spoiler > button { border: 1px solid var(--border); background: var(--theme-soft, #edf2e8); color: var(--theme-ink, #355c41); border-radius: 6px; padding: 4px 9px; font: inherit; font-size: 12px; line-height: 1.5; vertical-align: baseline; white-space: normal; }
+.post-spoiler > span:not([hidden]) { padding: 2px 6px; background: var(--theme-soft, #edf2e8); border-radius: 4px; }
+.post-editor { display: grid; gap: 10px; min-width: 0; }
+.post-editor-toolbar { display: flex; gap: 3px; flex-wrap: wrap; padding: 5px; border: 1px solid var(--border); border-radius: 9px; background: var(--theme-soft, #f5f8f3); }
+.post-editor-toolbar > button { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 38px; min-height: 40px; padding: 7px; border: 0; border-radius: 5px; background: transparent; color: var(--theme-ink, #355c41); font: inherit; font-size: 12px; }
+.post-editor-toolbar > button:hover, .post-editor-toolbar > button[aria-expanded="true"] { background: var(--theme-surface, #fff); }
+.post-editor-toolbar .post-preview-toggle { margin-left: auto; }
+.post-editor textarea { display: block; box-sizing: border-box; width: 100%; min-height: 200px; resize: vertical; }
+.post-editor-hint { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--theme-muted, #64756b); font-size: 11px; line-height: 1.6; }
+.post-editor-hint > span:last-child { white-space: nowrap; }
+.post-editor-preview, .post-image-picker { border: 1px solid var(--border); border-radius: 9px; padding: 14px; background: var(--theme-surface, #fff); min-width: 0; }
+.post-editor-preview > strong { display: block; font-size: 12px; color: var(--theme-muted, #64756b); margin-bottom: 15px; }
+.post-editor-preview .post-rich-text { margin: 0; }
+.post-image-picker > p { font-size: 12px; line-height: 1.6; margin-bottom: 12px; }
+.post-image-options { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 10px; }
+.post-image-options > button { flex: 0 0 72px; height: 72px; padding: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--theme-soft, #edf2e8); }
+.post-image-options img { width: 100%; height: 100%; object-fit: cover; }
+@media (max-width: 480px) { .post-editor-toolbar > button { min-width: 40px; min-height: 44px; } .post-editor-toolbar .post-preview-toggle { margin-left: 0; } .post-editor-toolbar .post-preview-toggle > span { font-size: 11px; } }
