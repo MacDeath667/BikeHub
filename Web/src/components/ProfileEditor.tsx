@@ -24,7 +24,7 @@ export function ProfileEditor({ user, close, saved }: { user: User; close: () =>
       <div className="profile-nickname"><strong>Ник: {user.handle ? `@${user.handle}` : "ещё не выбран"}</strong><p className="form-hint">Уникальный ник выбирается один раз и не меняется.</p></div>
       <label>Город<input name="city" defaultValue={user.city} maxLength={100} /></label>
       <label>О себе<textarea name="bio" defaultValue={user.bio} maxLength={2000} /></label>
-      <PhotoUpload value={user.avatarUrl} onChange={setAvatarId} onBusy={setUploading} />
+      <PhotoUpload avatar label="Аватарка профиля" disabled={saving} value={user.avatarUrl} onChange={setAvatarId} onBusy={setUploading} />
       {error && <ErrorBox message={error} />}
       <div className="dialog-footer"><button type="button" className="button secondary" disabled={saving || uploading} onClick={close}>Отмена</button>
         <button className="button primary" disabled={saving || uploading}>Сохранить</button></div>
