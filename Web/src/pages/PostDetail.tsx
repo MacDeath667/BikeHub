@@ -1,3 +1,4 @@
+import { RouteCover } from "../components/RouteCover";
 import { PostRoute } from "../components/PostRoute";
 import { PhotoGallery } from "../components/PhotoGallery";
 import { ContentTools, ReportButton } from "../components/ContentTools";
@@ -111,12 +112,12 @@ export function PostDetail({
             </div>
           </div>
         </div>
-        <PhotoGallery photos={post.photos} fallback={post.imageUrl} title={post.title} className="post-photo-gallery" />
+        {!post.photos?.length && post.route ? <RouteCover route={post.route} /> : <PhotoGallery photos={post.photos} fallback={post.imageUrl} title={post.title} className="post-photo-gallery" />}
         <div className="article-text">
           {post.content.split("\n\n").map((paragraph, i) => (
             <p key={i}>{paragraph}</p>
           ))}
-          <PostRoute route={post.route} />
+          <PostRoute route={post.route} showMap={!!post.photos?.length} />
           <div className="post-tags">
             {post.tags.map((tag) => (
               <a key={tag} href={`#/?q=${encodeURIComponent(tag)}`}>

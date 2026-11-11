@@ -10,6 +10,9 @@ public sealed class GroupEntriesController(GroupService groups) : ControllerBase
 {
     [HttpGet("{id:guid}")]
     public ActionResult<GroupEntryDto> Get(Guid id) => Ok(groups.Entry(id));
+    [HttpGet("{id:guid}/route-preview")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public ActionResult<MapRoute> RoutePreview(Guid id) => groups.Entry(id).Route is { } route ? Ok(RouteService.Preview(route)) : NotFound();
     [Authorize, HttpDelete("{id:guid}")]
     public IActionResult Delete(Guid id) { groups.DeleteEntry(id); return NoContent(); }
     [HttpGet("{id:guid}/replies")]

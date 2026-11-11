@@ -1,3 +1,4 @@
+import { RouteCover } from "./RouteCover";
 import { useState } from "react";
 import {
   Bookmark,
@@ -113,7 +114,7 @@ export function PostCard({
           {postCategories[post.category]}
         </span>
       </div>
-      <a className="post-image" href={`#/post/${post.id}`}>
+      {!post.photos?.length && post.hasRoute ? <RouteCover previewUrl={`/posts/${post.id}/route-preview`} href={`#/post/${post.id}`} /> : <a className="post-image" href={`#/post/${post.id}`}>
         <img src={post.imageUrl} alt={post.bike.name} loading="lazy" />
         <span className="image-category">{categories[post.bike.category]}</span>
         {post.category === "ride" && (
@@ -121,7 +122,7 @@ export function PostCard({
             <MapPin size={13} /> Истории за пределами города
           </span>
         )}
-      </a>
+      </a>}
       <div className="post-content">
         <a href={`#/post/${post.id}`}>
           <h2>{post.title}</h2>

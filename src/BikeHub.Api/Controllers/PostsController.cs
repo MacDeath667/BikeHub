@@ -1,4 +1,5 @@
 using BikeHub.Application.Community;
+using BikeHub.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 
@@ -12,6 +13,10 @@ public sealed class PostsController(IPostService service) : ControllerBase
 
     [HttpGet("{id:guid}")]
     public ActionResult<PostDto> Get(Guid id) => service.GetPost(id) is { } post ? Ok(post) : NotFound();
+
+    [HttpGet("{id:guid}/route-preview")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public ActionResult<MapRoute> RoutePreview(Guid id) => service.GetPost(id)?.Route is { } route ? Ok(RouteService.Preview(route)) : NotFound();
 
     [Authorize]
     [HttpPost]

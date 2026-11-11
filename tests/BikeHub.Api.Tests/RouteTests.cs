@@ -57,6 +57,24 @@ public sealed class RouteTests
         Assert.Throws<CommunityProblem>(() => RouteService.Save(new("Test", [], [new(90, 181, "bad")])));
     }
 
+    [Fact]
+    public void Cover_preview_bounds_point_count_and_preserves_segments_endpoints_and_markers()
+    {
+        var segments = Enumerable.Range(0, 100).Select(s => Enumerable.Range(0, 200).Select(i => new GeoPoint(s / 10d, i / 10d)).ToArray()).ToArray();
+        var markers = Enumerable.Range(0, 100).Select(i => new RouteMarker(i / 10d, 1, "Marker " + i)).ToArray();
+        var route = new MapRoute("Large track", segments, markers);
+        var preview = RouteService.Preview(route);
+        Assert.True(preview.Segments.Sum(s => s.Length) + preview.Markers.Length <= 2000);
+        Assert.Equal(100, preview.Segments.Length);
+        for (var i = 0; i < segments.Length; i++)
+        {
+            Assert.Equal(segments[i][0], preview.Segments[i][0]);
+            Assert.Equal(segments[i][^1], preview.Segments[i][^1]);
+            Assert.Equal(200, segments[i].Length);
+        }
+        Assert.Equal(markers, preview.Markers);
+    }
+
     private static async Task<HttpResponseMessage> Send(HttpClient browser, HttpMethod method, string path, object body)
     {
         var session = await browser.GetFromJsonAsync<AuthBootstrap>("/api/auth/session");
@@ -90,11 +108,15 @@ public sealed class RouteTests
         var post = (await postResponse.Content.ReadFromJsonAsync<PostDto>())!;
         // PostDto.Route is a computed response property; inspect the public JSON directly as a client does.
         var json = await guest.GetStringAsync($"/api/posts/{post.Id}");
+        Assert.True(post.HasRoute);
+        var preview = await guest.GetFromJsonAsync<MapRoute>($"/api/posts/{post.Id}/route-preview");
+        Assert.Equal(route.Segments.Length, preview!.Segments.Length);
         Assert.Contains("\"segments\"", json); Assert.DoesNotContain("routeJson", json);
         Assert.DoesNotContain("Private device", json);
         using var forged = await Send(moderator, HttpMethod.Put, $"/api/posts/{post.Id}", Body(null)); Assert.Equal(HttpStatusCode.Forbidden, forged.StatusCode);
         using var hidden = await Send(moderator, HttpMethod.Put, $"/api/moderation/2/{post.Id}/visibility", new { hidden = true });
         Assert.Equal(HttpStatusCode.NotFound, (await guest.GetAsync($"/api/posts/{post.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await guest.GetAsync($"/api/posts/{post.Id}/route-preview")).StatusCode);
         using var restored = await Send(moderator, HttpMethod.Put, $"/api/moderation/2/{post.Id}/visibility", new { hidden = false });
         var manual = new MapRoute("Manual", [[new(1, 2), new(3, 4)]], [new(1, 2, "Start")]);
         using var updated = await Send(owner, HttpMethod.Put, $"/api/posts/{post.Id}", Body(manual)); Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
@@ -111,5 +133,6 @@ public sealed class RouteTests
         Assert.Contains("Manual", await entry.Content.ReadAsStringAsync());
         using var removed = await Send(owner, HttpMethod.Put, $"/api/posts/{post.Id}", Body(null)); Assert.Equal(HttpStatusCode.OK, removed.StatusCode);
         Assert.Contains("\"route\":null", await guest.GetStringAsync($"/api/posts/{post.Id}"));
+        Assert.Equal(HttpStatusCode.NotFound, (await guest.GetAsync($"/api/posts/{post.Id}/route-preview")).StatusCode);
     }
 }

@@ -13,7 +13,7 @@ public sealed record SaveGroupEntryRequest([EnumDataType(typeof(GroupEntryKind))
     [Required, StringLength(160, MinimumLength = 2)] string Title,
     [Required, StringLength(20000)] string Content, Guid[]? ImageIds, MapRoute? Route = null);
 public sealed record GroupEntryDto(Guid Id, Guid GroupId, string GroupName, UserDto Author, GroupEntryKind Kind,
-    string Title, string Content, Guid[] ImageIds, DateTimeOffset CreatedAt, int RepliesCount, MapRoute? Route = null)
+    string Title, string Content, Guid[] ImageIds, DateTimeOffset CreatedAt, int RepliesCount, MapRoute? Route = null, bool HasRoute = false)
 {
     public IReadOnlyList<PhotoDto> Photos => ImageIds.Select(id => new PhotoDto(id, BikeHub.Application.Constants.MediaPathPrefix + id)).ToArray();
 }
@@ -93,7 +93,7 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
     private GroupEntryDto View(BikeHubDbContext db, GroupEntry e, bool includeRoute = true) => new(e.Id, e.GroupId,
         db.Communities.Where(g => g.Id == e.GroupId).Select(g => g.Name).Single(), community.Users(db).Single(u => u.Id == e.AuthorId),
         e.Kind, e.Title, e.Content, e.ImageIds, e.CreatedAt,
-        db.GroupReplies.Count(r => r.EntryId == e.Id && !r.IsDeleted && !r.IsHidden && db.Accounts.Any(a => a.Id == r.AuthorId && !a.IsBlocked)), includeRoute ? RouteJson.Read(e.RouteJson) : null);
+        db.GroupReplies.Count(r => r.EntryId == e.Id && !r.IsDeleted && !r.IsHidden && db.Accounts.Any(a => a.Id == r.AuthorId && !a.IsBlocked)), includeRoute ? RouteJson.Read(e.RouteJson) : null, e.RouteJson != null);
     public Page<GroupEntryDto> Entries(Guid groupId, GroupEntryKind kind, int page)
     {
         using var db = contexts.CreateDbContext(); Find(db, groupId);

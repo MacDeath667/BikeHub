@@ -34,6 +34,23 @@ public static class RouteService
         return RouteJson.Write(route with { Name = route.Name.Trim() });
     }
 
+    // Preserve segment endpoints and gaps while keeping feed-cover responses bounded.
+    public static MapRoute Preview(MapRoute route)
+    {
+        const int maximumPoints = 2000;
+        var total = route.Segments.Sum(segment => (long)segment.Length);
+        var remaining = Math.Max(0, maximumPoints - route.Markers.Length - route.Segments.Length * 2);
+        return route with
+        {
+            Segments = route.Segments.Select(segment =>
+            {
+                var count = Math.Min(segment.Length, 2 + (int)(segment.Length * (long)remaining / Math.Max(1, total)));
+                return count >= segment.Length ? segment : Enumerable.Range(0, count)
+                    .Select(index => segment[(int)Math.Round(index * (segment.Length - 1d) / (count - 1))]).ToArray();
+            }).ToArray()
+        };
+    }
+
     public static MapRoute Import(Stream input)
     {
         try

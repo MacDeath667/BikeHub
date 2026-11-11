@@ -24,6 +24,7 @@ public record PostDto(Guid Id, UserDto Author, BikeDto Bike, string Title, strin
     string Category, string ImageUrl, string[] Tags, DateTimeOffset CreatedAt,
     int Likes, int CommentsCount, bool IsLiked, bool IsSaved, Guid? ImageId = null, Guid[]? ImageIds = null)
 {
+    public bool HasRoute { get; init; }
     [System.Text.Json.Serialization.JsonIgnore]
     public string? RouteJson { get; init; }
     public MapRoute? Route => BikeHub.Application.Community.RouteJson.Read(RouteJson);

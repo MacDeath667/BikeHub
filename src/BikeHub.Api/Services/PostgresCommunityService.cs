@@ -85,6 +85,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             Author = b.Owner,
             Bike = b,
             Title = p.Title,
+            HasRoute = p.RouteJson != null,
             RouteJson = includeRoute ? p.RouteJson : null,
             Content = p.Content,
             Category = p.Category,

@@ -1,3 +1,4 @@
+import { RouteCover } from "../components/RouteCover";
 import { PhotoUpload } from "../components/PhotoUpload";
 import { CommunityAvatar } from "../components/CommunityAvatar";
 import { CommunityMembers } from "../components/CommunityMembers";
@@ -11,7 +12,7 @@ import { PhotoCollection } from "../components/PhotoCollection";
 import { PhotoGallery } from "../components/PhotoGallery";
 import { ReportButton } from "../components/ContentTools";
 
-type Entry = { route?: RouteData | null; id: string; groupId: string; groupName: string; author: User; kind: number; title: string; content: string; photos: Photo[]; imageIds: string[]; createdAt: string; repliesCount: number };
+type Entry = { hasRoute?: boolean; route?: RouteData | null; id: string; groupId: string; groupName: string; author: User; kind: number; title: string; content: string; photos: Photo[]; imageIds: string[]; createdAt: string; repliesCount: number };
 export function GroupEditor({ group, saved, close }: { group?: Community; saved: (g: Community) => void; close: () => void }) {
   const [imageId, setImageId] = useState<string | null>(group?.imageId || null);
   const [uploading, setUploading] = useState(false);
@@ -68,7 +69,7 @@ export function CommunityDetail({ id, me, reload }: { id: string; me: User | nul
       {group.isJoined && <button className="text-button" onClick={() => setCreating(!creating)}>{kind === 1 ? "Написать пост" : "Начать обсуждение"}</button>}</div>
     {creating && <EntryEditor groupId={id} kind={kind} close={() => setCreating(false)} saved={e => { window.location.hash = `/group-entry/${e.id}`; }} />}
     {error && <ErrorBox message={error} />}{!entries ? <Loading /> : entries.items.length ? entries.items.map(e => <article className="profile-card group-entry-card" key={e.id}><div className="content-tools"><Avatar user={e.author} /><a href={`#/user/${e.author.id}`}>{e.author.name}</a><span className="muted">{relativeTime(e.createdAt)}</span></div>
-      <a href={`#/group-entry/${e.id}`}><h2>{e.title}</h2></a><p>{e.content.slice(0, 280)}{e.content.length > 280 ? "…" : ""}</p>{e.photos[0] && <a href={`#/group-entry/${e.id}`}><img className="group-entry-cover" src={e.photos[0].imageUrl} alt="Фотография к записи" /></a>}<a className="text-button" href={`#/group-entry/${e.id}`}>{e.repliesCount} ответов →</a></article>) : <Empty title={kind === 1 ? "Здесь ещё нет постов" : "Обсуждения пока не начались"} description="Поделитесь первым — участники присоединятся." />}
+      <a href={`#/group-entry/${e.id}`}><h2>{e.title}</h2></a><p>{e.content.slice(0, 280)}{e.content.length > 280 ? "…" : ""}</p>{!e.photos.length && e.hasRoute && <RouteCover previewUrl={`/group-entries/${e.id}/route-preview`} href={`#/group-entry/${e.id}`} />}{e.photos[0] && <a href={`#/group-entry/${e.id}`}><img className="group-entry-cover" src={e.photos[0].imageUrl} alt="Фотография к записи" /></a>}<a className="text-button" href={`#/group-entry/${e.id}`}>{e.repliesCount} ответов →</a></article>) : <Empty title={kind === 1 ? "Здесь ещё нет постов" : "Обсуждения пока не начались"} description="Поделитесь первым — участники присоединятся." />}
     {entries && <div className="content-tools"><button className="text-button" disabled={page === 1} onClick={() => setPage(v => v - 1)}>Назад</button><span>Страница {page}</span><button className="text-button" disabled={!entries.hasMore} onClick={() => setPage(v => v + 1)}>Далее</button></div>}</>;
 }
 export function GroupEntryDetail({ id, me }: { id: string; me: User | null }) {
@@ -81,8 +82,8 @@ export function GroupEntryDetail({ id, me }: { id: string; me: User | null }) {
   if (!entry || !group) return error ? <ErrorBox message={error} /> : <Loading />;
   const manager = group.ownerId === me?.id || me?.isModerator;
   return <><a className="back-link" href={`#/community/${entry.groupId}`}>← {entry.groupName}</a><div className="eyebrow">{entry.kind === 1 ? "ПОСТ" : "ОБСУЖДЕНИЕ"}</div><h1>{entry.title}</h1><div className="content-tools"><Avatar user={entry.author} /><a href={`#/user/${entry.author.id}`}>{entry.author.name}</a><span>{relativeTime(entry.createdAt)}</span></div>
-    <p className="group-content">{entry.content}</p>{entry.photos.length > 0 && <PhotoGallery photos={entry.photos} fallback={entry.photos[0].imageUrl} title={entry.title} />}
-    <PostRoute route={entry.route} />
+    <p className="group-content">{entry.content}</p>{!entry.photos.length && entry.route ? <RouteCover route={entry.route} /> : entry.photos.length > 0 && <PhotoGallery photos={entry.photos} fallback={entry.photos[0].imageUrl} title={entry.title} />}
+    <PostRoute route={entry.route} showMap={!!entry.photos.length} />
     <div className="content-tools">{entry.author.id === me?.id && <button className="text-button" onClick={() => setEditing(!editing)}>Редактировать</button>}{(entry.author.id === me?.id || manager) && <button className="text-button" disabled={busy} onClick={() => remove(`/group-entries/${id}`, true)}>Удалить</button>}{me && <ReportButton type={7} id={id} notify={setError} />}</div>
     {editing && <EntryEditor groupId={entry.groupId} kind={entry.kind} entry={entry} close={() => setEditing(false)} saved={() => { setEditing(false); setRevision(v => v + 1); }} />}
     {error && <ErrorBox message={error} />}<h2>Ответы · {entry.repliesCount}</h2>
