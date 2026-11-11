@@ -26,11 +26,11 @@ export function PostActions({
     setBusy(true);
     try {
       const active = kind === "like" ? post.isLiked : post.isSaved;
-      update(
-        await api<Post>(`/posts/${post.id}/${kind}`, {
-          method: active ? "DELETE" : "PUT",
-        }),
-      );
+      const next = await api<Post>(`/posts/${post.id}/${kind}`, {
+        method: active ? "DELETE" : "PUT",
+      });
+      // Reaction responses omit the potentially large route; keep the loaded detail.
+      update({ ...next, route: post.route });
       if (kind === "bookmark")
         notify(
           active ? "Запись удалена из закладок" : "Запись сохранена в закладки",
