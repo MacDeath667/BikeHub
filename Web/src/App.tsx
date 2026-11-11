@@ -210,7 +210,7 @@ export default function App() {
             <ChevronRight size={16} />
           </a>
         )}
-        {me && <a href="#/settings" className={`garage-link ${section === "settings" ? "active" : ""}`}><SettingsIcon size={19} />Настройки</a>}
+        {me && <a href="#/settings" className={`garage-link ${section === "settings" ? "active" : ""}`}><SettingsIcon size={19} />Настройки<ChevronRight size={16} /></a>}
         <div className="sidebar-invite">
           <span className="invite-icon">
             <Mountain size={25} strokeWidth={1.3} />
