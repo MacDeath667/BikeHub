@@ -3,6 +3,7 @@ import { Bold, Eye, EyeOff, ImagePlus, Italic, Strikethrough, Underline } from "
 import type { Photo } from "../api";
 import { PhotoCollection } from "./PhotoCollection";
 import { PostText } from "./PostText";
+import { MentionTextarea } from "./MentionTextarea";
 import { formatSelection, inlinePhotoIds, insertPhoto, maximumPostLength, removePhotoReferences } from "./postMarkup";
 import type { TextFormat } from "./postMarkup";
 
@@ -57,9 +58,9 @@ export function PostEditor({ value, onChange, photos, onPhotosChange, onBusy, di
       <div className="post-image-options">{photos.filter(photo => !used.has(photo.id.toLowerCase())).map((photo, index) => <button type="button" key={photo.id} disabled={disabled} onClick={() => insert(photo)} aria-label={`Вставить фотографию ${index + 1}`}><img src={photo.imageUrl} alt="" /></button>)}</div>
       <button type="button" className="text-button" onClick={() => { attachments.current?.scrollIntoView({ behavior: "smooth", block: "center" }); attachments.current?.querySelector<HTMLButtonElement>(".photo-dropzone")?.focus(); }}>Загрузить фотографии ↓</button>
     </div>}
-    <textarea ref={textarea} id={id} name="content" required minLength={minLength} maxLength={maximumPostLength} rows={9} value={value} disabled={disabled}
+    <MentionTextarea textareaRef={textarea} id={id} name="content" required minLength={minLength} maxLength={maximumPostLength} rows={9} value={value} disabled={disabled}
       placeholder="Поделитесь деталями. Выделите текст и выберите форматирование."
-      onSelect={rememberSelection} onBlur={rememberSelection} onChange={event => { onChange(event.target.value); rememberSelection(); setError(""); }}
+      onSelect={rememberSelection} onBlur={rememberSelection} onValueChange={text => { onChange(text); setError(""); }}
       onKeyDown={event => {
         if ((event.ctrlKey || event.metaKey) && !event.altKey) {
           const marker = ({ i: "*", u: "__", b: "**" } as Record<string, TextFormat>)[event.key.toLowerCase()];

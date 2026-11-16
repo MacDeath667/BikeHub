@@ -3,6 +3,8 @@ import { RouteCover } from "../components/RouteCover";
 import { PostRoute } from "../components/PostRoute";
 import { PhotoGallery } from "../components/PhotoGallery";
 import { PostText } from "../components/PostText";
+import { MentionText } from "../components/MentionText";
+import { MentionTextarea } from "../components/MentionTextarea";
 import { galleryPhotos } from "../components/postMarkup";
 import { ContentTools, ReportButton } from "../components/ContentTools";
 import { useEffect, useState } from "react";
@@ -138,10 +140,10 @@ export function PostDetail({
           <Avatar user={me} small />
           <label>
             <span className="sr-only">Ваш комментарий</span>
-            <textarea
+            <MentionTextarea
               placeholder="Поделитесь опытом или задайте вопрос…"
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onValueChange={setText}
               maxLength={2000}
               required
             />
@@ -168,8 +170,8 @@ export function PostDetail({
                   e.preventDefault(); if (sending) return; setSending(true);
                   try { const next = await api<Comment>(`/posts/${id}/comments/${c.id}`, { method: "PUT", body: JSON.stringify({ text: commentText }) }); setComments(list => list.map(item => item.id === c.id ? next : item)); setEditingComment(null); }
                   catch (error) { notify((error as Error).message); } finally { setSending(false); }
-                }}><textarea aria-label="Текст комментария" required maxLength={2000} value={commentText} onChange={e => setCommentText(e.target.value)} />
-                  <button className="text-button" disabled={sending}>Сохранить</button><button type="button" className="text-button" onClick={() => setEditingComment(null)}>Отмена</button></form> : <p>{c.text}</p>}
+                }}><MentionTextarea aria-label="Текст комментария" required maxLength={2000} value={commentText} onValueChange={setCommentText} />
+                  <button className="text-button" disabled={sending}>Сохранить</button><button type="button" className="text-button" onClick={() => setEditingComment(null)}>Отмена</button></form> : <p><MentionText text={c.text} /></p>}
                 {c.author.id === me?.id ? <><button className="text-button" onClick={() => { setEditingComment(c.id); setCommentText(c.text); }}>Изменить</button>
                   <button className="text-button" disabled={sending} onClick={async () => {
                     if (!window.confirm("Удалить комментарий?")) return; setSending(true);

@@ -129,7 +129,9 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
         {
             db.GroupEntries.Add(entry);
         }
-        db.SaveChanges(); transaction.Commit(); return View(db, entry);
+        db.SaveChanges();
+        NotificationWriter.Mentions(db, entry.Content, actor, ReportTarget.GroupEntry, entry.Id, groupId, clock.GetUtcNow());
+        transaction.Commit(); return View(db, entry);
     }
     public void DeleteEntry(Guid id)
     {
@@ -156,10 +158,14 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
     public CommentDto Reply(Guid id, CreateCommentRequest request)
     {
         using var db = contexts.CreateDbContext();
+        using var transaction = db.Database.BeginTransaction();
         var entry = Visible(db).SingleOrDefault(e => e.Id == id) ?? throw new CommunityProblem(404, Missing);
         Member(db, entry.GroupId);
         var reply = new GroupReply { Id = Guid.CreateVersion7(), EntryId = id, AuthorId = Actor, Text = request.Text.Trim(), CreatedAt = clock.GetUtcNow() };
         db.GroupReplies.Add(reply); db.SaveChanges();
+        NotificationWriter.Add(db, entry.AuthorId, reply.AuthorId, NotificationKind.Reply, ReportTarget.GroupReply, reply.Id, id, clock.GetUtcNow());
+        NotificationWriter.Mentions(db, reply.Text, reply.AuthorId, ReportTarget.GroupReply, reply.Id, id, clock.GetUtcNow(), entry.AuthorId);
+        transaction.Commit();
         return new(reply.Id, community.Users(db).Single(a => a.Id == reply.AuthorId), reply.Text, reply.CreatedAt);
     }
     public void DeleteReply(Guid entryId, Guid id)

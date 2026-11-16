@@ -36,6 +36,7 @@ import { Moderation } from "./pages/Moderation";
 import { CommunityDetail, GroupEntryDetail } from "./pages/CommunityDetail";
 import { Settings } from "./pages/Settings";
 import { Communities } from "./pages/Communities";
+import { NotificationBell, Notifications } from "./pages/Notifications";
 
 function navigate(path: string) {
   window.location.hash = path;
@@ -257,6 +258,7 @@ export default function App() {
                   u: "Профиль",
                   settings: "Настройки",
                   post: "История",
+                  notifications: "Уведомления",
                 } as Record<string, string>
               )[section] || "Лента"}
             </span>
@@ -272,6 +274,7 @@ export default function App() {
             <kbd>↵</kbd>
           </form>
           <div className="topbar-right">
+            {me && <NotificationBell key={me.id} userId={me.id} />}
             <ThemePicker />
             <span className="demo-label">
               <span />
@@ -360,6 +363,7 @@ export default function App() {
                   )}
                   {section === "settings" && <Settings me={me} maskedEmail={authSession?.maskedEmail || null} account={path.split("/")[2] === "account"} />}
                   {section === "moderation" && <Moderation me={me} />}
+                  {section === "notifications" && <Notifications key={me?.id || "guest"} me={me} />}
                   {section === "community" && <CommunityDetail key={path} id={path.split("/")[2]} me={me} reload={reload} />}
                   {section === "group-entry" && <GroupEntryDetail key={path} id={path.split("/")[2]} me={me} />}
                   {section === "communities" && (
@@ -384,6 +388,7 @@ export default function App() {
                       "group-entry",
                       "moderation",
                       "settings",
+                      "notifications",
                     ].includes(section) && (
                       <Empty
                         title="Такой страницы нет"

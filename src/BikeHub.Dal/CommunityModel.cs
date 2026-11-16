@@ -7,6 +7,15 @@ internal static class CommunityModel
 {
     internal static void Configure(ModelBuilder model)
     {
+        var notification = model.Entity<CommunityNotification>();
+        notification.ToTable("notifications");
+        notification.HasKey(x => x.Id).HasName("pk_notifications");
+        notification.Property(x => x.Id).ValueGeneratedNever();
+        notification.HasIndex(x => new { x.RecipientId, x.CreatedAt, x.Id }).HasDatabaseName("ix_notifications_inbox");
+        notification.HasIndex(x => new { x.RecipientId, x.ReadAt }).HasDatabaseName("ix_notifications_unread").HasFilter("read_at IS NULL");
+        notification.HasIndex(x => new { x.RecipientId, x.ActorId, x.Kind, x.TargetType, x.TargetId }).IsUnique().HasDatabaseName("ix_notifications_event");
+        notification.HasOne<AuthAccountEntity>().WithMany().HasForeignKey(x => x.RecipientId).OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_notification_recipient");
+        notification.HasOne<AuthAccountEntity>().WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_notification_actor");
         var account = model.Entity<AuthAccountEntity>();
         account.Property(x => x.Handle).HasMaxLength(32);
         account.Property(x => x.City).HasDefaultValue(string.Empty).HasMaxLength(100);

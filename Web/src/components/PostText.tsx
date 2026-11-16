@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { Photo } from "../api";
 import { parsePostText } from "./postMarkup";
 import type { PostTextNode } from "./postMarkup";
+import { MentionText } from "./MentionText";
 
 function Spoiler({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -18,7 +19,7 @@ export function PostText({ content, photos = [] }: { content: string; photos?: P
   function render(nodes: PostTextNode[]): ReactNode {
     return nodes.map((node, index) => {
       switch (node.kind) {
-        case "text": return node.text;
+        case "text": return <MentionText key={index} text={node.text} />;
         case "image": {
           const photo = available.get(node.id);
           return photo ? <a className="post-inline-photo" key={index} href={photo.imageUrl} target="_blank" rel="noreferrer" aria-label={`Открыть фото: ${node.alt}`}>

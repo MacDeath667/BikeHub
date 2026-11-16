@@ -270,7 +270,9 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             ImageIds = images,
             CreatedAt = clock.GetUtcNow()
         };
-        db.Posts.Add(post); db.SaveChanges(); transaction.Commit();
+        db.Posts.Add(post); db.SaveChanges();
+        NotificationWriter.Mentions(db, post.Content, actor.Id, ReportTarget.Post, post.Id, null, clock.GetUtcNow());
+        transaction.Commit();
         return Posts(db, true).Single(p => p.Id == post.Id);
     }
 
@@ -296,7 +298,9 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         post.RouteJson = RouteService.Save(request.Route);
         post.Title = request.Title.Trim(); post.Content = request.Content.Trim(); post.Category = request.Category;
         post.BikeId = request.BikeId; post.ImageId = images.Length > 0 ? images[0] : null; post.ImageIds = images; post.Tags = Tags(request.Content); post.UpdatedAt = clock.GetUtcNow();
-        db.SaveChanges(); transaction.Commit();
+        db.SaveChanges();
+        NotificationWriter.Mentions(db, post.Content, actor.Id, ReportTarget.Post, post.Id, null, clock.GetUtcNow());
+        transaction.Commit();
         return Posts(db, true).SingleOrDefault(p => p.Id == id) ?? throw new CommunityProblem(409, HiddenTitle);
     }
 
@@ -338,6 +342,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     public CommentDto? AddComment(Guid id, CreateCommentRequest request)
     {
         using var db = contexts.CreateDbContext();
+        using var transaction = db.Database.BeginTransaction();
         if (!Posts(db).Any(p => p.Id == id))
         {
             return null;
@@ -352,12 +357,17 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             CreatedAt = clock.GetUtcNow()
         };
         db.Comments.Add(comment); db.SaveChanges();
+        var recipient = db.Posts.Where(p => p.Id == id).Select(p => p.AuthorId).Single();
+        NotificationWriter.Add(db, recipient, actor.Id, NotificationKind.Comment, ReportTarget.Comment, comment.Id, id, clock.GetUtcNow());
+        NotificationWriter.Mentions(db, comment.Text, actor.Id, ReportTarget.Comment, comment.Id, id, clock.GetUtcNow(), recipient);
+        transaction.Commit();
         return new(comment.Id, Users(db).Single(u => u.Id == actor.Id), comment.Text, comment.CreatedAt);
     }
 
     public CommentDto UpdateComment(Guid postId, Guid id, CreateCommentRequest request)
     {
         using var db = contexts.CreateDbContext();
+        using var transaction = db.Database.BeginTransaction();
         var comment = db.Comments.SingleOrDefault(c => c.Id == id && c.PostId == postId && !c.IsDeleted) ?? throw new CommunityProblem(404, MissingTitle);
         Own(comment.AuthorId);
         if (!Posts(db).Any(p => p.Id == postId) || comment.IsHidden)
@@ -365,6 +375,9 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             throw new CommunityProblem(404, MissingTitle);
         }
         comment.Text = RequiredText(request.Text); comment.UpdatedAt = clock.GetUtcNow(); db.SaveChanges();
+        var recipient = db.Posts.Where(p => p.Id == postId).Select(p => p.AuthorId).Single();
+        NotificationWriter.Mentions(db, comment.Text, comment.AuthorId, ReportTarget.Comment, comment.Id, postId, clock.GetUtcNow(), recipient);
+        transaction.Commit();
         return new(comment.Id, Users(db).Single(u => u.Id == comment.AuthorId), comment.Text, comment.CreatedAt);
     }
 
@@ -429,12 +442,18 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     public UserDto? SetFollowing(Guid id, bool active)
     {
         using var db = contexts.CreateDbContext();
+        using var transaction = db.Database.BeginTransaction();
         var actor = Actor();
         if (actor.Id == id || !Users(db).Any(u => u.Id == id))
         {
             return null;
         }
         Relation(db, id, RelationKind.Follow, active);
+        if (active)
+        {
+            NotificationWriter.Add(db, id, actor.Id, NotificationKind.Follow, ReportTarget.User, actor.Id, null, clock.GetUtcNow());
+        }
+        transaction.Commit();
         return Users(db).Single(u => u.Id == id);
     }
 

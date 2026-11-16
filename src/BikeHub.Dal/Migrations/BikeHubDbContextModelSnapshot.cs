@@ -330,6 +330,63 @@ namespace BikeHub.Dal.Migrations
                     b.ToTable("communities", (string)null);
                 });
 
+            modelBuilder.Entity("BikeHub.Dal.Entities.CommunityNotification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_id");
+
+                    b.Property<Guid?>("ContainerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("container_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.Property<Guid>("RecipientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recipient_id");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_id");
+
+                    b.Property<int>("TargetType")
+                        .HasColumnType("integer")
+                        .HasColumnName("target_type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notifications");
+
+                    b.HasIndex("ActorId");
+
+                    b.HasIndex("RecipientId", "ReadAt")
+                        .HasDatabaseName("ix_notifications_unread")
+                        .HasFilter("read_at IS NULL");
+
+                    b.HasIndex("RecipientId", "CreatedAt", "Id")
+                        .HasDatabaseName("ix_notifications_inbox");
+
+                    b.HasIndex("RecipientId", "ActorId", "Kind", "TargetType", "TargetId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_notifications_event");
+
+                    b.ToTable("notifications", (string)null);
+                });
+
             modelBuilder.Entity("BikeHub.Dal.Entities.CommunityPost", b =>
                 {
                     b.Property<Guid>("Id")
@@ -820,6 +877,23 @@ namespace BikeHub.Dal.Migrations
                         .HasForeignKey("OwnerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_group_owner");
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.CommunityNotification", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notification_actor");
+
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notification_recipient");
                 });
 
             modelBuilder.Entity("BikeHub.Dal.Entities.CommunityPost", b =>
