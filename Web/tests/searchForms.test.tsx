@@ -8,6 +8,7 @@ for (const [key, value] of Object.entries({ window: dom.window, document: dom.wi
 }
 const { render, screen, fireEvent, waitFor, cleanup, act } = await import("@testing-library/react");
 const { SearchResults, searchHref, searchKind } = await import("../src/pages/SearchResults");
+const { CommunityDetail } = await import("../src/pages/CommunityDetail");
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 const person = (name: string) => ({ id: name, name, handle: "nickname", city: "Город", initials: "И", color: "green", bikesCount: 1, postsCount: 2 });
 const page = (items: unknown[], pageNumber = 1, hasMore = false) => ({ items, total: hasMore ? 15 : items.length, pageNumber, pageSize: 10, hasMore });
@@ -60,4 +61,22 @@ test("blank search makes no request and unrecognised result kinds fall back to p
   assert.ok(screen.getByText("С чего начнём?")); assert.equal(calls, 0);
   for (const kind of [null, "", "constructor", "__proto__", "unknown"]) { assert.equal(searchKind(kind), "posts"); }
   assert.equal(searchKind("communities"), "communities");
+});
+test("a failed discussion tab stops loading and can retry without showing old results", async () => {
+  let fail = true;
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (!url.pathname.endsWith("/entries")) { return json({ id: "group", name: "Тестовое сообщество", category: "gravel", description: "Поездки", members: 2, imageUrl: "", imageId: null, isJoined: false }); }
+    if (url.searchParams.get("kind") === "1") { return json(page([])); }
+    if (fail) { return json({ title: "Обсуждения пока недоступны" }, 503); }
+    return json(page([{ id: "entry", groupId: "group", title: "Восстановленное обсуждение", content: "Поговорим о поездке", photos: [], author: person("Участник"), createdAt: "2026-11-16T12:00:00Z", repliesCount: 1, kind: 2 }]));
+  };
+  render(<CommunityDetail id="group" me={null} reload={() => {}} />);
+  await waitFor(() => assert.ok(screen.getByText("Здесь ещё нет постов")));
+  fireEvent.click(screen.getByText("Обсуждения"));
+  await waitFor(() => assert.ok(screen.getByText("Обсуждения пока недоступны")));
+  assert.equal(screen.queryByText("Загружаем истории…"), null);
+  fail = false; fireEvent.click(screen.getByText(/Попробовать снова/));
+  await waitFor(() => assert.ok(screen.getByText("Восстановленное обсуждение")));
+  assert.equal(screen.queryByText("Обсуждения пока недоступны"), null);
 });

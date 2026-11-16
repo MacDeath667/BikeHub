@@ -72,7 +72,7 @@ export function CommunityDetail({ id, me, reload, search = "" }: { id: string; m
   const refresh = () => { setRevision(v => v + 1); reload(); };
   useEffect(() => { let active = true; setEntries(null); setError(""); Promise.all([api<Community>(`/communities/${id}`), api<Page<Entry>>(`/communities/${id}/entries?kind=${kind}&page=${page}&q=${encodeURIComponent(search)}`)])
     .then(([g, e]) => { if (active) { setGroup(g); setEntries(e); setError(""); } }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [id, kind, page, revision, me?.id, search]);
-  if (!group) return error ? <ErrorBox message={error} /> : <Loading />;
+  if (!group) return error ? <ErrorBox message={error} retry={() => setRevision(v => v + 1)} /> : <Loading />;
   return <><a className="back-link" href="#/communities">← Все сообщества</a>{showMembers && <CommunityMembers community={group} close={() => setShowMembers(false)} />}<div className="page-heading community-heading"><CommunityAvatar community={group} large /><div><div className="eyebrow">{categories[group.category]} · <button type="button" className="community-members-button" onClick={() => setShowMembers(true)} aria-label={`Участники сообщества ${group.name}: ${group.members}`}>{group.members} участников</button></div><h1>{group.name}</h1><p>{group.description}</p></div></div>
     <div className="content-tools"><button className={`button ${group.isJoined ? "secondary" : "primary"}`} disabled={busy} onClick={async () => { if (!me) { requestLogin(); return; } setBusy(true); try {
       await api(`/communities/${id}/membership`, { method: group.isJoined ? "DELETE" : "PUT" }); refresh();
@@ -84,10 +84,10 @@ export function CommunityDetail({ id, me, reload, search = "" }: { id: string; m
       {group.isJoined && !creating && <button className="text-button" onClick={() => setCreating(true)}>{kind === 1 ? "Написать пост" : "Начать обсуждение"}</button>}</div>
     <form className="directory-search search-form" role="search" onSubmit={event => { event.preventDefault(); window.location.hash = `/community/${id}?q=${encodeURIComponent(searchInput.trim())}`; }}>
       <input aria-label="Поиск в сообществе" placeholder="Поиск в постах и обсуждениях" value={searchInput} maxLength={200} disabled={creating} onChange={event => setSearchInput(event.target.value)} />
-      <button type="submit" className="text-button" disabled={creating}>Найти</button>{search && <a className="text-button" href={`#/community/${id}`}>Сбросить</a>}
+      <button type="submit" className="text-button" disabled={creating}>Найти</button>{search && !creating && <a className="text-button" href={`#/community/${id}`}>Сбросить</a>}
     </form>
     {creating && me && <EntryEditor key={me.id} userId={me.id} groupId={id} kind={kind} close={() => setCreating(false)} saved={e => { window.location.hash = `/group-entry/${e.id}`; }} />}
-    {error && <ErrorBox message={error} />}{!entries ? <Loading /> : entries.items.length ? entries.items.map(e => {
+    {error && <ErrorBox message={error} retry={() => setRevision(v => v + 1)} />}{!entries ? (!error && <Loading />) : entries.items.length ? entries.items.map(e => {
       const cover = e.photos[0];
       return <article className="profile-card group-entry-card" key={e.id}><div className="content-tools"><Avatar user={e.author} /><a href={userHref(e.author)}>{e.author.name}</a><span className="muted">{relativeTime(e.createdAt)}</span></div>
         <a href={`#/group-entry/${e.id}`}><h2>{e.title}</h2></a><p>{postExcerpt(e.content)}</p>{!e.photos.length && e.hasRoute && <RouteCover previewUrl={`/group-entries/${e.id}/route-preview`} href={`#/group-entry/${e.id}`} />}{cover && <a href={`#/group-entry/${e.id}`}><img className="group-entry-cover" src={cover.imageUrl} alt="Фотография к записи" /></a>}<a className="text-button" href={`#/group-entry/${e.id}`}>{e.repliesCount} ответов →</a></article>;

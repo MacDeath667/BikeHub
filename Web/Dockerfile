@@ -1,7 +1,7 @@
 FROM node:22-alpine AS build
 WORKDIR /web
 COPY Web/package.json Web/package-lock.json ./
-RUN npm ci --no-audit --no-fund --fetch-timeout=60000 --fetch-retries=2
+RUN npm ci --no-audit --no-fund --fetch-timeout=60000 --fetch-retries=2 --maxsockets=5 --update-notifier=false
 COPY Web/ ./
 RUN npm run build
 

@@ -129,6 +129,25 @@ public sealed class SearchTests
         public BikeHubDbContext CreateDbContext() => new(new DbContextOptionsBuilder<BikeHubDbContext>().UseNpgsql(connection).AddInterceptors(queries).Options);
     }
     [Fact]
+    public async Task Discussion_replies_batch_authors_and_keep_stable_private_filtered_paging()
+    {
+        await using var database = await PersistenceTestDatabase.CreateAsync(); var (owner, _, group) = await Seed(database);
+        using var db = database.CreateDbContext(); var entry = Entry(owner, group, "Discussion"); db.GroupEntries.Add(entry);
+        var blocked = new AuthAccountEntity { Id = Guid.CreateVersion7(), Email = "blocked-replies@example.test", DisplayName = "Blocked", Handle = "blocked_replies", IsBlocked = true }; db.Accounts.Add(blocked);
+        for (var i = 0; i < 55; i++) { db.GroupReplies.Add(new GroupReply { Id = Guid.CreateVersion7(), AuthorId = owner, EntryId = entry.Id, Text = "Reply " + i, CreatedAt = DateTimeOffset.UnixEpoch }); }
+        db.GroupReplies.Add(new GroupReply { Id = Guid.CreateVersion7(), AuthorId = blocked.Id, EntryId = entry.Id, Text = "Blocked private text" });
+        db.GroupReplies.Add(new GroupReply { Id = Guid.CreateVersion7(), AuthorId = owner, EntryId = entry.Id, Text = "Hidden private text", IsHidden = true });
+        await db.SaveChangesAsync();
+        var queries = new Queries(); await using var app = App(new MeasuredFactory(db.Database.GetConnectionString()!, queries)); using var guest = app.Browser();
+        var first = (await guest.GetFromJsonAsync<Page<CommentDto>>($"/api/group-entries/{entry.Id}/replies"))!;
+        Assert.Equal(50, first.Items.Count); Assert.Equal(55, first.Total); Assert.True(first.HasMore); Assert.Equal(4, queries.Commands.Count);
+        var second = (await guest.GetFromJsonAsync<Page<CommentDto>>($"/api/group-entries/{entry.Id}/replies?page=2"))!;
+        Assert.Equal(5, second.Items.Count); Assert.False(second.HasMore); Assert.Empty(first.Items.Select(r => r.Id).Intersect(second.Items.Select(r => r.Id)));
+        Assert.DoesNotContain(first.Items.Concat(second.Items), r => r.Text.Contains("private", StringComparison.Ordinal));
+        await db.Communities.Where(g => g.Id == group).ExecuteUpdateAsync(g => g.SetProperty(x => x.IsHidden, true));
+        Assert.Equal(HttpStatusCode.NotFound, (await guest.GetAsync($"/api/group-entries/{entry.Id}/replies")).StatusCode);
+    }
+    [Fact]
     public async Task Group_search_loads_authors_in_a_batch_and_its_indexes_are_available_to_the_planner()
     {
         await using var database = await PersistenceTestDatabase.CreateAsync(); var (owner, _, group) = await Seed(database);

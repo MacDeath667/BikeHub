@@ -42,8 +42,11 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
             throw new CommunityProblem(403, Forbidden);
         }
     }
-    public CommunityDto Get(Guid id) => community.GetCommunities(null).SingleOrDefault(g => g.Id == id)
-        ?? throw new CommunityProblem(404, Missing);
+    public CommunityDto Get(Guid id)
+    {
+        using var db = contexts.CreateDbContext();
+        return community.Groups(db, null).SingleOrDefault(g => g.Id == id) ?? throw new CommunityProblem(404, Missing);
+    }
     public Page<UserDto> Members(Guid id, int page, int pageSize)
     {
         using var db = contexts.CreateDbContext();
@@ -174,8 +177,11 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
         }
         page = Math.Clamp(page, 1, 1000000);
         var query = db.GroupReplies.AsNoTracking().Where(r => r.EntryId == id && !r.IsDeleted && !r.IsHidden && db.Accounts.Any(a => a.Id == r.AuthorId && !a.IsBlocked));
-        return new(query.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id).Skip((page - 1) * 50).Take(50).ToList()
-            .Select(r => new CommentDto(r.Id, community.Users(db).Single(a => a.Id == r.AuthorId), r.Text, r.CreatedAt)).ToArray(), query.Count(), page, 50);
+        var rows = query.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id).Skip((page - 1) * 50).Take(50)
+            .Select(r => new { r.Id, r.AuthorId, r.Text, r.CreatedAt }).ToArray();
+        var authorIds = rows.Select(r => r.AuthorId).Distinct().ToArray();
+        var authors = community.Users(db).Where(a => authorIds.Contains(a.Id)).ToDictionary(a => a.Id);
+        return new(rows.Where(r => authors.ContainsKey(r.AuthorId)).Select(r => new CommentDto(r.Id, authors[r.AuthorId], r.Text, r.CreatedAt)).ToArray(), query.Count(), page, 50);
     }
     public CommentDto Reply(Guid id, CreateCommentRequest request)
     {
