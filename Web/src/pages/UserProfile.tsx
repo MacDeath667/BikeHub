@@ -1,11 +1,12 @@
 import { ProfileEditor } from "../components/ProfileEditor";
 import { ReportButton } from "../components/ContentTools";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Bike as BikeIcon, Check, Plus } from "lucide-react";
 import { api, number, requestLogin } from "../api";
 import type { Bike, Page, User } from "../api";
 import { Avatar, Empty, ErrorBox, Loading } from "../components/ui";
 import { BikeCard } from "../components/BikeCard";
+import { appendUnique } from "../components/paging";
 
 export function UserProfile({
   id,
@@ -27,20 +28,25 @@ export function UserProfile({
   const [bikes, setBikes] = useState<Bike[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState(1), [retry, setRetry] = useState(0), [loading, setLoading] = useState(true), [more, setMore] = useState(false);
+  const [total, setTotal] = useState<number | null>(null), pending = useRef(false);
   useEffect(() => {
     let active = true;
+    setLoading(true); setError(""); pending.current = true;
     api<User>(byNickname ? `/users/by-nickname/${encodeURIComponent(id)}` : `/users/${id}`)
       .then(async u => {
-        const b = await api<Page<Bike>>(`/users/${u.id}/bikes?pageSize=50`);
-        if (active) { setUser(u); setBikes(b.items); }
+        if (!active) return;
+        setUser(u);
+        const b = await api<Page<Bike>>(`/users/${u.id}/bikes?page=${page}&pageSize=20`);
+        if (active) { setBikes(previous => page === 1 ? b.items : appendUnique(previous, b.items)); setMore(b.hasMore); setTotal(b.total); }
       })
       .catch((e) => {
         if (active) setError(e.message);
-      });
+      }).finally(() => { if (active) { setLoading(false); pending.current = false; } });
     return () => {
       active = false;
     };
-  }, [id, byNickname, version]);
+  }, [id, byNickname, version, page, retry]);
   async function follow() {
     if (!user || busy) return;
     if (!me) { requestLogin(); return; }
@@ -62,7 +68,7 @@ export function UserProfile({
       setBusy(false);
     }
   }
-  if (error) return <ErrorBox message={error} />;
+  if (error && !user) return <ErrorBox message={error} retry={() => setRetry(v => v + 1)} />;
   if (!user) return <Loading />;
   return (
     <>
@@ -113,7 +119,7 @@ export function UserProfile({
       </section>
       <div className="section-heading">
         <h2>
-          В гараже<span className="count">{bikes.length}</span>
+          В гараже<span className="count">{total ?? user.bikesCount}</span>
         </h2>
       </div>
       <div className="bike-grid">
@@ -121,12 +127,15 @@ export function UserProfile({
           <BikeCard bike={b} key={b.id} />
         ))}
       </div>
-      {!bikes.length && (
+      {error && <ErrorBox message={error} retry={() => setRetry(v => v + 1)} />}
+      {loading && !bikes.length && <Loading />}
+      {!bikes.length && !loading && !error && (
         <Empty
           title="Гараж пока пуст"
           description="Первый велосипед ещё впереди."
         />
       )}
+      {more && !error && <button className="load-more" disabled={loading} onClick={() => { if (!pending.current) { pending.current = true; setPage(p => p + 1); } }}>Ещё велосипеды</button>}
     </>
   );
 }

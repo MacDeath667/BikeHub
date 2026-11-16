@@ -5,7 +5,7 @@ import { CommunityAvatar } from "../components/CommunityAvatar";
 import { CommunityMembers } from "../components/CommunityMembers";
 import { PostRoute, RouteEditor } from "../components/PostRoute";
 import type { RouteData } from "../api";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, categories, relativeTime, requestLogin } from "../api";
 import type { Community, User, Page, Photo, Comment, GroupEntry as Entry } from "../api";
 import { ErrorBox, Loading, Empty, Avatar } from "../components/ui";
@@ -97,11 +97,12 @@ export function CommunityDetail({ id, me, reload, search = "" }: { id: string; m
 export function GroupEntryDetail({ id, me }: { id: string; me: User | null }) {
   const [entry, setEntry] = useState<Entry | null>(null), [group, setGroup] = useState<Community | null>(null), [replies, setReplies] = useState<Page<Comment> | null>(null);
   const [page, setPage] = useState(1), [revision, setRevision] = useState(0), [text, setText] = useState(""), [editing, setEditing] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
-  useEffect(() => { let active = true; Promise.all([api<Entry>(`/group-entries/${id}`), api<Page<Comment>>(`/group-entries/${id}/replies?page=${page}`)]).then(async ([e, r]) => {
+  const [loading, setLoading] = useState(true), pending = useRef(false);
+  useEffect(() => { let active = true; setError(""); setReplies(null); setLoading(true); pending.current = true; Promise.all([api<Entry>(`/group-entries/${id}`), api<Page<Comment>>(`/group-entries/${id}/replies?page=${page}`)]).then(async ([e, r]) => {
     const g = await api<Community>(`/communities/${e.groupId}`); if (active) { setEntry(e); setReplies(r); setGroup(g); setError(""); }
-  }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [id, page, revision, me?.id]);
-  async function remove(path: string, whole = false) { if (busy || !window.confirm("Удалить материал?")) return; setBusy(true); try { await api(path, { method: "DELETE" }); if (whole) window.location.hash = `/community/${entry!.groupId}`; else setRevision(v => v + 1); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
-  if (!entry || !group) return error ? <ErrorBox message={error} /> : <Loading />;
+  }).catch(e => { if (active) setError(e.message); }).finally(() => { if (active) { setLoading(false); pending.current = false; } }); return () => { active = false; }; }, [id, page, revision, me?.id]);
+  async function remove(path: string, whole = false) { if (busy || loading || !window.confirm("Удалить материал?")) return; setBusy(true); try { await api(path, { method: "DELETE" }); if (whole) window.location.hash = `/community/${entry!.groupId}`; else setRevision(v => v + 1); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
+  if (!entry || !group) return error ? <ErrorBox message={error} retry={() => setRevision(v => v + 1)} /> : <Loading />;
   const manager = group.ownerId === me?.id || me?.isModerator;
   const gallery = galleryPhotos(entry.content, entry.photos);
   return <><a className="back-link" href={`#/community/${entry.groupId}`}>← {entry.groupName}</a><div className="eyebrow">{entry.kind === 1 ? "ПОСТ" : "ОБСУЖДЕНИЕ"}</div><h1>{entry.title}</h1><div className="content-tools"><Avatar user={entry.author} /><a href={userHref(entry.author)}>{entry.author.name}</a><span>{relativeTime(entry.createdAt)}</span></div>
@@ -109,8 +110,9 @@ export function GroupEntryDetail({ id, me }: { id: string; me: User | null }) {
     <PostRoute route={entry.route} showMap={!!entry.photos.length} />
     <div className="content-tools">{entry.author.id === me?.id && !editing && <button className="text-button" onClick={() => setEditing(true)}>Редактировать</button>}{(entry.author.id === me?.id || manager) && <button className="text-button" disabled={busy} onClick={() => remove(`/group-entries/${id}`, true)}>Удалить</button>}{me && <ReportButton type={7} id={id} notify={setError} />}</div>
     {editing && me?.id === entry.author.id && <EntryEditor key={me.id} userId={me.id} groupId={entry.groupId} kind={entry.kind} entry={entry} close={() => setEditing(false)} saved={() => { setEditing(false); setRevision(v => v + 1); }} />}
-    {error && <ErrorBox message={error} />}<h2>Ответы · {entry.repliesCount}</h2>
+    {error && <ErrorBox message={error} retry={() => setRevision(v => v + 1)} />}<h2>Ответы · {entry.repliesCount}</h2>
+    {loading && <Loading />}
     {replies?.items.map(r => <section className="profile-card group-entry-card" key={r.id}><div className="content-tools"><Avatar user={r.author} /><a href={userHref(r.author)}>{r.author.name}</a><small>{relativeTime(r.createdAt)}</small></div><p className="group-content"><MentionText text={r.text} /></p><div className="content-tools">{(me?.id === r.author.id || manager) && <button className="text-button" disabled={busy} onClick={() => remove(`/group-entries/${id}/replies/${r.id}`)}>Удалить ответ</button>}{me && <ReportButton type={8} id={r.id} notify={setError} />}</div></section>)}
-    {replies && <div className="content-tools"><button className="text-button" disabled={page === 1} onClick={() => setPage(v => v - 1)}>Назад</button><span>Страница {page}</span><button className="text-button" disabled={!replies.hasMore} onClick={() => setPage(v => v + 1)}>Далее</button></div>}
-    {group.isJoined ? <form className="group-editor" onSubmit={async e => { e.preventDefault(); if (busy) return; setBusy(true); try { await api(`/group-entries/${id}/replies`, { method: "POST", body: JSON.stringify({ text }) }); setText(""); setPage(Math.max(1, Math.ceil((entry.repliesCount + 1) / 50))); setRevision(v => v + 1); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}><label>Ваш ответ<MentionTextarea required maxLength={2000} value={text} onValueChange={setText} /></label><button className="button primary" disabled={busy || !text.trim()}>Отправить</button></form> : <p><a href={`#/community/${group.id}`}>Вступите в сообщество</a>, чтобы ответить.</p>}</>;
+    {replies && <div className="content-tools"><button className="text-button" disabled={busy || loading || page === 1} onClick={() => { if (!pending.current) { pending.current = true; setPage(v => v - 1); } }}>Назад</button><span>Страница {page}</span><button className="text-button" disabled={busy || loading || !replies.hasMore} onClick={() => { if (!pending.current) { pending.current = true; setPage(v => v + 1); } }}>Далее</button></div>}
+    {group.isJoined && me ? <form className="group-editor" onSubmit={async e => { e.preventDefault(); if (busy || loading) return; setBusy(true); try { await api(`/group-entries/${id}/replies`, { method: "POST", body: JSON.stringify({ text }) }); setText(""); setPage(Math.max(1, Math.ceil((entry.repliesCount + 1) / 50))); setRevision(v => v + 1); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}><label>Ваш ответ<MentionTextarea required maxLength={2000} value={text} onValueChange={setText} /></label><button className="button primary" disabled={busy || loading || !text.trim()}>Отправить</button></form> : <p><a href={`#/community/${group.id}`}>Вступите в сообщество</a>, чтобы ответить.</p>}</>;
 }

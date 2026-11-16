@@ -17,6 +17,9 @@ const { default: App } = await import("../src/App");
 const { Feed } = await import("../src/pages/Feed");
 const { BikeDirectory, BikeDetail } = await import("../src/pages/Bikes");
 const { PostDetail } = await import("../src/pages/PostDetail");
+const { UserProfile } = await import("../src/pages/UserProfile");
+const { GroupEntryDetail } = await import("../src/pages/CommunityDetail");
+const { Moderation } = await import("../src/pages/Moderation");
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 const user = { id: "owner", name: "Велосипедист", handle: "rider", city: "Казань", initials: "В", color: "green", bio: "", followers: 0, isFollowing: false, bikesCount: 1, postsCount: 2 };
 const bike = { id: "bike", name: "Гравийный велосипед", ownerId: user.id, brand: "Test", description: "Описание велосипеда", category: "gravel", year: 2025, mileage: 100, imageUrl: "/test-bike.webp", color: "", owner: user };
@@ -177,4 +180,80 @@ test("mobile navigation traps focus, closes on Escape or navigation and restores
     assert.equal(trigger.getAttribute("aria-expanded"), "false"); assert.ok(!sidebar.hasAttribute("inert"));
     assert.equal(document.body.style.overflow, "scroll");
   } finally { cleanup(); window.matchMedia = originalMedia; document.body.style.overflow = ""; }
+});
+
+test("profile garage pages beyond the first batch remain accessible and failed loads can retry", async () => {
+  let fail = true; const requested: number[] = [];
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (!url.pathname.endsWith("/bikes")) return json(user);
+    const current = Number(url.searchParams.get("page")); requested.push(current);
+    assert.equal(url.searchParams.get("pageSize"), "20");
+    if (fail) return json({ title: "Гараж временно недоступен" }, 503);
+    return json(page(current === 1 ? [bike] : [bike, { ...bike, id: "other", name: "Второй велосипед" }], current, current === 1));
+  };
+  render(<UserProfile id="owner" me={null} version={0} notify={() => {}} reload={() => {}} />);
+  await waitFor(() => assert.ok(screen.getByText("Гараж временно недоступен")));
+  assert.ok(screen.getByRole("heading", { name: user.name }));
+  fail = false; fireEvent.click(screen.getByText(/Попробовать снова/));
+  await waitFor(() => assert.ok(screen.getByText(bike.name))); fireEvent.click(screen.getByText("Ещё велосипеды"));
+  await waitFor(() => assert.ok(screen.getByText("Второй велосипед")));
+  assert.equal(screen.getAllByText(bike.name).length, 1); assert.deepEqual(requested, [1, 1, 2]);
+});
+
+const group = { id: "group", name: "Велосообщество", category: "gravel", description: "Поездки", members: 2, isJoined: true, imageUrl: "" };
+const entry = { id: "entry", groupId: group.id, groupName: group.name, title: "Разговор о поездках", content: "Обсудим маршрут вместе", kind: 2, author: user, imageIds: [], photos: [], createdAt: "2026-11-16T12:00:00Z", repliesCount: 3 };
+test("a discussion recovers from initial and later page errors without stale replies or page skipping", async () => {
+  let fail = true, failPage = true; const requested: number[] = [];
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (fail) return json({ title: "Обсуждение недоступно" }, 503);
+    if (url.pathname.endsWith("/replies")) {
+      const current = Number(url.searchParams.get("page")); requested.push(current);
+      return current === 2 && failPage ? json({ title: "Ответы временно недоступны" }, 503) : json(page([comment(String(current))], current, current === 1));
+    }
+    return json(url.pathname.startsWith("/api/communities/") ? group : entry);
+  };
+  render(<GroupEntryDetail id="entry" me={null} />);
+  await waitFor(() => assert.ok(screen.getByText("Обсуждение недоступно")));
+  fail = false; fireEvent.click(screen.getByText(/Попробовать снова/));
+  await waitFor(() => assert.ok(screen.getByText("Комментарий 1"))); fireEvent.click(screen.getByText("Далее"));
+  await waitFor(() => assert.ok(screen.getByText("Ответы временно недоступны")));
+  assert.ok(screen.getByRole("heading", { name: entry.title })); assert.ok(!screen.queryByText("Комментарий 1"));
+  failPage = false; fireEvent.click(screen.getByText(/Попробовать снова/));
+  await waitFor(() => assert.ok(screen.getByText("Комментарий 2"))); assert.deepEqual(requested, [1, 2, 2]);
+});
+
+test("moderation load errors stop the spinner and can retry without losing the review note", async () => {
+  let fail = true;
+  globalThis.fetch = async () => fail ? json({ title: "Жалобы временно недоступны" }, 503) : json(page([{ id: "report", targetId: "post", targetType: 2, reason: "Проверить материал", createdAt: "2026-11-16T12:00:00Z" }]));
+  render(<Moderation me={{ ...user, isModerator: true }} />);
+  await waitFor(() => assert.ok(screen.getByText("Жалобы временно недоступны")));
+  assert.ok(!screen.queryByText("Загружаем истории…")); assert.equal((screen.getByText("Далее") as HTMLButtonElement).disabled, true);
+  fireEvent.change(screen.getByLabelText("Результат проверки"), { target: { value: "Проверяю обращение" } });
+  fail = false; fireEvent.click(screen.getByText(/Попробовать снова/));
+  await waitFor(() => assert.ok(screen.getByText("Проверить материал")));
+  assert.equal((screen.getByLabelText("Результат проверки") as HTMLTextAreaElement).value, "Проверяю обращение");
+});
+
+test("changing accounts in the app clears an unpublished discussion reply", async () => {
+  window.location.hash = "/group-entry/entry"; let viewer = user;
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/auth/session") return json({ user: viewer, enabled: true, csrfToken: "test" });
+    if (path === "/api/notifications/unread-count") return json(0);
+    if (path === "/api/feed/overview") return json({ tags: [], featuredBike: null });
+    if (path === "/api/communities/catalog") return json(page([]));
+    if (path === "/api/group-entries/entry") return json(entry);
+    if (path === "/api/group-entries/entry/replies") return json(page([]));
+    if (path === "/api/communities/group") return json(group);
+    throw Error("Unexpected request: " + path);
+  };
+  render(<App />);
+  await waitFor(() => assert.ok(screen.getByLabelText("Ваш ответ")));
+  fireEvent.change(screen.getByLabelText("Ваш ответ"), { target: { value: "Личный ответ первого аккаунта" } });
+  await act(async () => { viewer = { ...user, id: "other", handle: "other", name: "Другой участник" }; window.dispatchEvent(new Event("bikehub:content-changed")); });
+  await waitFor(() => assert.equal(screen.getByLabelText("Открыть мой профиль").getAttribute("href"), "#/u/other"));
+  await waitFor(() => assert.equal((screen.getByLabelText("Ваш ответ") as HTMLTextAreaElement).value, ""));
+  assert.ok(!screen.queryByDisplayValue("Личный ответ первого аккаунта"));
 });

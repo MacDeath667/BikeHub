@@ -390,10 +390,10 @@ export default function App() {
                     />
                   )}
                   {section === "settings" && <Settings me={me} maskedEmail={authSession?.maskedEmail || null} account={path.split("/")[2] === "account"} />}
-                  {section === "moderation" && <Moderation me={me} />}
+                  {section === "moderation" && <Moderation key={me?.id || "guest"} me={me} />}
                   {section === "notifications" && <Notifications key={me?.id || "guest"} me={me} />}
-                  {section === "community" && <CommunityDetail key={`${path}-${searchQuery}`} id={path.split("/")[2]} me={me} reload={reload} search={searchQuery} />}
-                  {section === "group-entry" && <GroupEntryDetail key={path} id={path.split("/")[2]} me={me} />}
+                  {section === "community" && <CommunityDetail key={`${path}-${searchQuery}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} reload={reload} search={searchQuery} />}
+                  {section === "group-entry" && <GroupEntryDetail key={`${path}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} />}
                   {section === "communities" && (
                     <Communities
                       version={version}

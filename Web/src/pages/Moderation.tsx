@@ -16,6 +16,7 @@ export function Moderation({ me }: { me: User | null }) {
   useEffect(() => {
     if (!me?.isModerator) return;
     let active = true;
+    setReports(null); setError("");
     api<Page<Report>>(`/moderation/reports?page=${page}&pageSize=20`).then(data => {
       if (active) { setReports(data.items); setMore(data.hasMore); setError(""); }
     }).catch(error => { if (active) setError(error.message); });
@@ -28,9 +29,9 @@ export function Moderation({ me }: { me: User | null }) {
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   return <><h1>Модерация</h1><p>Открытые жалобы пользователей.</p>
-    {error && <ErrorBox message={error} />}
+    {error && <ErrorBox message={error} retry={() => setRevision(v => v + 1)} />}
     <label>Результат проверки<textarea maxLength={2000} value={resolution} onChange={e => setResolution(e.target.value)} placeholder="Укажите результат перед закрытием жалобы" /></label>
-    {!reports ? <Loading /> : !reports.length ? <Empty title="Жалоб нет" description="Открытые обращения появятся здесь." /> : reports.map(report => <section className="profile-card moderation-report" key={report.id}>
+    {!reports ? !error && <Loading /> : !reports.length ? <Empty title="Жалоб нет" description="Открытые обращения появятся здесь." /> : reports.map(report => <section className="profile-card moderation-report" key={report.id}>
       <strong>{names[report.targetType]}</strong><p>{report.reason}</p>
       <small>{new Date(report.createdAt).toLocaleString("ru-RU")} · {report.targetId}</small>
       <div className="content-tools">
@@ -43,7 +44,7 @@ export function Moderation({ me }: { me: User | null }) {
         <button className="text-button" disabled={busy || resolution.trim().length < 2} onClick={() => act(`/moderation/reports/${report.id}/resolve`, "POST", { resolution })}>Закрыть жалобу</button>
       </div>
     </section>)}
-    <div className="content-tools"><button className="text-button" disabled={page === 1} onClick={() => setPage(v => v - 1)}>Назад</button>
-      <span>Страница {page}</span><button className="text-button" disabled={!more} onClick={() => setPage(v => v + 1)}>Далее</button></div>
+    <div className="content-tools"><button className="text-button" disabled={busy || !reports || page === 1} onClick={() => setPage(v => v - 1)}>Назад</button>
+      <span>Страница {page}</span><button className="text-button" disabled={busy || !reports || !more} onClick={() => setPage(v => v + 1)}>Далее</button></div>
   </>;
 }
