@@ -15,6 +15,7 @@ public static class Program
           mail check --target server
           observability --api-url URL --vm-address IP [--environment Development|Staging|Production] [--ca-certificate PATH]
         Server options: --vm-address IP --ssh-key PATH.
+        backup-pg --directory NEW_PRIVATE_DIRECTORY [--env VARIABLE] (otherwise read connection from stdin)
         Passwords and tokens are passed via stdin, never command arguments.
         """;
 
@@ -37,6 +38,18 @@ public static class Program
             if (args[0] == "observability")
             {
                 await ObservabilityCheck.RunAsync(options);
+                return 0;
+            }
+            if (args[0] == Constants.PostgresBackup.ExportCommand)
+            {
+                if (options.TryGetValue("--env", out var variable))
+                {
+                    await PostgresBackupConfiguration.ExportAsync(variable, options["--directory"]);
+                }
+                else
+                {
+                    await PostgresBackupConfiguration.ExportFromStandardInputAsync(options["--directory"]);
+                }
                 return 0;
             }
             if (args[0] != "mail")

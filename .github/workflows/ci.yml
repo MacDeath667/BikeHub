@@ -52,6 +52,19 @@ jobs:
       - run: npm test --prefix Web
       - run: npm run build --prefix Web
 
+  operator-tools:
+    name: Operator tools container
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build operator image and check its runtime without network
+        run: |
+          docker build --tag bikehub-tools:ci --file tools/BikeHub.Tools/Dockerfile .
+          docker run --rm --network=none bikehub-tools:ci --help
+
   infrastructure:
     name: Infrastructure isolation and configuration tests
     runs-on: ubuntu-24.04
