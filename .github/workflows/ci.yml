@@ -1,0 +1,72 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main, master, 'engineering/**', 'frontend/**', 'feature/**', 'fix/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend and persistence tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore BikeHub.sln --disable-parallel
+      - name: Build with repository analyzers
+        run: dotnet build BikeHub.sln -c Release --no-restore --disable-build-servers -m:1
+      - name: Test with isolated PostgreSQL and Kafka containers
+        run: dotnet test BikeHub.sln -c Release --no-build --no-restore --disable-build-servers -m:1 --logger 'console;verbosity=normal'
+
+  frontend:
+    name: Frontend tests and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Web/package-lock.json
+      - run: npm ci --prefix Web --no-audit --no-fund
+      - run: npm test --prefix Web
+      - run: npm run build --prefix Web
+
+  infrastructure:
+    name: Infrastructure isolation and configuration tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Ansible
+        run: pipx install 'ansible-core>=2.21,<2.22'
+      - name: Install declared collections
+        run: ansible-galaxy collection install -r infra/ansible/requirements.yml
+      - name: Test source packaging, staging isolation and mail configuration
+        run: |
+          ansible-playbook infra/tests/package-source.yml
+          ansible-playbook infra/tests/staging.yml
+          ansible-playbook infra/tests/auth-mode.yml
+          ansible-playbook infra/tests/configure-mail.yml
