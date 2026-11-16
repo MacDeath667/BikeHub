@@ -39,6 +39,7 @@ import { Communities } from "./pages/Communities";
 import { NotificationBell, Notifications } from "./pages/Notifications";
 import { clearLocalDrafts } from "./components/useDraft";
 import { SearchResults, searchKind } from "./pages/SearchResults";
+import { useMobileMenu } from "./components/useMobileMenu";
 
 function navigate(path: string) {
   window.location.hash = path;
@@ -70,6 +71,9 @@ export default function App() {
   const [version, setVersion] = useState(0);
   const [modal, setModal] = useState<"post" | "bike" | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const sidebar = useRef<HTMLElement>(null), menuButton = useRef<HTMLButtonElement>(null);
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
+  const mobile = useMobileMenu(mobileOpen, closeMobile, sidebar, menuButton);
   const [searchText, setSearchText] = useState("");
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -177,13 +181,15 @@ export default function App() {
   return (
     <div className="app-shell">
       {mobileOpen && (
-        <button
+        <div
           className="sidebar-backdrop"
-          aria-label="Закрыть меню"
-          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+          onClick={closeMobile}
         />
       )}
-      <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
+      <aside id="main-sidebar" ref={sidebar} className={`sidebar ${mobileOpen ? "open" : ""}`} inert={mobile && !mobileOpen}
+        role={mobile && mobileOpen ? "dialog" : undefined} aria-modal={mobile && mobileOpen ? true : undefined} aria-label="Меню BikeHub" tabIndex={-1}>
+        <button type="button" className="icon-button mobile-menu-close" aria-label="Закрыть меню" onClick={closeMobile}><X size={22} /></button>
         <a className="brand" href="#/" aria-label="BikeHub — на главную">
           <span className="brand-mark">
             <img src="./brand/bikehub-mark-light.svg?v=3" width="36" height="36" alt="" />
@@ -248,11 +254,14 @@ export default function App() {
         </div>
       </aside>
 
-      <div className="workspace">
+      <div className="workspace" inert={mobile && mobileOpen}>
         <header className="topbar">
           <button
             className="icon-button menu-button"
+            ref={menuButton}
             aria-label="Открыть меню"
+            aria-controls="main-sidebar"
+            aria-expanded={mobileOpen}
             onClick={() => setMobileOpen(true)}
           >
             <Menu size={22} />

@@ -141,3 +141,40 @@ test("comment pagination cannot skip pages and its failure does not hide the art
   await waitFor(() => assert.ok(screen.getByText("Комментарий 3")));
   assert.equal(screen.getAllByText("Комментарий 2").length, 1); assert.equal(detailReads, 1);
 });
+
+test("mobile navigation traps focus, closes on Escape or navigation and restores scrolling", async () => {
+  const originalMedia = window.matchMedia; let mobile = true; const listeners = new Set<() => void>();
+  const media = { get matches() { return mobile; }, addEventListener(_type: string, listener: () => void) { listeners.add(listener); }, removeEventListener(_type: string, listener: () => void) { listeners.delete(listener); } };
+  window.matchMedia = query => query === "(max-width: 700px)" ? media as unknown as MediaQueryList : originalMedia(query);
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/auth/session") return json({ user: null, enabled: true, csrfToken: "test" });
+    if (path === "/api/feed/overview") return json({ tags: [], featuredBike: null });
+    return json(page([]));
+  };
+  document.body.style.overflow = "scroll";
+  try {
+    render(<App />);
+    await waitFor(() => assert.ok(screen.getByRole("heading", { name: /Два колеса/ })));
+    const trigger = screen.getByLabelText("Открыть меню"), sidebar = document.getElementById("main-sidebar")!;
+    assert.ok(sidebar.hasAttribute("inert")); assert.equal(trigger.getAttribute("aria-controls"), sidebar.id);
+    trigger.focus(); fireEvent.click(trigger);
+    await waitFor(() => assert.ok(screen.getByRole("dialog", { name: "Меню BikeHub" })));
+    assert.equal(document.body.style.overflow, "hidden"); assert.ok(document.querySelector(".workspace")!.hasAttribute("inert"));
+    const close = screen.getByLabelText("Закрыть меню"), last = Array.from(sidebar.querySelectorAll("a")).at(-1)!;
+    assert.ok(document.activeElement === close);
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true }); assert.ok(document.activeElement === last);
+    fireEvent.keyDown(document, { key: "Tab" }); assert.ok(document.activeElement === close);
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => assert.equal(trigger.getAttribute("aria-expanded"), "false"));
+    assert.ok(document.activeElement === trigger); assert.equal(document.body.style.overflow, "scroll");
+    assert.ok(sidebar.hasAttribute("inert")); assert.ok(!document.querySelector(".workspace")!.hasAttribute("inert"));
+    fireEvent.click(trigger);
+    await act(async () => { window.location.hash = "/bikes"; window.dispatchEvent(new Event("hashchange")); });
+    await waitFor(() => assert.equal(trigger.getAttribute("aria-expanded"), "false"));
+    fireEvent.click(trigger);
+    await act(async () => { mobile = false; for (const listener of listeners) listener(); });
+    assert.equal(trigger.getAttribute("aria-expanded"), "false"); assert.ok(!sidebar.hasAttribute("inert"));
+    assert.equal(document.body.style.overflow, "scroll");
+  } finally { cleanup(); window.matchMedia = originalMedia; document.body.style.overflow = ""; }
+});
