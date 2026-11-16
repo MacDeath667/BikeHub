@@ -7,13 +7,14 @@ import { MentionText } from "../components/MentionText";
 import { MentionTextarea } from "../components/MentionTextarea";
 import { galleryPhotos } from "../components/postMarkup";
 import { ContentTools, ReportButton } from "../components/ContentTools";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ArrowLeft, Send } from "lucide-react";
 import { api, postCategories, relativeTime } from "../api";
 import type { Comment, Page, Post, User } from "../api";
 import { Avatar, ErrorBox, Loading } from "../components/ui";
 import { PostActions } from "../components/PostCard";
+import { appendUnique } from "../components/paging";
 
 export function PostDetail({
   id,
@@ -32,36 +33,38 @@ export function PostDetail({
   const [page, setPage] = useState(1);
   const [more, setMore] = useState(false);
   const [error, setError] = useState("");
+  const [commentsError, setCommentsError] = useState("");
+  const [commentsLoading, setCommentsLoading] = useState(true), [retry, setRetry] = useState(0), [postRetry, setPostRetry] = useState(0);
+  const pending = useRef(false);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   useEffect(() => {
     let active = true;
-    Promise.all([
-      api<Post>(`/posts/${id}`),
-      api<Page<Comment>>(`/posts/${id}/comments?page=${page}&pageSize=20`),
-    ])
-      .then(([p, c]) => {
+    setError("");
+    api<Post>(`/posts/${id}`).then(p => { if (active) setPost(p); }).catch(e => { if (active) setError(e.message); });
+    return () => { active = false; };
+  }, [id, revision, postRetry]);
+  useEffect(() => {
+    let active = true;
+    pending.current = true; setCommentsLoading(true); setCommentsError("");
+    api<Page<Comment>>(`/posts/${id}/comments?page=${page}&pageSize=20`)
+      .then(c => {
         if (active) {
-          setPost(p);
           setComments((previous) =>
             page === 1
               ? c.items
-              : [
-                  ...new Map(
-                    [...previous, ...c.items].map((item) => [item.id, item]),
-                  ).values(),
-                ],
+              : appendUnique(previous, c.items),
           );
           setMore(c.hasMore);
         }
       })
       .catch((e) => {
-        if (active) setError(e.message);
-      });
+        if (active) setCommentsError(e.message);
+      }).finally(() => { if (active) { pending.current = false; setCommentsLoading(false); } });
     return () => {
       active = false;
     };
-  }, [id, page, revision]);
+  }, [id, page, revision, retry]);
   useEffect(() => {
     if (post && window.location.hash.includes("comments=1"))
       document
@@ -70,7 +73,7 @@ export function PostDetail({
   }, [post?.id]);
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!text.trim() || sending) return;
+    if (!text.trim() || sending || commentsLoading) return;
     setSending(true);
     try {
       const comment = await api<Comment>(`/posts/${id}/comments`, {
@@ -87,7 +90,7 @@ export function PostDetail({
       setSending(false);
     }
   }
-  if (error) return <ErrorBox message={error} />;
+  if (error) return <ErrorBox message={error} retry={() => setPostRetry(v => v + 1)} />;
   if (!post) return <Loading />;
   const gallery = galleryPhotos(post.content, post.photos);
   return (
@@ -95,7 +98,7 @@ export function PostDetail({
       <a className="back-link" href="#/">
         <ArrowLeft size={16} />В ленту
       </a>
-      <ContentTools post={post} me={me} saved={() => setRevision(v => v + 1)} notify={notify} />
+      <ContentTools post={post} me={me} saved={() => { setPage(1); setRevision(v => v + 1); }} notify={notify} />
       <article className="post-detail">
         <div className="detail-article-head">
           <span className={`post-kind ${post.category}`}>
@@ -150,7 +153,7 @@ export function PostDetail({
           </label>
           <button
             className="button primary"
-            disabled={sending || !text.trim()}
+            disabled={sending || commentsLoading || !text.trim()}
             aria-label="Отправить комментарий"
           >
             <Send size={18} />
@@ -166,7 +169,7 @@ export function PostDetail({
                   <a href={userHref(c.author)}>{c.author.name}</a>
                   <time>{relativeTime(c.createdAt)}</time>
                 </div>
-                {editingComment === c.id ? <form onSubmit={async e => {
+                {editingComment === c.id && c.author.id === me?.id ? <form onSubmit={async e => {
                   e.preventDefault(); if (sending) return; setSending(true);
                   try { const next = await api<Comment>(`/posts/${id}/comments/${c.id}`, { method: "PUT", body: JSON.stringify({ text: commentText }) }); setComments(list => list.map(item => item.id === c.id ? next : item)); setEditingComment(null); }
                   catch (error) { notify((error as Error).message); } finally { setSending(false); }
@@ -182,13 +185,15 @@ export function PostDetail({
             </div>
           ))}
         </div>
-        {!comments.length && (
+        {commentsError && <ErrorBox message={commentsError} retry={() => setRetry(v => v + 1)} />}
+        {commentsLoading && !comments.length && <Loading />}
+        {!comments.length && !commentsLoading && !commentsError && (
           <p className="muted first-comment">
             Хорошая история заслуживает первого комментария.
           </p>
         )}
-        {more && (
-          <button className="load-more" onClick={() => setPage((p) => p + 1)}>
+        {more && !commentsError && (
+          <button className="load-more" disabled={commentsLoading} onClick={() => { if (!pending.current) { pending.current = true; setPage(p => p + 1); } }}>
             Ещё комментарии
           </button>
         )}

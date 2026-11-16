@@ -1,7 +1,7 @@
 import { userHref } from "../api";
 import { PhotoGallery } from "../components/PhotoGallery";
 import { ContentTools } from "../components/ContentTools";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowLeft,
@@ -16,6 +16,7 @@ import { Avatar, Empty, ErrorBox, Loading } from "../components/ui";
 import { CategoryFilter } from "../components/CategoryFilter";
 import { PostCard } from "../components/PostCard";
 import { BikeCard } from "../components/BikeCard";
+import { appendUnique } from "../components/paging";
 
 export function BikeDirectory({
   garage,
@@ -35,6 +36,8 @@ export function BikeDirectory({
   const [data, setData] = useState<Page<Bike> | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [retry, setRetry] = useState(0);
+  const pending = useRef(false);
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebounced(search);
@@ -45,7 +48,9 @@ export function BikeDirectory({
   useEffect(() => {
     let active = true;
     setLoading(true);
+    pending.current = true;
     setError("");
+    if (page === 1) setData(null);
     api<Page<Bike>>(
       `/bikes?${query({ category, q: debounced, ownerId: garage ? me?.id : undefined, page, pageSize: 8 })}`,
     )
@@ -54,19 +59,19 @@ export function BikeDirectory({
           setData((previous) =>
             page === 1
               ? next
-              : { ...next, items: [...(previous?.items || []), ...next.items] },
+              : { ...next, items: appendUnique(previous?.items || [], next.items) },
           );
       })
       .catch((e) => {
         if (active) setError(e.message);
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) { pending.current = false; setLoading(false); }
       });
     return () => {
       active = false;
     };
-  }, [garage, me?.id, category, debounced, version, page]);
+  }, [garage, me?.id, category, debounced, version, page, retry]);
   return (
     <>
       <div className="page-heading">
@@ -89,6 +94,7 @@ export function BikeDirectory({
         <input
           placeholder="Марка, модель или владелец"
           aria-label="Поиск велосипедов"
+          maxLength={200}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -100,8 +106,8 @@ export function BikeDirectory({
           setPage(1);
         }}
       />
-      {error ? (
-        <ErrorBox message={error} />
+      {error && !data ? (
+        <ErrorBox message={error} retry={() => setRetry(v => v + 1)} />
       ) : loading && page === 1 ? (
         <Loading />
       ) : data?.items.length ? (
@@ -110,7 +116,7 @@ export function BikeDirectory({
             <BikeCard key={b.id} bike={b} />
           ))}
         </div>
-      ) : (
+      ) : !error && (
         <Empty
           title={
             garage
@@ -131,11 +137,12 @@ export function BikeDirectory({
           }
         />
       )}
-      {data?.hasMore && (
+      {error && data && <ErrorBox message={error} retry={() => setRetry(v => v + 1)} />}
+      {data?.hasMore && !error && (
         <button
           className="load-more"
           disabled={loading}
-          onClick={() => setPage((p) => p + 1)}
+          onClick={() => { if (!pending.current) { pending.current = true; setPage(p => p + 1); } }}
         >
           Показать ещё <ArrowDown size={16} />
         </button>
@@ -164,8 +171,11 @@ export function BikeDetail({
   const [page, setPage] = useState(1);
   const [more, setMore] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true), [retry, setRetry] = useState(0);
+  const pending = useRef(false);
   useEffect(() => {
     let active = true;
+    setLoading(true); setError(""); pending.current = true;
     Promise.all([
       api<Bike>(`/bikes/${id}`),
       api<Page<Post>>(`/bikes/${id}/history?page=${page}&pageSize=5`),
@@ -174,7 +184,7 @@ export function BikeDetail({
         if (active) {
           setBike(b);
           setPosts((previous) =>
-            page === 1 ? p.items : [...previous, ...p.items],
+            page === 1 ? p.items : appendUnique(previous, p.items),
           );
           setMore(p.hasMore);
           setTotal(p.total);
@@ -182,12 +192,12 @@ export function BikeDetail({
       })
       .catch((e) => {
         if (active) setError(e.message);
-      });
+      }).finally(() => { if (active) { pending.current = false; setLoading(false); } });
     return () => {
       active = false;
     };
-  }, [id, version, page, revision]);
-  if (error) return <ErrorBox message={error} />;
+  }, [id, version, page, revision, retry]);
+  if (error && !bike) return <ErrorBox message={error} retry={() => setRetry(v => v + 1)} />;
   if (!bike) return <Loading />;
   return (
     <>
@@ -259,7 +269,7 @@ export function BikeDetail({
             />
           ))}
         </div>
-      ) : (
+      ) : !loading && !error && (
         <Empty
           title="История только начинается"
           description="Здесь появятся поездки, обслуживание и обновления этого велосипеда."
@@ -272,8 +282,10 @@ export function BikeDetail({
           }
         />
       )}
-      {more && (
-        <button className="load-more" onClick={() => setPage((v) => v + 1)}>
+      {error && <ErrorBox message={error} retry={() => setRetry(v => v + 1)} />}
+      {loading && !posts.length && <Loading />}
+      {more && !error && (
+        <button className="load-more" disabled={loading} onClick={() => { if (!pending.current) { pending.current = true; setPage(v => v + 1); } }}>
           Ещё записи <ArrowDown size={16} />
         </button>
       )}

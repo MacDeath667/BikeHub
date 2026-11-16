@@ -399,6 +399,7 @@ export default function App() {
                       "moderation",
                       "settings",
                       "notifications",
+                      "search",
                     ].includes(section) && (
                       <Empty
                         title="Такой страницы нет"

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUpRight,
@@ -11,6 +11,7 @@ import type { Page, Post, User } from "../api";
 import { Avatar, Empty, ErrorBox, Loading } from "../components/ui";
 import { CategoryFilter } from "../components/CategoryFilter";
 import { PostCard } from "../components/PostCard";
+import { appendUnique } from "../components/paging";
 
 export function Feed({
   saved,
@@ -34,10 +35,13 @@ export function Feed({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [retry, setRetry] = useState(0);
+  const pending = useRef(false);
   useEffect(() => {
     let active = true;
     setLoading(true);
+    pending.current = true;
     setError("");
+    if (page === 1) setData(null);
     api<Page<Post>>(
       `/feed?${query({ tab: saved ? "saved" : tab, category, q: search, page, pageSize: 5 })}`,
     )
@@ -46,14 +50,14 @@ export function Feed({
           setData((previous) =>
             page === 1
               ? next
-              : { ...next, items: [...(previous?.items || []), ...next.items] },
+              : { ...next, items: appendUnique(previous?.items || [], next.items) },
           );
       })
       .catch((e) => {
         if (active) setError(e.message);
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) { pending.current = false; setLoading(false); }
       });
     return () => {
       active = false;
@@ -170,7 +174,7 @@ export function Feed({
           setPage(1);
         }}
       />
-      {error ? (
+      {error && !data ? (
         <ErrorBox message={error} retry={() => setRetry((v) => v + 1)} />
       ) : (
         <>
@@ -187,7 +191,7 @@ export function Feed({
                 />
               ))}
             </div>
-          ) : (
+          ) : !error && (
             <Empty
               title={
                 saved
@@ -203,11 +207,12 @@ export function Feed({
               }
             />
           )}
-          {data?.hasMore && (
+          {error && <ErrorBox message={error} retry={() => setRetry(v => v + 1)} />}
+          {data?.hasMore && !error && (
             <button
               className="load-more"
               disabled={loading}
-              onClick={() => setPage((p) => p + 1)}
+              onClick={() => { if (!pending.current) { pending.current = true; setPage(p => p + 1); } }}
             >
               {loading ? "Загружаем…" : "Больше историй"}
               <ArrowDown size={16} />
