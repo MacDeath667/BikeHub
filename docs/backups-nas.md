@@ -1,18 +1,35 @@
 # Резервные копии NAS
 
-Сценарии предназначены для существующей одноузловой K3s VM. Ansible запускается с рабочей станции и подключается к VM по SSH. PostgreSQL остаётся внешним сервером. Нужны установленный на VM Docker, доступ к реестрам образов и отдельный dataset NAS, смонтированный внутрь VM. На 16 ноября 2026 доступа к домашней сети нет: реальный серверный прогон ещё не выполнен.
+Сценарии предназначены для существующей одноузловой K3s VM. Ansible запускается с рабочей станции и подключается к VM по SSH. PostgreSQL остаётся внешним сервером. Нужны установленный на VM Docker, доступ к реестрам образов и отдельный dataset NAS, смонтированный внутрь VM. 16 ноября 2026 доступ к домашней сети восстановлен; dataset и NFS подготовлены, проверка реального снимка выполняется отдельно.
 
 ## Настройка места хранения
 
-В `infra/ansible/inventory/group_vars/bikehub/main.yml` пока задано:
+В `infra/ansible/inventory/group_vars/bikehub/main.yml` заданы:
 
 ```yaml
-bikehub_backup_root: /dev/null
+bikehub_backup_root: /mnt/bikehub-backups
+bikehub_backup_dataset: FileTrash/bikehub-backups
+bikehub_backup_client_ip: 192.168.0.49
+bikehub_backup_quota_bytes: 68719476736
 ```
 
-Это выключатель: backup откажет **до SSH**, остановки сервисов и чтения Secrets. Данные в `/dev/null` не записываются. После возвращения домой создадим отдельный dataset, настроим доступ и постоянное монтирование в VM, затем заменим значение, например на `/mnt/bikehub-backups`. Сценарий требует уже смонтированную внешнюю файловую систему (NFS/SMB/SSHFS/virtiofs/9p); каталог на системном диске VM не подходит. Учётная запись, от которой выполняется `become`, должна иметь возможность создавать приватные каталоги и файлы на этом mount.
+`FileTrash` — отдельный от VM-диска на `Applications` пул. Новый dataset имеет квоту 64 ГБ без резервирования всего объёма, сжатие LZ4 и приватный корень `root:root 0700`. NFS экспортирует только этот dataset и допускает только VM `192.168.0.49`; `maproot` сохраняет права root для записи приватных файлов. Другие exports и dataset не изменяются. Запись через NFS и повторное применение проверены на реальном NAS; mount сохраняется в `fstab` VM с `nosuid,nodev,noexec`.
 
-Dataset и mount этот playbook не создаёт. Шифрование и отдельная копия вне NAS настраиваются отдельно; текущий формат сам не шифруется. Каталоги имеют права `0700`, артефакты — `0600`. Они содержат персональные данные, ключи сессий, почтовые задания и Kubernetes Secrets. Нельзя публиковать их в Git или CI artifacts. Старые копии автоматически не удаляются.
+Подготовка и повторное применение:
+
+```sh
+ansible-galaxy collection install -r infra/ansible/requirements.yml
+ansible-playbook -i "192.168.0.49," -u ansible \
+  --private-key ~/.ssh/truenas_admin \
+  infra/ansible/playbooks/prepare-backups-nas.yml \
+  -e bikehub_target_group=all
+```
+
+Playbook работает с TrueNAS API по SSH под `truenas_admin`, без паролей или API-ключей в аргументах. Он отказывается менять чужой dataset без маркера `bikehub:purpose=backups` и заменять посторонний mount/скрывать существующие файлы. [Поля dataset API](https://api.truenas.com/v25.10/api_methods_pool.dataset.create.html) и [ограничения NFS export](https://api.truenas.com/v25.10/api_methods_sharing.nfs.create.html) дополнительно сверены с API установленного TrueNAS 25.10.6.
+
+`bikehub_backup_root: /dev/null` по-прежнему служит выключателем: backup откажет **до SSH**, остановки сервисов и чтения Secrets. Данные в `/dev/null` не записываются. Backup требует уже смонтированную внешнюю файловую систему; каталог на системном диске VM не подходит. Если NFS был недоступен при загрузке VM, повторно выполните подготовку mount до backup.
+
+Dataset создаёт `prepare-backups-nas.yml`, а `backup-nas.yml` только использует mount. Новый dataset наследует отсутствие шифрования от родительского пула; шифрование, хранение ключей и отдельная копия вне NAS настраиваются отдельно. Каталоги снимков имеют права `0700`, артефакты — `0600`. Они содержат персональные данные, ключи сессий, почтовые задания и Kubernetes Secrets. Нельзя публиковать их в Git или CI artifacts. Старые копии автоматически не удаляются.
 
 ## Создание копии
 

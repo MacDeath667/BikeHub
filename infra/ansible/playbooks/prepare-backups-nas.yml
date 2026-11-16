@@ -1,0 +1,197 @@
+---
+- name: Prepare one private BikeHub dataset and a VM-restricted NFS export
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  any_errors_fatal: true
+  vars_files:
+    - ../inventory/group_vars/bikehub/main.yml
+  vars:
+    backup_dataset_path: "/mnt/{{ bikehub_backup_dataset }}"
+  tasks:
+    - name: Validate the dedicated dataset and explicit VM mount before changes
+      ansible.builtin.assert:
+        that:
+          - bikehub_backup_dataset is match('^[A-Za-z0-9_-]+/[A-Za-z0-9_-]+$')
+          - not bikehub_backup_dataset.startswith('boot-pool/')
+          - bikehub_backup_root is match('^/mnt/[A-Za-z0-9_-]+$')
+          - bikehub_backup_client_ip is match('^[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+$')
+          - bikehub_backup_quota_bytes | int >= 1073741824
+        fail_msg: Select a dedicated dataset and an explicit /mnt directory; /dev/null remains a disabled sentinel.
+
+    - name: Configure only the selected backup dataset through the TrueNAS API
+      delegate_to: "{{ bikehub_backup_nas_host }}"
+      become: false
+      vars:
+        ansible_connection: ssh
+        ansible_user: "{{ bikehub_backup_nas_user }}"
+        ansible_ssh_private_key_file: "{{ lookup('ansible.builtin.env', 'HOME') }}/.ssh/truenas_admin"
+        ansible_python_interpreter: /usr/bin/python3
+      block:
+        - name: Look up only the selected dataset
+          ansible.builtin.command:
+            argv: [midclt, call, pool.dataset.query, "{{ [['id', '=', bikehub_backup_dataset]] | to_json }}"]
+          register: backup_dataset_query
+          changed_when: false
+
+        - name: Create a dedicated filesystem with a bounded quota
+          ansible.builtin.command:
+            argv: [midclt, call, pool.dataset.create, "{{ {'name': bikehub_backup_dataset, 'type': 'FILESYSTEM', 'comments': 'BikeHub private backups', 'compression': 'LZ4', 'atime': 'OFF', 'exec': 'OFF', 'acltype': 'POSIX', 'aclmode': 'DISCARD', 'refquota': bikehub_backup_quota_bytes | int, 'user_properties': [{'key': 'bikehub:purpose', 'value': 'backups'}]} | to_json }}"]
+          when: backup_dataset_query.stdout | from_json | length == 0
+
+        - name: Read the ownership marker before changing filesystem permissions
+          ansible.builtin.command:
+            argv: [/usr/sbin/zfs, get, -H, -o, value, 'bikehub:purpose', "{{ bikehub_backup_dataset }}"]
+          register: backup_dataset_marker
+          changed_when: false
+
+        - name: Refuse to take over an unrelated existing dataset
+          ansible.builtin.assert:
+            that: backup_dataset_marker.stdout | trim == 'backups'
+
+        - name: Read only root directory permissions
+          ansible.builtin.command:
+            argv: [midclt, call, filesystem.stat, "{{ backup_dataset_path }}"]
+          register: backup_dataset_stat
+          changed_when: false
+
+        - name: Restrict only the backup root without recursive ownership changes
+          ansible.builtin.command:
+            argv: [midclt, call, --job, filesystem.setperm, "{{ {'path': backup_dataset_path, 'uid': 0, 'gid': 0, 'mode': '0700', 'options': {'recursive': false, 'traverse': false, 'stripacl': false}} | to_json }}"]
+          vars:
+            current: "{{ backup_dataset_stat.stdout | from_json }}"
+          when: current.uid != 0 or current.gid != 0 or current.mode % 512 != 448
+
+        - name: Find any existing export for this exact dataset
+          ansible.builtin.command:
+            argv: [midclt, call, sharing.nfs.query, "{{ [['path', '=', backup_dataset_path]] | to_json }}"]
+          register: backup_nfs_query
+          changed_when: false
+
+        - name: Create an export accessible only to this VM
+          ansible.builtin.command:
+            argv: [midclt, call, sharing.nfs.create, "{{ {'path': backup_dataset_path, 'comment': 'BikeHub private backups', 'hosts': [bikehub_backup_client_ip], 'networks': [], 'maproot_user': 'root', 'maproot_group': 'root', 'ro': false, 'security': ['SYS'], 'enabled': true} | to_json }}"]
+          when: backup_nfs_query.stdout | from_json | length == 0
+
+        - name: Read back effective export restrictions
+          ansible.builtin.command:
+            argv: [midclt, call, sharing.nfs.query, "{{ [['path', '=', backup_dataset_path]] | to_json }}"]
+          register: backup_nfs_effective
+          changed_when: false
+
+        - name: Require a single VM-only root-private export
+          ansible.builtin.assert:
+            that:
+              - shares | length == 1
+              - shares[0].hosts == [bikehub_backup_client_ip]
+              - shares[0].networks | length == 0
+              - shares[0].maproot_user == 'root'
+              - shares[0].maproot_group == 'root'
+              - not shares[0].mapall_user
+              - not shares[0].mapall_group
+              - not shares[0].ro
+              - shares[0].enabled
+          vars:
+            shares: "{{ backup_nfs_effective.stdout | from_json }}"
+
+        - name: Read NFS service state without touching other services
+          ansible.builtin.command:
+            argv: [midclt, call, service.query, '[["service","=","nfs"]]']
+          register: backup_nfs_service
+          changed_when: false
+
+        - name: Enable NFS on subsequent NAS boots
+          ansible.builtin.command:
+            argv: [midclt, call, service.update, nfs, '{"enable":true}']
+          when: not (backup_nfs_service.stdout | from_json | first).enable
+
+        - name: Start NFS if it is stopped
+          ansible.builtin.command:
+            argv: [midclt, call, service.start, nfs, '{"silent":false}']
+          when: (backup_nfs_service.stdout | from_json | first).state != 'RUNNING'
+
+- name: Mount the external backup dataset on the existing BikeHub VM
+  hosts: "{{ bikehub_target_group | default('bikehub') }}"
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../inventory/group_vars/bikehub/main.yml
+  vars:
+    backup_nfs_source: "{{ bikehub_truenas_ip }}:/mnt/{{ bikehub_backup_dataset }}"
+  tasks:
+    - name: Require the selected VM address before mounting
+      ansible.builtin.assert:
+        that: ansible_host | default(inventory_hostname) == bikehub_backup_client_ip
+
+    - name: Inspect a possible pre-existing mount
+      ansible.builtin.command:
+        argv: [findmnt, --noheadings, --raw, --output, SOURCE, --mountpoint, "{{ bikehub_backup_root }}"]
+      register: backup_existing_mount
+      failed_when: backup_existing_mount.rc not in [0, 1]
+      changed_when: false
+
+    - name: Refuse to replace an unrelated filesystem
+      ansible.builtin.assert:
+        that: backup_existing_mount.stdout | trim in ['', backup_nfs_source]
+
+    - name: Inspect files that would be hidden by a new mount
+      ansible.builtin.find:
+        paths: "{{ bikehub_backup_root }}"
+        hidden: true
+        file_type: any
+        recurse: false
+      register: backup_mount_contents
+      when: backup_existing_mount.rc == 1
+
+    - name: Require an empty unmounted mountpoint
+      ansible.builtin.assert:
+        that: backup_mount_contents.matched == 0
+      when: backup_existing_mount.rc == 1
+
+    - name: Install the guest NFS client
+      ansible.builtin.apt:
+        name: nfs-common
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Mount only this dataset and persist its entry in fstab
+      ansible.posix.mount:
+        path: "{{ bikehub_backup_root }}"
+        src: "{{ backup_nfs_source }}"
+        fstype: nfs4
+        opts: rw,hard,vers=4.2,proto=tcp,_netdev,nosuid,nodev,noexec,nofail
+        state: mounted
+
+    - name: Verify private writes through the actual external filesystem
+      block:
+        - name: Allocate a private synthetic probe on the mounted dataset
+          ansible.builtin.tempfile:
+            path: "{{ bikehub_backup_root }}"
+            prefix: .bikehub-write-check-
+            state: directory
+          register: backup_storage_probe
+
+        - name: Write only synthetic probe content
+          ansible.builtin.copy:
+            dest: "{{ backup_storage_probe.path }}/probe"
+            content: "BikeHub external backup storage probe\n"
+            mode: '0600'
+
+        - name: Require NFS rather than a directory on the VM root disk
+          ansible.builtin.command:
+            argv: [findmnt, --noheadings, --output, 'SOURCE,FSTYPE', --target, "{{ bikehub_backup_root }}"]
+          register: backup_verified_mount
+          changed_when: false
+
+        - name: Verify the selected dataset is mounted
+          ansible.builtin.assert:
+            that:
+              - backup_verified_mount.stdout.split()[0] == backup_nfs_source
+              - backup_verified_mount.stdout.split()[1] in ['nfs', 'nfs4']
+      always:
+        - name: Remove only this run's synthetic probe
+          ansible.builtin.file:
+            path: "{{ backup_storage_probe.path }}"
+            state: absent
+          when: backup_storage_probe.path is defined

@@ -13,6 +13,8 @@
           - "{{ playbook_dir }}/../ansible/playbooks/backup-nas.yml"
           - -e
           - bikehub_target_group=all
+          - -e
+          - bikehub_backup_root=/dev/null
       register: unset_backup
       changed_when: false
       failed_when: false

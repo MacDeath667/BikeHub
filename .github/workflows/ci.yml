@@ -95,5 +95,6 @@ jobs:
           ansible-playbook --syntax-check infra/ansible/playbooks/backup-local.yml
           ansible-playbook --syntax-check infra/ansible/playbooks/restore-check-local.yml
           ansible-playbook --syntax-check infra/ansible/playbooks/backup-nas.yml
+          ansible-playbook --syntax-check infra/ansible/playbooks/prepare-backups-nas.yml
           ansible-playbook --syntax-check infra/ansible/playbooks/resume-backup-nas.yml
           ansible-playbook --syntax-check infra/ansible/playbooks/restore-check-nas.yml

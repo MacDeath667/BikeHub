@@ -75,9 +75,14 @@ bikehub_web_node_port: 30083
 bikehub_staging_web_node_port: 30084
 bikehub_web_replica_count: 1
 
-# NAS backup destination is intentionally unset until a dedicated dataset is mounted.
-# /dev/null is a sentinel, never a destination for an actual archive.
-bikehub_backup_root: /dev/null
+# Dedicated dataset is mounted by prepare-backups-nas.yml.
+# Set /dev/null to disable backup before SSH; it is never an archive destination.
+bikehub_backup_root: /mnt/bikehub-backups
+bikehub_backup_dataset: FileTrash/bikehub-backups
+bikehub_backup_nas_host: truenas.local
+bikehub_backup_nas_user: truenas_admin
+bikehub_backup_client_ip: 192.168.0.49
+bikehub_backup_quota_bytes: 68719476736
 
 # Verified account authorized to moderate both BikeHub instances.
 bikehub_moderator_emails:
