@@ -94,13 +94,35 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
         db.Communities.Where(g => g.Id == e.GroupId).Select(g => g.Name).Single(), community.Users(db).Single(u => u.Id == e.AuthorId),
         e.Kind, e.Title, e.Content, e.ImageIds, e.CreatedAt,
         db.GroupReplies.Count(r => r.EntryId == e.Id && !r.IsDeleted && !r.IsHidden && db.Accounts.Any(a => a.Id == r.AuthorId && !a.IsBlocked)), includeRoute ? RouteJson.Read(e.RouteJson) : null, e.RouteJson != null);
-    public Page<GroupEntryDto> Entries(Guid groupId, GroupEntryKind kind, int page)
+    private Page<GroupEntryDto> PageEntries(BikeHubDbContext db, IQueryable<GroupEntry> query, int page, int size)
+    {
+        page = Math.Clamp(page, 1, 1000000); size = Math.Clamp(size, 1, 50);
+        var rows = query.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id).Skip((page - 1) * size).Take(size)
+            .Select(e => new { e.Id, e.GroupId, e.AuthorId, e.Kind, e.Title, e.Content, e.ImageIds, e.CreatedAt,
+                GroupName = db.Communities.Where(g => g.Id == e.GroupId).Select(g => g.Name).Single(),
+                RepliesCount = db.GroupReplies.Count(r => r.EntryId == e.Id && !r.IsDeleted && !r.IsHidden && db.Accounts.Any(a => a.Id == r.AuthorId && !a.IsBlocked)),
+                HasRoute = e.RouteJson != null }).ToArray();
+        var authorIds = rows.Select(e => e.AuthorId).Distinct().ToArray();
+        var authors = community.Users(db).Where(u => authorIds.Contains(u.Id)).ToDictionary(u => u.Id);
+        return new(rows.Where(e => authors.ContainsKey(e.AuthorId)).Select(e => new GroupEntryDto(e.Id, e.GroupId, e.GroupName,
+            authors[e.AuthorId], e.Kind, e.Title, e.Content, e.ImageIds, e.CreatedAt, e.RepliesCount, HasRoute: e.HasRoute)).ToArray(), query.Count(), page, size);
+    }
+    public Page<GroupEntryDto> Entries(Guid groupId, GroupEntryKind kind, int page, string? search = null)
     {
         using var db = contexts.CreateDbContext(); Find(db, groupId);
-        page = Math.Clamp(page, 1, 1000000);
         var query = Visible(db).Where(e => e.GroupId == groupId && e.Kind == kind);
-        return new(query.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id).Skip((page - 1) * 20).Take(20)
-            .ToList().Select(e => View(db, e, false)).ToArray(), query.Count(), page, 20);
+        if (PostgresCommunityService.Search(search) is { } pattern)
+        {
+            query = query.Where(e => EF.Functions.ILike(e.Title + " " + e.Content, pattern, Constants.SearchEscapeCharacter));
+        }
+        return PageEntries(db, query, page, 20);
+    }
+    public Page<GroupEntryDto> Search(string? search, int page, int size)
+    {
+        using var db = contexts.CreateDbContext();
+        var pattern = PostgresCommunityService.Search(search);
+        var query = Visible(db).Where(e => pattern != null && EF.Functions.ILike(e.Title + " " + e.Content, pattern!, Constants.SearchEscapeCharacter));
+        return PageEntries(db, query, page, size);
     }
     public GroupEntryDto Entry(Guid id)
     {

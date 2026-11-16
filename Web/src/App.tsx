@@ -38,6 +38,7 @@ import { Settings } from "./pages/Settings";
 import { Communities } from "./pages/Communities";
 import { NotificationBell, Notifications } from "./pages/Notifications";
 import { clearLocalDrafts } from "./components/useDraft";
+import { SearchResults, searchKind } from "./pages/SearchResults";
 
 function navigate(path: string) {
   window.location.hash = path;
@@ -109,11 +110,14 @@ export default function App() {
   useEffect(() => () => clearTimeout(toastTimer.current), []);
   const [path, search = ""] = route.split("?");
   const searchQuery = new URLSearchParams(search).get("q") || "";
+  const resultKind = searchKind(new URLSearchParams(search).get("kind"));
+  const resultPage = Math.min(1000000, Math.max(1, Number.parseInt(new URLSearchParams(search).get("page") || "1", 10) || 1));
   const section = path.split("/")[1];
   const searchSubmit = (event: FormEvent) => {
     event.preventDefault();
-    navigate(`/?q=${encodeURIComponent(searchText.trim())}`);
+    navigate(`/search?q=${encodeURIComponent(searchText.trim())}`);
   };
+  useEffect(() => setSearchText(searchQuery), [searchQuery]);
   useEffect(() => {
     const requireLogin = () => { setMe(null); setAuthOpen(true); setVersion((value) => value + 1); };
     const changed = () => setVersion(value => value + 1);
@@ -137,6 +141,7 @@ export default function App() {
     } catch (error) { notify((error as Error).message); }
   };
   const nav = [
+    { path: "/search", icon: Search, text: "Поиск", active: section === "search" },
     {
       path: "/",
       icon: House,
@@ -261,6 +266,7 @@ export default function App() {
                   settings: "Настройки",
                   post: "История",
                   notifications: "Уведомления",
+                  search: "Поиск",
                 } as Record<string, string>
               )[section] || "Лента"}
             </span>
@@ -268,8 +274,9 @@ export default function App() {
           <form className="global-search" onSubmit={searchSubmit}>
             <Search size={18} />
             <input
-              aria-label="Поиск по историям, велосипедам и людям"
-              placeholder="Истории, велосипеды, люди…"
+              aria-label="Поиск по записям, людям и сообществам"
+              placeholder="Записи, люди, сообщества…"
+              maxLength={200}
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
             />
@@ -325,6 +332,7 @@ export default function App() {
                       onCreate={() => create("post")}
                     />
                   )}
+                  {section === "search" && <SearchResults search={searchQuery} kind={resultKind} page={resultPage} version={version} key={me?.id || "guest"} notify={notify} />}
                   {(section === "bikes" || (section === "garage" && me)) && (
                     <BikeDirectory
                       key={`${section}-${version}`}
@@ -366,7 +374,7 @@ export default function App() {
                   {section === "settings" && <Settings me={me} maskedEmail={authSession?.maskedEmail || null} account={path.split("/")[2] === "account"} />}
                   {section === "moderation" && <Moderation me={me} />}
                   {section === "notifications" && <Notifications key={me?.id || "guest"} me={me} />}
-                  {section === "community" && <CommunityDetail key={path} id={path.split("/")[2]} me={me} reload={reload} />}
+                  {section === "community" && <CommunityDetail key={`${path}-${searchQuery}`} id={path.split("/")[2]} me={me} reload={reload} search={searchQuery} />}
                   {section === "group-entry" && <GroupEntryDetail key={path} id={path.split("/")[2]} me={me} />}
                   {section === "communities" && (
                     <Communities

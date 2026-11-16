@@ -31,7 +31,8 @@ public sealed class CommunitiesController(ICommunityService service, GroupServic
     public IActionResult Delete(Guid id) { groups.Delete(id); return NoContent(); }
 
     [HttpGet("{id:guid}/entries")]
-    public ActionResult<Page<GroupEntryDto>> Entries(Guid id, [FromQuery] GroupEntryKind kind = GroupEntryKind.Post, [FromQuery] int page = 1) => Ok(groups.Entries(id, kind, page));
+    public ActionResult<Page<GroupEntryDto>> Entries(Guid id, [FromQuery] GroupEntryKind kind = GroupEntryKind.Post,
+        [FromQuery] int page = 1, [FromQuery] string? q = null) => Ok(groups.Entries(id, kind, page, q));
 
     [Authorize, HttpPost("{id:guid}/entries")]
     public ActionResult<GroupEntryDto> CreateEntry(Guid id, SaveGroupEntryRequest request) => Ok(groups.SaveEntry(id, null, request));

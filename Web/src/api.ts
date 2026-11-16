@@ -61,6 +61,21 @@ export interface Bike {
 }
 export interface GeoPoint { lat: number; lng: number; }
 export interface RouteData { name: string; segments: GeoPoint[][]; markers: (GeoPoint & { label: string })[]; }
+export interface GroupEntry {
+  hasRoute?: boolean;
+  route?: RouteData | null;
+  id: string;
+  groupId: string;
+  groupName: string;
+  author: User;
+  kind: number;
+  title: string;
+  content: string;
+  photos: Photo[];
+  imageIds: string[];
+  createdAt: string;
+  repliesCount: number;
+}
 export interface Post {
   hasRoute?: boolean;
   route?: RouteData | null;

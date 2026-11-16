@@ -7,7 +7,7 @@ import { PostRoute, RouteEditor } from "../components/PostRoute";
 import type { RouteData } from "../api";
 import { useEffect, useState } from "react";
 import { api, categories, relativeTime, requestLogin } from "../api";
-import type { Community, User, Page, Photo, Comment } from "../api";
+import type { Community, User, Page, Photo, Comment, GroupEntry as Entry } from "../api";
 import { ErrorBox, Loading, Empty, Avatar } from "../components/ui";
 import { PostEditor } from "../components/PostEditor";
 import { PostText } from "../components/PostText";
@@ -19,7 +19,6 @@ import { ReportButton } from "../components/ContentTools";
 import { useDraft } from "../components/useDraft";
 import { DraftStatus } from "../components/DraftStatus";
 
-type Entry = { hasRoute?: boolean; route?: RouteData | null; id: string; groupId: string; groupName: string; author: User; kind: number; title: string; content: string; photos: Photo[]; imageIds: string[]; createdAt: string; repliesCount: number };
 export function GroupEditor({ group, saved, close }: { group?: Community; saved: (g: Community) => void; close: () => void }) {
   const [imageId, setImageId] = useState<string | null>(group?.imageId || null);
   const [uploading, setUploading] = useState(false);
@@ -64,14 +63,15 @@ function EntryEditor({ groupId, kind, entry, saved, close, userId }: { groupId: 
     </fieldset>
   </form></section>;
 }
-export function CommunityDetail({ id, me, reload }: { id: string; me: User | null; reload: () => void }) {
+export function CommunityDetail({ id, me, reload, search = "" }: { id: string; me: User | null; reload: () => void; search?: string }) {
+  const [searchInput, setSearchInput] = useState(search);
   const [showMembers, setShowMembers] = useState(false);
   const [group, setGroup] = useState<Community | null>(null), [entries, setEntries] = useState<Page<Entry> | null>(null);
   const [kind, setKind] = useState(1), [page, setPage] = useState(1), [revision, setRevision] = useState(0);
   const [editing, setEditing] = useState(false), [creating, setCreating] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const refresh = () => { setRevision(v => v + 1); reload(); };
-  useEffect(() => { let active = true; setEntries(null); Promise.all([api<Community>(`/communities/${id}`), api<Page<Entry>>(`/communities/${id}/entries?kind=${kind}&page=${page}`)])
-    .then(([g, e]) => { if (active) { setGroup(g); setEntries(e); setError(""); } }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [id, kind, page, revision, me?.id]);
+  useEffect(() => { let active = true; setEntries(null); setError(""); Promise.all([api<Community>(`/communities/${id}`), api<Page<Entry>>(`/communities/${id}/entries?kind=${kind}&page=${page}&q=${encodeURIComponent(search)}`)])
+    .then(([g, e]) => { if (active) { setGroup(g); setEntries(e); setError(""); } }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [id, kind, page, revision, me?.id, search]);
   if (!group) return error ? <ErrorBox message={error} /> : <Loading />;
   return <><a className="back-link" href="#/communities">← Все сообщества</a>{showMembers && <CommunityMembers community={group} close={() => setShowMembers(false)} />}<div className="page-heading community-heading"><CommunityAvatar community={group} large /><div><div className="eyebrow">{categories[group.category]} · <button type="button" className="community-members-button" onClick={() => setShowMembers(true)} aria-label={`Участники сообщества ${group.name}: ${group.members}`}>{group.members} участников</button></div><h1>{group.name}</h1><p>{group.description}</p></div></div>
     <div className="content-tools"><button className={`button ${group.isJoined ? "secondary" : "primary"}`} disabled={busy} onClick={async () => { if (!me) { requestLogin(); return; } setBusy(true); try {
@@ -82,12 +82,16 @@ export function CommunityDetail({ id, me, reload }: { id: string; me: User | nul
     {editing && <GroupEditor group={group} close={() => setEditing(false)} saved={() => { setEditing(false); refresh(); }} />}
     <div className="content-tools group-tabs">{[1, 2].map(k => <button key={k} disabled={creating} className={`button ${kind === k ? "primary" : "secondary"}`} onClick={() => { setKind(k); setPage(1); setCreating(false); }}>{k === 1 ? "Посты" : "Обсуждения"}</button>)}
       {group.isJoined && !creating && <button className="text-button" onClick={() => setCreating(true)}>{kind === 1 ? "Написать пост" : "Начать обсуждение"}</button>}</div>
+    <form className="directory-search search-form" role="search" onSubmit={event => { event.preventDefault(); window.location.hash = `/community/${id}?q=${encodeURIComponent(searchInput.trim())}`; }}>
+      <input aria-label="Поиск в сообществе" placeholder="Поиск в постах и обсуждениях" value={searchInput} maxLength={200} disabled={creating} onChange={event => setSearchInput(event.target.value)} />
+      <button type="submit" className="text-button" disabled={creating}>Найти</button>{search && <a className="text-button" href={`#/community/${id}`}>Сбросить</a>}
+    </form>
     {creating && me && <EntryEditor key={me.id} userId={me.id} groupId={id} kind={kind} close={() => setCreating(false)} saved={e => { window.location.hash = `/group-entry/${e.id}`; }} />}
     {error && <ErrorBox message={error} />}{!entries ? <Loading /> : entries.items.length ? entries.items.map(e => {
       const cover = e.photos[0];
       return <article className="profile-card group-entry-card" key={e.id}><div className="content-tools"><Avatar user={e.author} /><a href={userHref(e.author)}>{e.author.name}</a><span className="muted">{relativeTime(e.createdAt)}</span></div>
         <a href={`#/group-entry/${e.id}`}><h2>{e.title}</h2></a><p>{postExcerpt(e.content)}</p>{!e.photos.length && e.hasRoute && <RouteCover previewUrl={`/group-entries/${e.id}/route-preview`} href={`#/group-entry/${e.id}`} />}{cover && <a href={`#/group-entry/${e.id}`}><img className="group-entry-cover" src={cover.imageUrl} alt="Фотография к записи" /></a>}<a className="text-button" href={`#/group-entry/${e.id}`}>{e.repliesCount} ответов →</a></article>;
-    }) : <Empty title={kind === 1 ? "Здесь ещё нет постов" : "Обсуждения пока не начались"} description="Поделитесь первым — участники присоединятся." />}
+    }) : <Empty title={search ? "По вашему запросу ничего не найдено" : kind === 1 ? "Здесь ещё нет постов" : "Обсуждения пока не начались"} description={search ? "Попробуйте другое слово или переключитесь между постами и обсуждениями." : "Поделитесь первым — участники присоединятся."} />}
     {entries && <div className="content-tools"><button className="text-button" disabled={page === 1} onClick={() => setPage(v => v - 1)}>Назад</button><span>Страница {page}</span><button className="text-button" disabled={!entries.hasMore} onClick={() => setPage(v => v + 1)}>Далее</button></div>}</>;
 }
 export function GroupEntryDetail({ id, me }: { id: string; me: User | null }) {

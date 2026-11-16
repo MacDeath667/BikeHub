@@ -75,7 +75,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             Owner = u
         };
 
-    private IQueryable<PostDto> Posts(BikeHubDbContext db, bool includeRoute = false) =>
+    internal IQueryable<PostDto> Posts(BikeHubDbContext db, bool includeRoute = false) =>
         from p in db.Posts.AsNoTracking()
         join b in Bikes(db) on p.BikeId equals b.Id
         where !p.IsDeleted && !p.IsHidden
@@ -107,9 +107,9 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         return new(source.Skip((page - 1) * size).Take(size).ToList(), source.Count(), page, size);
     }
 
-    private static string? Search(string? text)
+    internal static string? Search(string? text)
     {
-        if (text?.Length > 200)
+        if (text?.Length > Constants.MaximumSearchLength)
         {
             throw new CommunityProblem(400, LongSearchTitle);
         }
@@ -134,7 +134,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         }
         if (Search(query) is { } search)
         {
-            posts = posts.Where(p => EF.Functions.ILike(p.Title + " " + p.Content + " " + p.Bike.Name + " " + p.Author.Name, search));
+            posts = posts.Where(p => EF.Functions.ILike(p.Title + " " + p.Content + " " + p.Bike.Name + " " + p.Author.Name, search, Constants.SearchEscapeCharacter));
         }
         return Paginate(tab == Constants.FeedTabs.Popular ? posts.OrderByDescending(p => p.Likes).ThenByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id)
             : posts.OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id), page, pageSize);
@@ -162,7 +162,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         }
         if (Search(query) is { } search)
         {
-            bikes = bikes.Where(b => EF.Functions.ILike(b.Name + " " + b.Brand + " " + b.Owner.Name, search));
+            bikes = bikes.Where(b => EF.Functions.ILike(b.Name + " " + b.Brand + " " + b.Owner.Name, search, Constants.SearchEscapeCharacter));
         }
         return Paginate(bikes.OrderByDescending(b => b.Id), page, pageSize);
     }
@@ -462,12 +462,12 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         using var db = contexts.CreateDbContext();
         return Groups(db, query).ToList();
     }
-    private IQueryable<CommunityDto> Groups(BikeHubDbContext db, string? query)
+    internal IQueryable<CommunityDto> Groups(BikeHubDbContext db, string? query)
     {
         var groups = db.Communities.AsNoTracking().Where(g => !g.IsDeleted && !g.IsHidden);
         if (Search(query) is { } search)
         {
-            groups = groups.Where(g => EF.Functions.ILike(g.Name + " " + g.Description, search));
+            groups = groups.Where(g => EF.Functions.ILike(g.Name + " " + g.Description, search, Constants.SearchEscapeCharacter));
         }
         return groups.OrderBy(g => g.Name).Select(g => new CommunityDto
         {

@@ -14,6 +14,8 @@ internal static class Constants
     public const string MediaPathPrefix = BikeHub.Application.Constants.MediaPathPrefix;
     public const string IndexDocument = "index.html";
     public const int MaximumEmailLength = 254;
+    public const int MaximumSearchLength = 200;
+    public const string SearchEscapeCharacter = "\\";
     public const int DraftRetentionDays = 30;
     public const int MinimumDisplayNameLength = 2;
     public const int BrowserBindingByteLength = 32;
