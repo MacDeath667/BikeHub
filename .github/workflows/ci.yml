@@ -70,3 +70,5 @@ jobs:
           ansible-playbook infra/tests/staging.yml
           ansible-playbook infra/tests/auth-mode.yml
           ansible-playbook infra/tests/configure-mail.yml
+          ansible-playbook --syntax-check infra/ansible/playbooks/backup-local.yml
+          ansible-playbook --syntax-check infra/ansible/playbooks/restore-check-local.yml

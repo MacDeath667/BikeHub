@@ -1,0 +1,141 @@
+---
+- name: Back up the local Compose database, media and session keys
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    bikehub_source_dir: "{{ playbook_dir }}/../../.."
+    bikehub_backup_root: "{{ bikehub_source_dir }}/.local/backups"
+    bikehub_backup_image: postgres:18.6
+    bikehub_backup_uid: "{{ lookup('ansible.builtin.pipe', 'id -u') }}"
+    bikehub_backup_gid: "{{ lookup('ansible.builtin.pipe', 'id -g') }}"
+    bikehub_backup_sql: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../files/backup-table-counts.sql') }}"
+  tasks:
+    - name: Choose a new private backup directory
+      ansible.builtin.set_fact:
+        bikehub_backup_directory: "{{ bikehub_backup_root }}/{{ now(utc=true, fmt='%Y%m%dT%H%M%S%fZ') }}"
+
+    - name: Require an absolute backup path and a local project
+      ansible.builtin.assert:
+        that:
+          - bikehub_backup_root is abs
+          - bikehub_source_dir is abs
+          - bikehub_backup_image is match('^[A-Za-z0-9./_:@-]+$')
+
+    - name: Read the running local services before pausing writers
+      ansible.builtin.command:
+        argv: [docker, compose, ps, --status, running, --services]
+        chdir: "{{ bikehub_source_dir }}"
+      register: backup_running_services
+      changed_when: false
+
+    - name: Require a running local database
+      ansible.builtin.assert:
+        that:
+          - "'postgres' in backup_running_services.stdout_lines"
+        fail_msg: Start the local Compose stack before taking a backup.
+
+    - name: Locate the local API container and its persistent volumes
+      ansible.builtin.command:
+        argv: [docker, compose, ps, --all, --quiet, bikehub.api]
+        chdir: "{{ bikehub_source_dir }}"
+      register: backup_api_container
+      changed_when: false
+
+    - name: Require the local API container without guessing volume names
+      ansible.builtin.assert:
+        that:
+          - backup_api_container.stdout is match('^[a-f0-9]{12,64}$')
+
+    - name: Inspect only mounted volume names
+      ansible.builtin.command:
+        argv: [docker, inspect, --format, "{% raw %}{{json .Mounts}}{% endraw %}", "{{ backup_api_container.stdout }}"]
+      register: backup_mounts_result
+      changed_when: false
+
+    - name: Select the actual media and session-key volumes
+      ansible.builtin.set_fact:
+        backup_media_volume: "{{ (backup_mounts_result.stdout | from_json | selectattr('Destination', 'equalto', '/app/data/media') | selectattr('Type', 'equalto', 'volume') | first).Name }}"
+        backup_auth_volume: "{{ (backup_mounts_result.stdout | from_json | selectattr('Destination', 'equalto', '/app/data/auth') | selectattr('Type', 'equalto', 'volume') | first).Name }}"
+        backup_writers: "{{ backup_running_services.stdout_lines | intersect(['bikehub.api', 'mail']) }}"
+
+    - name: Create a private backup directory
+      ansible.builtin.file:
+        path: "{{ bikehub_backup_directory }}"
+        state: directory
+        mode: '0700'
+
+    - name: Export a coherent snapshot while local writers are stopped
+      block:
+        - name: Pause only previously running API and mail services
+          ansible.builtin.command:
+            argv: "{{ ['docker', 'compose', 'stop', '--timeout', '40'] + backup_writers }}"
+            chdir: "{{ bikehub_source_dir }}"
+          when: backup_writers | length > 0
+
+        - name: Dump the entire local application database without credentials in output
+          ansible.builtin.shell: >-
+            umask 077;
+            docker compose exec -T postgres pg_dump --username=bikehub_local
+            --dbname=bikehub_local --format=custom --no-owner --no-acl
+            > {{ (bikehub_backup_directory ~ '/database.dump') | quote }}
+          args:
+            chdir: "{{ bikehub_source_dir }}"
+          no_log: true
+
+        - name: Count table rows without reading application content
+          ansible.builtin.command:
+            argv: [docker, compose, exec, -T, postgres, psql, --username=bikehub_local, --dbname=bikehub_local, --no-psqlrc, --tuples-only, --no-align, --set=ON_ERROR_STOP=1]
+            chdir: "{{ bikehub_source_dir }}"
+            stdin: "{{ bikehub_backup_sql }}"
+          register: backup_table_counts
+          changed_when: false
+
+        - name: Save the database inventory
+          ansible.builtin.copy:
+            dest: "{{ bikehub_backup_directory }}/tables.txt"
+            content: "{{ backup_table_counts.stdout | trim }}\n"
+            mode: '0600'
+
+        - name: Archive read-only source volumes and hash their individual files
+          ansible.builtin.command:
+            argv:
+              - docker
+              - run
+              - --rm
+              - --network=none
+              - --read-only
+              - --mount
+              - "type=volume,source={{ item.volume }},target=/source,readonly"
+              - --mount
+              - "type=bind,source={{ bikehub_backup_directory }},target=/backup"
+              - --entrypoint=/bin/sh
+              - "{{ bikehub_backup_image }}"
+              - -ec
+              - "umask 077; cd /source; tar -czf /backup/{{ item.name }}.tar.gz .; find . -type f -exec sha256sum {} + > /backup/{{ item.name }}.sha256.unsorted; LC_ALL=C sort /backup/{{ item.name }}.sha256.unsorted > /backup/{{ item.name }}.sha256; rm /backup/{{ item.name }}.sha256.unsorted; chown {{ bikehub_backup_uid }}:{{ bikehub_backup_gid }} /backup/{{ item.name }}.tar.gz /backup/{{ item.name }}.sha256"
+          loop:
+            - { name: media, volume: "{{ backup_media_volume }}" }
+            - { name: auth, volume: "{{ backup_auth_volume }}" }
+
+        - name: Hash every backup artifact
+          ansible.builtin.stat:
+            path: "{{ bikehub_backup_directory }}/{{ item }}"
+            checksum_algorithm: sha256
+          loop: [database.dump, tables.txt, media.tar.gz, media.sha256, auth.tar.gz, auth.sha256]
+          register: backup_checksums
+
+        - name: Write the manifest last so interrupted exports cannot look complete
+          ansible.builtin.copy:
+            dest: "{{ bikehub_backup_directory }}/manifest.json"
+            mode: '0600'
+            content: "{{ {'formatVersion': 1, 'source': 'local-compose', 'database': 'bikehub_local', 'createdAt': now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ'), 'artifacts': dict(backup_checksums.results | map(attribute='item') | zip(backup_checksums.results | map(attribute='stat.checksum')))} | to_nice_json }}\n"
+      always:
+        - name: Resume exactly the services that were running before the backup
+          ansible.builtin.command:
+            argv: "{{ ['docker', 'compose', 'start', '--wait', '--wait-timeout', '120'] + backup_writers }}"
+            chdir: "{{ bikehub_source_dir }}"
+          when: backup_writers | length > 0
+
+    - name: Report only the backup location
+      ansible.builtin.debug:
+        msg: "Backup completed: {{ bikehub_backup_directory }}. Contains private data and session keys; keep it outside Git."
