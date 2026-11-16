@@ -24,7 +24,7 @@ import type { AuthSession } from "./api";
 import { ThemePicker } from "./components/ThemePicker";
 import { ChooseNickname } from "./components/ChooseNickname";
 import { AuthModal } from "./components/AuthModal";
-import type { Community, Overview, User } from "./api";
+import type { Community, Overview, Page, User } from "./api";
 import { Avatar, Empty, ErrorBox, Loading } from "./components/ui";
 import { RightRail } from "./components/RightRail";
 import { CreateModal } from "./components/CreateModal";
@@ -85,14 +85,14 @@ export default function App() {
     Promise.all([
       api<AuthSession>("/auth/session"),
       api<Overview>("/feed/overview"),
-      api<Community[]>("/communities"),
+      api<Page<Community>>("/communities/catalog?pageSize=5"),
     ])
       .then(([session, stats, groups]) => {
         if (active) {
           setMe(session.user);
           setAuthSession(session);
           setOverview(stats);
-          setCommunities(groups);
+          setCommunities(groups.items);
           setBootError("");
         }
       })
@@ -378,7 +378,7 @@ export default function App() {
                   {section === "group-entry" && <GroupEntryDetail key={path} id={path.split("/")[2]} me={me} />}
                   {section === "communities" && (
                     <Communities
-                      communities={communities}
+                      version={version}
                       me={me}
                       notify={notify}
                       reload={reload}

@@ -27,6 +27,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     private const string ModeratorTitle = "Необходимы права модератора.";
     private const string HandleTakenTitle = Nicknames.TakenTitle;
     private const string ProfileColor = "green";
+    private const int LegacyCommunityLimit = 100;
     private readonly string[] moderators = (configuration.GetSection("Moderation:ModeratorEmails").Get<string[]>() ?? [])
         .Select(x => x.Trim().ToLowerInvariant()).ToArray();
     private Guid? Viewer => current.Id;
@@ -460,7 +461,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     public IReadOnlyList<CommunityDto> GetCommunities(string? query)
     {
         using var db = contexts.CreateDbContext();
-        return Groups(db, query).ToList();
+        return Groups(db, query).Take(LegacyCommunityLimit).ToList();
     }
     internal IQueryable<CommunityDto> Groups(BikeHubDbContext db, string? query)
     {
@@ -469,7 +470,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         {
             groups = groups.Where(g => EF.Functions.ILike(g.Name + " " + g.Description, search, Constants.SearchEscapeCharacter));
         }
-        return groups.OrderBy(g => g.Name).Select(g => new CommunityDto
+        return groups.OrderBy(g => g.Name).ThenBy(g => g.Id).Select(g => new CommunityDto
         {
             Id = g.Id,
             Name = g.Name,

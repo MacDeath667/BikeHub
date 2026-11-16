@@ -148,6 +148,30 @@ public sealed class SearchTests
         Assert.Equal(HttpStatusCode.NotFound, (await guest.GetAsync($"/api/group-entries/{entry.Id}/replies")).StatusCode);
     }
     [Fact]
+    public async Task Community_catalog_is_bounded_and_late_entries_remain_accessible_directly()
+    {
+        await using var database = await PersistenceTestDatabase.CreateAsync(); var (owner, _, _) = await Seed(database);
+        using var db = database.CreateDbContext(); var ids = new List<Guid>();
+        for (var i = 0; i < 105; i++)
+        {
+            var id = Guid.CreateVersion7(); ids.Add(id);
+            db.Communities.Add(new CommunityGroup { Id = id, OwnerId = owner, Name = "Catalog group " + i.ToString("D3"), Category = (int)BikeCategory.Gravel });
+        }
+        db.Communities.Add(new CommunityGroup { Id = Guid.CreateVersion7(), Name = "Catalog group hidden", IsHidden = true });
+        db.Communities.Add(new CommunityGroup { Id = Guid.CreateVersion7(), Name = "Catalog group deleted", IsDeleted = true }); await db.SaveChangesAsync();
+        await using var app = App(database); using var guest = app.Browser();
+        using var firstResponse = await guest.GetAsync("/api/communities/catalog?q=Catalog%20group&pageSize=20");
+        Assert.True(firstResponse.Headers.CacheControl!.NoStore);
+        var first = (await firstResponse.Content.ReadFromJsonAsync<Page<CommunityDto>>())!; Assert.Equal(105, first.Total); Assert.Equal(20, first.Items.Count); Assert.True(first.HasMore);
+        var second = (await guest.GetFromJsonAsync<Page<CommunityDto>>("/api/communities/catalog?q=Catalog%20group&pageSize=20&page=2"))!;
+        Assert.Empty(first.Items.Select(g => g.Id).Intersect(second.Items.Select(g => g.Id)));
+        var legacy = (await guest.GetFromJsonAsync<CommunityDto[]>("/api/communities?q=Catalog%20group"))!; Assert.Equal(100, legacy.Length);
+        Assert.DoesNotContain(legacy, g => g.Id == ids[^1]);
+        Assert.Equal(ids[^1], (await guest.GetFromJsonAsync<CommunityDto>($"/api/communities/{ids[^1]}"))!.Id);
+        Assert.Equal(HttpStatusCode.BadRequest, (await guest.GetAsync("/api/communities/catalog?pageSize=51")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await guest.GetAsync("/api/communities/catalog?q=" + new string('a', 201))).StatusCode);
+    }
+    [Fact]
     public async Task Group_search_loads_authors_in_a_batch_and_its_indexes_are_available_to_the_planner()
     {
         await using var database = await PersistenceTestDatabase.CreateAsync(); var (owner, _, group) = await Seed(database);

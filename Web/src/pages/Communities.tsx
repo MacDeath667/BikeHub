@@ -3,19 +3,19 @@ import { CommunityMembers } from "../components/CommunityMembers";
 import { GroupEditor } from "./CommunityDetail";
 import { requestLogin } from "../api";
 import type { User } from "../api";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Plus, Search, Users } from "lucide-react";
-import { api, categories, number } from "../api";
-import type { Community } from "../api";
-import { Empty } from "../components/ui";
+import { api, categories, number, query } from "../api";
+import type { Community, Page } from "../api";
+import { Empty, ErrorBox, Loading } from "../components/ui";
 
 export function Communities({
-  communities,
+  version,
   me,
   notify,
   reload,
 }: {
-  communities: Community[];
+  version: number;
   me: User | null;
   notify: (s: string) => void;
   reload: () => void;
@@ -23,9 +23,18 @@ export function Communities({
   const [membersOf, setMembersOf] = useState<Community | null>(null);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
+  const [input, setInput] = useState(""), [page, setPage] = useState(1), [data, setData] = useState<Page<Community> | null>(null);
+  const [error, setError] = useState(""), [retry, setRetry] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true; const controller = new AbortController(); setData(null); setError("");
+    api<Page<Community>>(`/communities/catalog?${query({ q: search, page, pageSize: 20 })}`, { signal: controller.signal })
+      .then(result => { if (active) { setData(result); } }).catch(e => { if (active) { setError(e.message); } });
+    return () => { active = false; controller.abort(); };
+  }, [search, page, version, retry, me?.id]);
   async function join(c: Community) {
     if (busy) return;
+    if (!me) { requestLogin(); return; }
     setBusy(c.id);
     try {
       await api(`/communities/${c.id}/membership`, {
@@ -41,9 +50,6 @@ export function Communities({
       setBusy(null);
     }
   }
-  const filtered = communities.filter((c) =>
-    `${c.name} ${c.description}`.toLowerCase().includes(search.toLowerCase()),
-  );
   return (
     <>
       <div className="page-heading">
@@ -53,18 +59,22 @@ export function Communities({
       </div>
       <button className="button primary" onClick={() => { if (!me) { requestLogin(); return; } setCreating(!creating); }}>Создать сообщество</button>
       {creating && <GroupEditor close={() => setCreating(false)} saved={g => { reload(); window.location.hash = `/community/${g.id}`; }} />}
-      <label className="directory-search">
+      <form className="directory-search search-form" role="search" onSubmit={event => { event.preventDefault(); setSearch(input.trim()); setPage(1); }}>
         <Search size={18} />
         <input
           aria-label="Поиск сообществ"
           placeholder="Найдите сообщество по душе"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={input}
+          maxLength={200}
+          onChange={(e) => setInput(e.target.value)}
         />
-      </label>
+        <button type="submit" className="text-button">Найти</button>
+        {search && <button type="button" className="text-button" onClick={() => { setInput(""); setSearch(""); setPage(1); }}>Сбросить</button>}
+      </form>
       {membersOf && <CommunityMembers community={membersOf} close={() => setMembersOf(null)} />}
+      {error ? <ErrorBox message={error} retry={() => setRetry(value => value + 1)} /> : !data ? <Loading /> : <>
       <div className="community-list">
-        {filtered.map((c) => (
+        {data.items.map((c) => (
           <article className="community-row" key={c.id}>
             <a className="community-avatar-link" href={`#/community/${c.id}`} aria-label={`Открыть сообщество ${c.name}`}><CommunityAvatar community={c} /></a>
             <div className="community-row-body">
@@ -76,7 +86,7 @@ export function Communities({
                   <Users size={15} />{number(c.members)} участников
                 </button>
                 <button
-                  disabled={busy === c.id}
+                  disabled={busy !== null}
                   className={`button ${c.isJoined ? "secondary" : "primary"}`}
                   onClick={() => join(c)}
                 >
@@ -88,12 +98,14 @@ export function Communities({
           </article>
         ))}
       </div>
-      {!filtered.length && (
+      {!data.items.length && (
         <Empty
           title="Пока не нашли своих"
           description="Попробуйте поискать по другому слову."
         />
       )}
+      <nav className="search-pagination" aria-label="Страницы сообществ"><button type="button" className="text-button" disabled={page === 1} onClick={() => setPage(value => value - 1)}>Назад</button><span>Страница {data.pageNumber} · Всего {data.total}</span><button type="button" className="text-button" disabled={!data.hasMore} onClick={() => setPage(value => value + 1)}>Далее</button></nav>
+      </>}
     </>
   );
 }

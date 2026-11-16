@@ -47,6 +47,13 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
         using var db = contexts.CreateDbContext();
         return community.Groups(db, null).SingleOrDefault(g => g.Id == id) ?? throw new CommunityProblem(404, Missing);
     }
+    public Page<CommunityDto> Catalog(string? search, int page, int size)
+    {
+        using var db = contexts.CreateDbContext();
+        page = Math.Clamp(page, 1, 1000000); size = Math.Clamp(size, 1, 50);
+        var groups = community.Groups(db, search).OrderBy(g => g.Name).ThenBy(g => g.Id);
+        return new(groups.Skip((page - 1) * size).Take(size).ToArray(), groups.Count(), page, size);
+    }
     public Page<UserDto> Members(Guid id, int page, int pageSize)
     {
         using var db = contexts.CreateDbContext();

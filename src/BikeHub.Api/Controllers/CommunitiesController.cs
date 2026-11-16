@@ -11,7 +11,13 @@ namespace BikeHub.Api.Controllers;
 public sealed class CommunitiesController(ICommunityService service, GroupService groups) : ControllerBase
 {
     [HttpGet]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public ActionResult<IReadOnlyList<CommunityDto>> Get([FromQuery] string? q) => Ok(service.GetCommunities(q));
+
+    [HttpGet("catalog")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public ActionResult<Page<CommunityDto>> Catalog([FromQuery] string? q, [FromQuery] PaginationQuery paging) =>
+        Ok(groups.Catalog(q, paging.Page, paging.PageSize));
 
     [HttpGet("{id:guid}")]
     public ActionResult<CommunityDto> Detail(Guid id) => Ok(groups.Get(id));

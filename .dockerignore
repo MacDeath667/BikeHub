@@ -27,3 +27,14 @@ README.md
 **/wwwroot
 
 **/App_Data
+
+# Private local state must not enter Docker's build context.
+**/.local
+**/.codex-attachments
+**/.codex
+**/.agents
+**/.local-pki
+**/.venv-gmail
+**/__pycache__
+**/client_secret*.json
+**/gmail-oauth*.json

@@ -9,6 +9,7 @@ for (const [key, value] of Object.entries({ window: dom.window, document: dom.wi
 const { render, screen, fireEvent, waitFor, cleanup, act } = await import("@testing-library/react");
 const { SearchResults, searchHref, searchKind } = await import("../src/pages/SearchResults");
 const { CommunityDetail } = await import("../src/pages/CommunityDetail");
+const { Communities } = await import("../src/pages/Communities");
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 const person = (name: string) => ({ id: name, name, handle: "nickname", city: "Город", initials: "И", color: "green", bikesCount: 1, postsCount: 2 });
 const page = (items: unknown[], pageNumber = 1, hasMore = false) => ({ items, total: hasMore ? 15 : items.length, pageNumber, pageSize: 10, hasMore });
@@ -79,4 +80,36 @@ test("a failed discussion tab stops loading and can retry without showing old re
   fail = false; fireEvent.click(screen.getByText(/Попробовать снова/));
   await waitFor(() => assert.ok(screen.getByText("Восстановленное обсуждение")));
   assert.equal(screen.queryByText("Обсуждения пока недоступны"), null);
+});
+test("the directory pages on the server, preserves the page after joining, and resets it for a filter", async () => {
+  const requests: URL[] = []; let joined = false, version = 0;
+  const me = { ...person("Owner"), bio: "", followers: 0, isFollowing: false };
+  const group = (i: number) => ({ id: "group-" + i, name: "Сообщество " + i, category: "gravel", description: "Поездки", members: joined && i === 20 ? 3 : 2, isJoined: joined && i === 20, imageUrl: "", imageId: null });
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input)); requests.push(url);
+    if (url.pathname === "/api/auth/session") { return json({ csrfToken: "catalog-csrf", user: me }); }
+    if (url.pathname.endsWith("/membership")) { assert.equal(init?.method, "PUT"); joined = true; return json(group(20)); }
+    assert.equal(url.pathname, "/api/communities/catalog"); assert.equal(url.searchParams.get("pageSize"), "20");
+    const current = Number(url.searchParams.get("page"));
+    return json({ items: url.searchParams.has("q") ? [] : current === 1 ? Array.from({ length: 20 }, (_, i) => group(i)) : [group(20)], total: url.searchParams.has("q") ? 0 : 21, pageNumber: current, pageSize: 20, hasMore: current === 1 && !url.searchParams.has("q") });
+  };
+  const reload = () => { version++; view.rerender(<Communities version={version} me={me} notify={() => {}} reload={reload} />); };
+  const view = render(<Communities version={version} me={me} notify={() => {}} reload={reload} />);
+  await waitFor(() => assert.ok(screen.getByText("Сообщество 0"))); fireEvent.click(screen.getByText("Далее"));
+  await waitFor(() => assert.ok(screen.getByText("Сообщество 20"))); fireEvent.click(screen.getByText("Вступить"));
+  await waitFor(() => assert.ok(screen.getByText("Вы участник"))); assert.equal(version, 1); assert.equal(screen.queryByText("Сообщество 0"), null);
+  assert.equal(requests.at(-1)!.searchParams.get("page"), "2");
+  fireEvent.change(screen.getByLabelText("Поиск сообществ"), { target: { value: "Тест%_" } }); fireEvent.submit(screen.getByRole("search"));
+  await waitFor(() => assert.ok(screen.getByText("Пока не нашли своих")));
+  assert.equal(requests.at(-1)!.searchParams.get("q"), "Тест%_"); assert.equal(requests.at(-1)!.searchParams.get("page"), "1");
+});
+test("joining from an anonymous directory asks for login without a mutation request", async () => {
+  let mutations = 0, logins = 0;
+  globalThis.fetch = async (_input, init) => { if (init?.method) { mutations++; } return json(page([{ id: "g", name: "Группа для гостя", category: "gravel", description: "Поездки", members: 0, isJoined: false, imageId: null, imageUrl: "" }])); };
+  const login = () => { logins++; }; window.addEventListener("bikehub:auth-required", login);
+  try {
+    render(<Communities version={0} me={null} notify={() => {}} reload={() => {}} />);
+    await waitFor(() => assert.ok(screen.getByText("Группа для гостя"))); fireEvent.click(screen.getByText("Вступить"));
+    assert.equal(logins, 1); assert.equal(mutations, 0);
+  } finally { window.removeEventListener("bikehub:auth-required", login); }
 });
