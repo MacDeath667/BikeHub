@@ -175,43 +175,63 @@ export async function api<T>(
     }
     headers.set("X-CSRF-TOKEN", csrfToken);
   }
-  let response: Response;
+  const controller = new AbortController();
+  let timedOut = false;
+  const cancel = () => controller.abort(options.signal?.reason);
+  if (options.signal?.aborted) cancel();
+  else options.signal?.addEventListener("abort", cancel, { once: true });
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, options.body instanceof FormData ? 120000 : 60000);
   try {
-    response = await fetch(new URL(`api${path}`, siteBase), {
-      ...options,
-      credentials: "same-origin",
-      headers,
-    });
-  } catch {
-    throw new Error(
-      "Не удалось связаться с API. Проверьте, что сервер запущен.",
-    );
-  }
-  if (!response.ok) {
-    if (response.status === 401 && !path.startsWith("/auth/")) {
-      csrfToken = "";
-      requestLogin();
+    let response: Response;
+    try {
+      response = await fetch(new URL(`api${path}`, siteBase), {
+        ...options,
+        credentials: "same-origin",
+        headers,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (controller.signal.aborted) throw error;
+      throw new Error(["GET", "HEAD", "OPTIONS"].includes(method)
+        ? "Не удалось связаться с BikeHub. Проверьте подключение и попробуйте снова."
+        : "Не удалось получить ответ BikeHub. Проверьте подключение и результат действия перед повтором.");
     }
-    const problem = await response.json().catch(() => null);
-    const validation = problem?.errors
-      ? Object.values(problem.errors).flat().join(" ")
-      : null;
-    throw new ApiError(response.status,
-      response.status === 401
-        ? "Войдите в аккаунт, чтобы продолжить."
-        : response.status === 429
-        ? problem?.title || "Слишком много запросов. Попробуйте позже."
-        : response.status === 404
-        ? problem?.title || "Эта страница не найдена."
-        : validation ||
-          problem?.title ||
-          "Не удалось выполнить действие. Попробуйте ещё раз.",
-    );
+    if (!response.ok) {
+      if (response.status === 401 && !path.startsWith("/auth/")) {
+        csrfToken = "";
+        requestLogin();
+      }
+      const problem = await response.json().catch(error => { if (controller.signal.aborted) throw error; return null; });
+      const validation = problem?.errors
+        ? Object.values(problem.errors).flat().join(" ")
+        : null;
+      throw new ApiError(response.status,
+        response.status === 401
+          ? "Войдите в аккаунт, чтобы продолжить."
+          : response.status === 429
+          ? problem?.title || "Слишком много запросов. Попробуйте позже."
+          : response.status === 404
+          ? problem?.title || "Эта страница не найдена."
+          : validation ||
+            problem?.title ||
+            "Не удалось выполнить действие. Попробуйте ещё раз.",
+      );
+    }
+    if (response.status === 204) return undefined as T;
+    const result = await response.json();
+    if (path.startsWith("/auth/") && typeof result?.csrfToken === "string") csrfToken = result.csrfToken;
+    return resolveImages(result) as T;
+  } catch (error) {
+    if (timedOut && !options.signal?.aborted) {
+      throw new Error(["GET", "HEAD", "OPTIONS"].includes(method)
+        ? "BikeHub не ответил вовремя. Проверьте подключение и попробуйте загрузить данные ещё раз."
+        : "Ответ BikeHub не получен вовремя. Действие могло выполниться — проверьте результат перед повтором.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", cancel);
   }
-  if (response.status === 204) return undefined as T;
-  const result = await response.json();
-  if (path.startsWith("/auth/") && typeof result?.csrfToken === "string") csrfToken = result.csrfToken;
-  return resolveImages(result) as T;
 }
 export function query(values: Record<string, string | number | undefined>) {
   const params = new URLSearchParams();
