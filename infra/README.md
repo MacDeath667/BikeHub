@@ -6,7 +6,7 @@ Terraform управляет существующей Debian VM на TrueNAS; An
 
 `server.yml` также разворачивает соседний staging: [описание и отдельный запуск](#staging-рядом-с-основным-инстансом). Для выкладки только основного инстанса передайте `-e bikehub_staging_enabled=false`; существующий staging эта настройка не удаляет.
 
-Резервные копии двух контуров: [NAS backup, подготовка storage, recovery и проверка восстановления](../docs/backups-nas.md). Dataset `FileTrash/bikehub-backups` подключён к VM как `/mnt/bikehub-backups`; NFS разрешён только для VM. Реальный серверный прогон проверяется отдельно.
+Резервные копии двух контуров: [NAS backup, подготовка storage, recovery и проверка восстановления](../docs/backups-nas.md). Dataset `FileTrash/bikehub-backups` подключён к VM как `/mnt/bikehub-backups`; NFS разрешён только для VM. Реальная копия и её изолированное восстановление проверены 16 ноября 2026.
 
 ## Текущий сервер
 

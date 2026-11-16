@@ -105,7 +105,7 @@
 
 - name: Wait for all selected writer pods to terminate
   ansible.builtin.command:
-    argv: [k3s, kubectl, get, pods, -n, "{{ backup_namespace }}", -l, "app.kubernetes.io/name={{ item.label }}", -o, 'jsonpath={.items[*].metadata.name}']
+    argv: [k3s, kubectl, get, pods, -n, "{{ backup_namespace }}", -l, "app.kubernetes.io/name={{ item.label }}", --field-selector, 'status.phase!=Succeeded,status.phase!=Failed', -o, 'jsonpath={.items[*].metadata.name}']
   loop: "{{ backup_writers }}"
   register: backup_writer_pods
   until: backup_writer_pods.rc == 0 and backup_writer_pods.stdout | trim == ''
@@ -136,7 +136,7 @@
 
 - name: Wait for broker termination
   ansible.builtin.command:
-    argv: [k3s, kubectl, get, pods, -n, "{{ backup_namespace }}", -l, "app.kubernetes.io/name={{ item.label }}", -o, 'jsonpath={.items[*].metadata.name}']
+    argv: [k3s, kubectl, get, pods, -n, "{{ backup_namespace }}", -l, "app.kubernetes.io/name={{ item.label }}", --field-selector, 'status.phase!=Succeeded,status.phase!=Failed', -o, 'jsonpath={.items[*].metadata.name}']
   loop: "{{ backup_brokers }}"
   register: backup_broker_pods
   until: backup_broker_pods.rc == 0 and backup_broker_pods.stdout | trim == ''
