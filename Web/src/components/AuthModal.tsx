@@ -79,7 +79,7 @@ export function AuthModal({ session, close, onSuccess }: {
 
   async function verify(event: FormEvent) {
     event.preventDefault();
-    if (busy || !challenge) return;
+    if (busy || !challenge || Date.now() >= Date.parse(challenge.expiresAt)) return;
     setBusy(true);
     setError("");
     try {
@@ -102,9 +102,13 @@ export function AuthModal({ session, close, onSuccess }: {
   }
 
   return <dialog ref={dialog} className="auth-dialog" aria-labelledby="auth-title"
-    onCancel={(event) => { event.preventDefault(); close(); }}
-    onClick={(event) => { if (event.target === event.currentTarget) close(); }}>
-    <button className="icon-button auth-close" aria-label="Закрыть окно входа" onClick={close}><X size={20} /></button>
+    onCancel={(event) => { event.preventDefault(); if (!busy) close(); }}
+    onClick={(event) => {
+      if (busy || event.target !== event.currentTarget) return;
+      const bounds = event.currentTarget.getBoundingClientRect();
+      if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) close();
+    }}>
+    <button className="icon-button auth-close" aria-label="Закрыть окно входа" disabled={busy} onClick={close}><X size={20} /></button>
     <div className="auth-symbol"><Mail size={28} strokeWidth={1.5} /></div>
     <div className="eyebrow">ВАШЕ МЕСТО В BIKEHUB</div>
     <h2 id="auth-title">{challenge ? "Проверьте почту" : registering ? "Регистрация в BikeHub" : "Вход в BikeHub"}</h2>
@@ -133,7 +137,7 @@ export function AuthModal({ session, close, onSuccess }: {
         <input ref={codeInput} id="auth-code" className="auth-code" inputMode="numeric" autoComplete="one-time-code"
           pattern="[0-9]{6}" maxLength={6} required placeholder="000000" value={code} disabled={busy}
           onChange={(event) => setCode(event.target.value.replace(/[^0-9]/g, ""))} />
-        <button className="button primary" disabled={busy || code.length !== 6}>{busy ? "Проверяем…" : registering ? "Подтвердить и зарегистрироваться" : "Войти"}<Check size={17} /></button>
+        <button className="button primary" disabled={busy || code.length !== 6 || deliveryStatus === "expired"}>{busy ? "Проверяем…" : registering ? "Подтвердить и зарегистрироваться" : "Войти"}<Check size={17} /></button>
         <div className="auth-secondary">
           <button type="button" disabled={busy} onClick={() => { setChallenge(null); setError(""); setDevCode(""); }}><ArrowLeft size={14} /> {registering ? "Изменить почту или ник" : "Другая почта"}</button>
           <button type="button" disabled={busy || (remaining > 0 && deliveryStatus !== "expired")} onClick={() => {

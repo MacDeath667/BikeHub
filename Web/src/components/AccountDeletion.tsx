@@ -1,17 +1,31 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { ErrorBox } from "./ui";
+import { clearLocalDrafts } from "./useDraft";
 
 type Challenge = { challengeId: string; expiresAt: string; resendAt: string };
-export function AccountDeletion() {
+export function AccountDeletion({ userId }: { userId: string }) {
   const [open, setOpen] = useState(false), [challenge, setChallenge] = useState<Challenge | null>(null);
   const [code, setCode] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState(""), [status, setStatus] = useState(""), [now, setNow] = useState(Date.now());
-  useEffect(() => { if (!open) return; const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [open]);
-  useEffect(() => { if (!challenge) return; let active = true; const poll = () => api<{ status: string }>(`/users/me/deletion/${challenge.challengeId}/delivery`).then(s => { if (active) setStatus(s.status); }).catch(() => { if (active) setStatus("unavailable"); });
-    void poll(); const timer = window.setInterval(poll, 4000); return () => { active = false; clearInterval(timer); }; }, [challenge]);
+  useEffect(() => { if (!open) return; const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, [open]);
+  useEffect(() => {
+    if (!open || !challenge) return;
+    let active = true, timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      if (Date.now() >= Date.parse(challenge.expiresAt)) { if (active) setStatus("expired"); return; }
+      try {
+        const result = await api<{ status: string }>(`/users/me/deletion/${challenge.challengeId}/delivery`);
+        if (!active) return;
+        setStatus(result.status);
+        if (["sent", "failed", "expired", "unknown"].includes(result.status)) return;
+      } catch { if (active) setStatus("unavailable"); }
+      if (active) timer = setTimeout(poll, 4000);
+    };
+    void poll(); return () => { active = false; clearTimeout(timer); };
+  }, [open, challenge]);
   async function act(path: string, body?: object) { if (busy) return; setBusy(true); setError(""); try {
     const result = await api<Challenge>(path, { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) });
-    if (body) { window.location.hash = "/"; window.location.reload(); } else { setChallenge(result); setStatus("pending"); }
+    if (body) { clearLocalDrafts(userId); window.location.hash = "/"; window.location.reload(); } else { setChallenge(result); setStatus("pending"); }
   } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
   const expired = challenge && now >= Date.parse(challenge.expiresAt);
   return <section className="account-deletion"><button className="text-button danger" onClick={() => setOpen(!open)}>Удалить аккаунт</button>{open && <div className="profile-card group-editor"><h2>Удаление аккаунта</h2>
