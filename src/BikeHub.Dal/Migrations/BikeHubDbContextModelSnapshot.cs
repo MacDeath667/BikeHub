@@ -495,6 +495,43 @@ namespace BikeHub.Dal.Migrations
                     b.ToTable("community_relations", (string)null);
                 });
 
+            modelBuilder.Entity("BikeHub.Dal.Entities.ContentDraft", b =>
+                {
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("Scope")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("scope");
+
+                    b.PrimitiveCollection<Guid[]>("ImageIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("image_ids");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.Property<string>("StateJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("state_json");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("OwnerId", "Scope")
+                        .HasName("pk_content_drafts");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_content_drafts_expiry");
+
+                    b.ToTable("content_drafts", (string)null);
+                });
+
             modelBuilder.Entity("BikeHub.Dal.Entities.EmailChallengeEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -927,6 +964,16 @@ namespace BikeHub.Dal.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_relation_user");
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.ContentDraft", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_content_draft_owner");
                 });
 
             modelBuilder.Entity("BikeHub.Dal.Entities.GroupEntry", b =>

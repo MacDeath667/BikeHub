@@ -37,6 +37,7 @@ import { CommunityDetail, GroupEntryDetail } from "./pages/CommunityDetail";
 import { Settings } from "./pages/Settings";
 import { Communities } from "./pages/Communities";
 import { NotificationBell, Notifications } from "./pages/Notifications";
+import { clearLocalDrafts } from "./components/useDraft";
 
 function navigate(path: string) {
   window.location.hash = path;
@@ -130,6 +131,7 @@ export default function App() {
   const logout = async () => {
     try {
       const session = await api<AuthSession>("/auth/logout", { method: "POST" });
+      if (me) { clearLocalDrafts(me.id); }
       setMe(null); setAuthSession(session); setModal(null); reload(); navigate("/");
       notify("Вы вышли из аккаунта");
     } catch (error) { notify((error as Error).message); }
@@ -426,6 +428,7 @@ export default function App() {
         }} />}
       {modal && me && me.handle && (
         <CreateModal
+          key={`${me.id}-${modal}`}
           type={modal}
           me={me}
           close={() => setModal(null)}

@@ -140,6 +140,10 @@ export function relativeTime(value: string) {
     month: "long",
   });
 }
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) { super(message); this.status = status; }
+}
 export async function api<T>(
   path: string,
   options: RequestInit = {},
@@ -177,7 +181,7 @@ export async function api<T>(
     const validation = problem?.errors
       ? Object.values(problem.errors).flat().join(" ")
       : null;
-    throw new Error(
+    throw new ApiError(response.status,
       response.status === 401
         ? "Войдите в аккаунт, чтобы продолжить."
         : response.status === 429

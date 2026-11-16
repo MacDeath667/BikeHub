@@ -7,6 +7,8 @@ import { RouteEditor } from "./PostRoute";
 import type { RouteData } from "../api";
 import { PhotoCollection } from "./PhotoCollection";
 import { PostEditor } from "./PostEditor";
+import { useDraft } from "./useDraft";
+import { DraftStatus } from "./DraftStatus";
 import { Empty, ErrorBox, Loading } from "./ui";
 
 export function CreateModal({
@@ -25,9 +27,17 @@ export function CreateModal({
   onSuccess: (id: string) => void;
 }) {
   const initial = initialPost || initialBike;
-  const [photos, setPhotos] = useState<Photo[]>(initial?.photos?.length ? initial.photos : initial?.imageId ? [{ id: initial.imageId, imageUrl: initial.imageUrl }] : []);
-  const [content, setContent] = useState(initialPost?.content || "");
-  const [route, setRoute] = useState<RouteData | null>(initialPost?.route || null);
+  const selectedBike = window.location.hash.startsWith("#/bike/") ? window.location.hash.slice(7).split("?")[0] : "";
+  const draft = useDraft(me.id, `post-${initialPost?.id || "new"}`, {
+    title: initialPost?.title || "", content: initialPost?.content || "", category: initialPost?.category || "ride",
+    bikeId: initialPost?.bike.id || selectedBike || null,
+    photos: initial?.photos?.length ? initial.photos : initial?.imageId ? [{ id: initial.imageId, imageUrl: initial.imageUrl }] : [], route: initialPost?.route || null,
+  }, type === "post");
+  const { photos, content, route } = draft.value;
+  const setPhotos = (photos: Photo[]) => draft.setValue(value => ({ ...value, photos }));
+  const setContent = (content: string) => draft.setValue(value => ({ ...value, content }));
+  const setRoute = (route: RouteData | null) => draft.setValue(value => ({ ...value, route }));
+  const closeSafely = () => { if (draft.confirmClose()) { close(); } };
   const [routeBusy, setRouteBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [bikes, setBikes] = useState<Bike[]>([]);
@@ -59,7 +69,7 @@ export function CreateModal({
   }, [type, me.id]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (saving || uploading || routeBusy) return;
+    if (saving || uploading || routeBusy || draft.actionBusy || !draft.ready) return;
     const fields = Object.fromEntries(new FormData(event.currentTarget));
     const values =
       type === "bike"
@@ -72,10 +82,12 @@ export function CreateModal({
     setSaving(true);
     setError("");
     try {
+      await draft.flush().catch(() => {});
       const result = await api<{ id: string }>(
         (type === "post" ? "/posts" : "/bikes") + (initial ? `/${initial.id}` : ""),
         { method: initial ? "PUT" : "POST", body: JSON.stringify({ ...values, imageIds: photos.map(photo => photo.id), ...(type === "post" ? { route } : {}) }) },
       );
+      await draft.finish();
       onSuccess(result.id);
     } catch (e) {
       setError((e as Error).message);
@@ -83,19 +95,16 @@ export function CreateModal({
       setSaving(false);
     }
   }
-  const selectedBike = window.location.hash.startsWith("#/bike/")
-    ? window.location.hash.slice(7).split("?")[0]
-    : "";
   return (
     <dialog
       className="create-dialog"
       ref={dialogRef}
       onCancel={(e) => {
         e.preventDefault();
-        if (!saving && !uploading && !routeBusy) close();
+        if (!saving && !uploading && !routeBusy && !draft.actionBusy) closeSafely();
       }}
       onClick={(e) => {
-        if (e.target !== dialogRef.current || saving || uploading || routeBusy) return;
+        if (e.target !== dialogRef.current || saving || uploading || routeBusy || draft.actionBusy) return;
         const bounds = e.currentTarget.getBoundingClientRect();
         if (
           e.clientX < bounds.left ||
@@ -103,7 +112,7 @@ export function CreateModal({
           e.clientY < bounds.top ||
           e.clientY > bounds.bottom
         )
-          close();
+          closeSafely();
       }}
       aria-labelledby="dialog-title"
     >
@@ -118,8 +127,8 @@ export function CreateModal({
         <button
           type="button"
           className="icon-button"
-          onClick={close}
-          disabled={saving || uploading || routeBusy}
+          onClick={closeSafely}
+          disabled={saving || uploading || routeBusy || draft.actionBusy}
           aria-label="Закрыть"
         >
           <X size={22} />
@@ -134,7 +143,7 @@ export function CreateModal({
           ? "Поездка, полезное открытие или важное обновление — всё начинается с записи."
           : "Расскажите о велосипеде, который делает ваши дни интереснее."}
       </p>
-      {loading ? (
+      {loading || !draft.ready ? (
         <Loading />
       ) : type === "post" && !bikes.length && error ? (
         <ErrorBox message={error} />
@@ -150,7 +159,9 @@ export function CreateModal({
         />
       ) : (
         <form onSubmit={submit} className="editor-form">
-          {type === "bike" && <PhotoCollection photos={photos} onChange={setPhotos} onBusy={setUploading} disabled={saving} />}
+          <fieldset className="draft-fieldset" disabled={saving || draft.actionBusy}>
+          {type === "post" && <DraftStatus draft={draft} disabled={saving || uploading || routeBusy || draft.actionBusy} />}
+          {type === "bike" && <PhotoCollection photos={photos} onChange={setPhotos} onBusy={setUploading} disabled={saving || draft.actionBusy} />}
           {type === "post" ? (
             <>
               <label>
@@ -158,9 +169,8 @@ export function CreateModal({
                 <select
                   name="bikeId"
                   required
-                  defaultValue={
-                    initialPost?.bike.id || (bikes.some((b) => b.id === selectedBike) ? selectedBike : bikes[0]?.id)
-                  }
+                  value={bikes.some(b => b.id === draft.value.bikeId) ? draft.value.bikeId! : bikes[0]?.id}
+                  onChange={e => draft.setValue(value => ({ ...value, bikeId: e.target.value }))}
                 >
                   {bikes.map((b) => (
                     <option key={b.id} value={b.id}>
@@ -172,7 +182,8 @@ export function CreateModal({
               <label>
                 Заголовок
                 <input
-                  defaultValue={initialPost?.title}
+                  value={draft.value.title}
+                  onChange={e => draft.setValue(value => ({ ...value, title: e.target.value }))}
                   name="title"
                   placeholder="С чего началась ваша история?"
                   minLength={3}
@@ -182,7 +193,7 @@ export function CreateModal({
               </label>
               <label>
                 Тип записи
-                <select name="category" defaultValue={initialPost?.category || "ride"}>
+                <select name="category" value={draft.value.category} onChange={e => draft.setValue(value => ({ ...value, category: e.target.value }))}>
                   {Object.entries(postCategories).map(([key, label]) => (
                     <option value={key} key={key}>
                       {label}
@@ -190,8 +201,8 @@ export function CreateModal({
                   ))}
                 </select>
               </label>
-              <PostEditor value={content} onChange={setContent} photos={photos} onPhotosChange={setPhotos} onBusy={setUploading} disabled={saving} minLength={10} />
-              <RouteEditor value={route} onChange={setRoute} disabled={saving || uploading} onBusy={setRouteBusy} />
+              <PostEditor value={content} onChange={setContent} photos={photos} onPhotosChange={setPhotos} onBusy={setUploading} disabled={saving || draft.actionBusy} minLength={10} />
+              <RouteEditor value={route} onChange={setRoute} disabled={saving || uploading || draft.actionBusy} onBusy={setRouteBusy} />
               <span className="form-hint">
                 Без своих фотографий запись возьмёт обложку велосипеда.
               </span>
@@ -276,7 +287,7 @@ export function CreateModal({
             <button
               type="button"
               className="button secondary"
-              onClick={close}
+              onClick={closeSafely}
               disabled={saving || uploading || routeBusy}
             >
               Отмена
@@ -290,6 +301,7 @@ export function CreateModal({
               <ArrowUpRight size={17} />
             </button>
           </div>
+          </fieldset>
         </form>
       )}
     </dialog>

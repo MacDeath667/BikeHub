@@ -7,6 +7,14 @@ internal static class CommunityModel
 {
     internal static void Configure(ModelBuilder model)
     {
+        var draft = model.Entity<ContentDraft>();
+        draft.ToTable("content_drafts");
+        draft.HasKey(x => new { x.OwnerId, x.Scope }).HasName("pk_content_drafts");
+        draft.Property(x => x.Scope).HasMaxLength(120);
+        draft.Property(x => x.StateJson).HasColumnType("jsonb");
+        draft.Property(x => x.ImageIds).HasColumnType("uuid[]");
+        draft.HasIndex(x => x.UpdatedAt).HasDatabaseName("ix_content_drafts_expiry");
+        draft.HasOne<AuthAccountEntity>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_content_draft_owner");
         var notification = model.Entity<CommunityNotification>();
         notification.ToTable("notifications");
         notification.HasKey(x => x.Id).HasName("pk_notifications");

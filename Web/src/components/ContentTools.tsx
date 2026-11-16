@@ -20,7 +20,7 @@ export function ContentTools({ bike, post, me, saved, notify }: {
         finally { setBusy(false); }
       }}>Удалить</button></>}
     {me && !own && <ReportButton type={post ? 2 : 1} id={item.id} notify={notify} />}
-    {editing && me && <CreateModal type={post ? "post" : "bike"} me={me} initialBike={bike} initialPost={post}
+    {editing && own && me && <CreateModal key={`${me.id}-${item.id}`} type={post ? "post" : "bike"} me={me} initialBike={bike} initialPost={post}
       close={() => setEditing(false)} onSuccess={() => { setEditing(false); saved(); window.dispatchEvent(new Event("bikehub:content-changed")); notify("Изменения сохранены"); }} />}
   </div>;
 }

@@ -41,6 +41,7 @@ public sealed class AccountDeletionService(IDbContextFactory<BikeHubDbContext> c
         await db.Reports.Where(r => r.ResolvedBy == id).ExecuteUpdateAsync(u => u.SetProperty(r => r.ResolvedBy, (Guid?)null), ct);
         await db.Relations.Where(r => r.UserId == id || r.TargetId == id || removed.Contains(r.TargetId)).ExecuteDeleteAsync(ct);
         await db.Notifications.Where(n => n.RecipientId == id || n.ActorId == id || n.TargetId == id || removed.Contains(n.TargetId)).ExecuteDeleteAsync(ct);
+        await db.Drafts.Where(d => d.OwnerId == id).ExecuteDeleteAsync(ct);
         await db.Comments.Where(c => c.AuthorId == id || posts.Contains(c.PostId)).ExecuteDeleteAsync(ct);
         await db.Posts.Where(p => p.AuthorId == id || bikes.Contains(p.BikeId)).ExecuteDeleteAsync(ct);
         await db.Bikes.Where(b => b.OwnerId == id).ExecuteDeleteAsync(ct);

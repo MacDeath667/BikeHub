@@ -10,6 +10,13 @@ public sealed class MediaCleanup(IDbContextFactory<BikeHubDbContext> contexts, T
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
+        var draftCutoff = clock.GetUtcNow().AddDays(-Constants.DraftRetentionDays);
+        var expiredDrafts = await db.Drafts.Where(d => d.UpdatedAt < draftCutoff).OrderBy(d => d.UpdatedAt).Take(100)
+            .Select(d => new { d.OwnerId, d.Scope }).ToListAsync(cancellationToken);
+        foreach (var expired in expiredDrafts)
+        {
+            await db.Drafts.Where(d => d.OwnerId == expired.OwnerId && d.Scope == expired.Scope && d.UpdatedAt < draftCutoff).ExecuteDeleteAsync(cancellationToken);
+        }
         // Lock candidates before checking references. Writers lock the same rows until their save commits.
         await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
         {
@@ -21,6 +28,7 @@ public sealed class MediaCleanup(IDbContextFactory<BikeHubDbContext> contexts, T
                 AND NOT EXISTS (SELECT 1 FROM posts p WHERE p.image_id = media_assets.id OR media_assets.id = ANY(p.image_ids))
                 AND NOT EXISTS (SELECT 1 FROM communities g WHERE g.image_id = media_assets.id)
                 AND NOT EXISTS (SELECT 1 FROM group_entries e WHERE media_assets.id = ANY(e.image_ids))
+                AND NOT EXISTS (SELECT 1 FROM content_drafts d WHERE d.updated_at >= {draftCutoff} AND media_assets.id = ANY(d.image_ids))
                 ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED
                 """).ToListAsync(cancellationToken);
             foreach (var media in candidates)
@@ -30,7 +38,8 @@ public sealed class MediaCleanup(IDbContextFactory<BikeHubDbContext> contexts, T
                     await db.Bikes.AnyAsync(b => b.ImageId == id || b.ImageIds.Contains(id), cancellationToken) ||
                     await db.Posts.AnyAsync(p => p.ImageId == id || p.ImageIds.Contains(id), cancellationToken) ||
                     await db.Communities.AnyAsync(g => g.ImageId == id, cancellationToken) ||
-                    await db.GroupEntries.AnyAsync(e => e.ImageIds.Contains(id), cancellationToken);
+                    await db.GroupEntries.AnyAsync(e => e.ImageIds.Contains(id), cancellationToken) ||
+                    await db.Drafts.AnyAsync(d => d.UpdatedAt >= draftCutoff && d.ImageIds.Contains(id), cancellationToken);
                 if (!used)
                 {
                     db.MediaDeletions.Add(new MediaDeletion { Id = id });

@@ -16,6 +16,8 @@ import { MentionTextarea } from "../components/MentionTextarea";
 import { galleryPhotos, postExcerpt } from "../components/postMarkup";
 import { PhotoGallery } from "../components/PhotoGallery";
 import { ReportButton } from "../components/ContentTools";
+import { useDraft } from "../components/useDraft";
+import { DraftStatus } from "../components/DraftStatus";
 
 type Entry = { hasRoute?: boolean; route?: RouteData | null; id: string; groupId: string; groupName: string; author: User; kind: number; title: string; content: string; photos: Photo[]; imageIds: string[]; createdAt: string; repliesCount: number };
 export function GroupEditor({ group, saved, close }: { group?: Community; saved: (g: Community) => void; close: () => void }) {
@@ -36,21 +38,30 @@ export function GroupEditor({ group, saved, close }: { group?: Community; saved:
       {error && <ErrorBox message={error} />}<div className="content-tools"><button className="button primary" disabled={busy || uploading}>Сохранить</button><button type="button" className="text-button" disabled={busy || uploading} onClick={close}>Отмена</button></div>
     </form></section>;
 }
-function EntryEditor({ groupId, kind, entry, saved, close }: { groupId: string; kind: number; entry?: Entry; saved: (e: Entry) => void; close: () => void }) {
-  const [title, setTitle] = useState(entry?.title || ""), [content, setContent] = useState(entry?.content || "");
-  const [route, setRoute] = useState<RouteData | null>(entry?.route || null);
+function EntryEditor({ groupId, kind, entry, saved, close, userId }: { groupId: string; kind: number; entry?: Entry; saved: (e: Entry) => void; close: () => void; userId: string }) {
+  const draft = useDraft(userId, `group-${groupId}-${kind}-${entry?.id || "new"}`, { title: entry?.title || "", content: entry?.content || "", category: "", bikeId: null, photos: entry?.photos || [], route: entry?.route || null });
+  const { title, content, route, photos } = draft.value;
+  const setTitle = (title: string) => draft.setValue(value => ({ ...value, title }));
+  const setContent = (content: string) => draft.setValue(value => ({ ...value, content }));
+  const setRoute = (route: RouteData | null) => draft.setValue(value => ({ ...value, route }));
+  const setPhotos = (photos: Photo[]) => draft.setValue(value => ({ ...value, photos }));
   const [routeBusy, setRouteBusy] = useState(false);
-  const [photos, setPhotos] = useState<Photo[]>(entry?.photos || []);
   const [uploading, setUploading] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  if (!draft.ready) { return <Loading />; }
   return <section className="profile-card group-editor"><h2>{entry ? "Редактирование" : kind === 1 ? "Новый пост" : "Новое обсуждение"}</h2><form onSubmit={async e => {
-    e.preventDefault(); if (busy || uploading || routeBusy) return; setBusy(true); setError(""); try {
-      saved(await api<Entry>(`/communities/${groupId}/entries${entry ? `/${entry.id}` : ""}`, { method: entry ? "PUT" : "POST", body: JSON.stringify({ kind, title, content, imageIds: photos.map(p => p.id), route }) }));
+    e.preventDefault(); if (busy || uploading || routeBusy || draft.actionBusy) return; setBusy(true); setError(""); try {
+      await draft.flush().catch(() => {});
+      const result = await api<Entry>(`/communities/${groupId}/entries${entry ? `/${entry.id}` : ""}`, { method: entry ? "PUT" : "POST", body: JSON.stringify({ kind, title, content, imageIds: photos.map(p => p.id), route }) });
+      await draft.finish(); saved(result);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }}>
+    <fieldset className="draft-fieldset" disabled={busy || draft.actionBusy}>
+    <DraftStatus draft={draft} disabled={busy || uploading || routeBusy || draft.actionBusy} />
     <label>Заголовок<input required minLength={2} maxLength={160} value={title} onChange={e => setTitle(e.target.value)} /></label>
-    <PostEditor label={kind === 1 ? "Текст поста" : "Что обсудим?"} value={content} onChange={setContent} photos={photos} onPhotosChange={setPhotos} onBusy={setUploading} disabled={busy} />
-    <RouteEditor value={route} onChange={setRoute} onBusy={setRouteBusy} disabled={busy || uploading} />
-    {error && <ErrorBox message={error} />}<div className="content-tools"><button className="button primary" disabled={busy || uploading || routeBusy}>{entry ? "Сохранить" : "Опубликовать"}</button><button type="button" className="text-button" onClick={close}>Отмена</button></div>
+    <PostEditor label={kind === 1 ? "Текст поста" : "Что обсудим?"} value={content} onChange={setContent} photos={photos} onPhotosChange={setPhotos} onBusy={setUploading} disabled={busy || draft.actionBusy} />
+    <RouteEditor value={route} onChange={setRoute} onBusy={setRouteBusy} disabled={busy || uploading || draft.actionBusy} />
+    {error && <ErrorBox message={error} />}<div className="content-tools"><button className="button primary" disabled={busy || uploading || routeBusy}>{entry ? "Сохранить" : "Опубликовать"}</button><button type="button" className="text-button" disabled={busy || uploading || routeBusy} onClick={() => { if (draft.confirmClose()) { close(); } }}>Отмена</button></div>
+    </fieldset>
   </form></section>;
 }
 export function CommunityDetail({ id, me, reload }: { id: string; me: User | null; reload: () => void }) {
@@ -69,9 +80,9 @@ export function CommunityDetail({ id, me, reload }: { id: string; me: User | nul
       {(group.ownerId === me?.id || me?.isModerator) && <button className="text-button" onClick={() => setEditing(!editing)}>Настройки</button>}
       {me && <ReportButton type={6} id={id} notify={setError} />}</div>
     {editing && <GroupEditor group={group} close={() => setEditing(false)} saved={() => { setEditing(false); refresh(); }} />}
-    <div className="content-tools group-tabs">{[1, 2].map(k => <button key={k} className={`button ${kind === k ? "primary" : "secondary"}`} onClick={() => { setKind(k); setPage(1); setCreating(false); }}>{k === 1 ? "Посты" : "Обсуждения"}</button>)}
-      {group.isJoined && <button className="text-button" onClick={() => setCreating(!creating)}>{kind === 1 ? "Написать пост" : "Начать обсуждение"}</button>}</div>
-    {creating && <EntryEditor groupId={id} kind={kind} close={() => setCreating(false)} saved={e => { window.location.hash = `/group-entry/${e.id}`; }} />}
+    <div className="content-tools group-tabs">{[1, 2].map(k => <button key={k} disabled={creating} className={`button ${kind === k ? "primary" : "secondary"}`} onClick={() => { setKind(k); setPage(1); setCreating(false); }}>{k === 1 ? "Посты" : "Обсуждения"}</button>)}
+      {group.isJoined && !creating && <button className="text-button" onClick={() => setCreating(true)}>{kind === 1 ? "Написать пост" : "Начать обсуждение"}</button>}</div>
+    {creating && me && <EntryEditor key={me.id} userId={me.id} groupId={id} kind={kind} close={() => setCreating(false)} saved={e => { window.location.hash = `/group-entry/${e.id}`; }} />}
     {error && <ErrorBox message={error} />}{!entries ? <Loading /> : entries.items.length ? entries.items.map(e => {
       const cover = e.photos[0];
       return <article className="profile-card group-entry-card" key={e.id}><div className="content-tools"><Avatar user={e.author} /><a href={userHref(e.author)}>{e.author.name}</a><span className="muted">{relativeTime(e.createdAt)}</span></div>
@@ -92,8 +103,8 @@ export function GroupEntryDetail({ id, me }: { id: string; me: User | null }) {
   return <><a className="back-link" href={`#/community/${entry.groupId}`}>← {entry.groupName}</a><div className="eyebrow">{entry.kind === 1 ? "ПОСТ" : "ОБСУЖДЕНИЕ"}</div><h1>{entry.title}</h1><div className="content-tools"><Avatar user={entry.author} /><a href={userHref(entry.author)}>{entry.author.name}</a><span>{relativeTime(entry.createdAt)}</span></div>
     <PostText content={entry.content} photos={entry.photos} />{!entry.photos.length && entry.route ? <RouteCover route={entry.route} /> : gallery.length > 0 && <PhotoGallery photos={gallery} fallback={gallery[0].imageUrl} title={entry.title} />}
     <PostRoute route={entry.route} showMap={!!entry.photos.length} />
-    <div className="content-tools">{entry.author.id === me?.id && <button className="text-button" onClick={() => setEditing(!editing)}>Редактировать</button>}{(entry.author.id === me?.id || manager) && <button className="text-button" disabled={busy} onClick={() => remove(`/group-entries/${id}`, true)}>Удалить</button>}{me && <ReportButton type={7} id={id} notify={setError} />}</div>
-    {editing && <EntryEditor groupId={entry.groupId} kind={entry.kind} entry={entry} close={() => setEditing(false)} saved={() => { setEditing(false); setRevision(v => v + 1); }} />}
+    <div className="content-tools">{entry.author.id === me?.id && !editing && <button className="text-button" onClick={() => setEditing(true)}>Редактировать</button>}{(entry.author.id === me?.id || manager) && <button className="text-button" disabled={busy} onClick={() => remove(`/group-entries/${id}`, true)}>Удалить</button>}{me && <ReportButton type={7} id={id} notify={setError} />}</div>
+    {editing && me?.id === entry.author.id && <EntryEditor key={me.id} userId={me.id} groupId={entry.groupId} kind={entry.kind} entry={entry} close={() => setEditing(false)} saved={() => { setEditing(false); setRevision(v => v + 1); }} />}
     {error && <ErrorBox message={error} />}<h2>Ответы · {entry.repliesCount}</h2>
     {replies?.items.map(r => <section className="profile-card group-entry-card" key={r.id}><div className="content-tools"><Avatar user={r.author} /><a href={userHref(r.author)}>{r.author.name}</a><small>{relativeTime(r.createdAt)}</small></div><p className="group-content"><MentionText text={r.text} /></p><div className="content-tools">{(me?.id === r.author.id || manager) && <button className="text-button" disabled={busy} onClick={() => remove(`/group-entries/${id}/replies/${r.id}`)}>Удалить ответ</button>}{me && <ReportButton type={8} id={r.id} notify={setError} />}</div></section>)}
     {replies && <div className="content-tools"><button className="text-button" disabled={page === 1} onClick={() => setPage(v => v - 1)}>Назад</button><span>Страница {page}</span><button className="text-button" disabled={!replies.hasMore} onClick={() => setPage(v => v + 1)}>Далее</button></div>}
