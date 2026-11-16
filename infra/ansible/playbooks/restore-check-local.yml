@@ -28,16 +28,25 @@
     - name: Reject unknown manifests and incomplete artifact sets
       ansible.builtin.assert:
         that:
-          - restore_manifest.formatVersion == 1
+          - restore_manifest.formatVersion in [1, 2]
           - restore_manifest.source == 'local-compose'
           - restore_manifest.database == 'bikehub_local'
-          - restore_manifest.artifacts.keys() | sort == bikehub_backup_artifacts | sort
+          - restore_manifest.formatVersion == 1 or restore_manifest.mailDatabase | default('') == 'bikehub_mail'
+          - restore_manifest.formatVersion == 1 or restore_manifest.kafkaImage | default('') is match('^[A-Za-z0-9./_:@-]+$')
+          - restore_manifest.formatVersion == 1 or restore_manifest.kafkaCluster | default('') is match('^[A-Za-z0-9_-]+$')
+          - restore_manifest.artifacts.keys() | sort == (bikehub_backup_artifacts + (['mail-database.dump', 'mail-tables.txt', 'kafka.tar.gz', 'kafka.sha256', 'kafka-offsets.txt'] if restore_manifest.formatVersion == 2 else [])) | sort
+
+    - name: Select the exact artifact set and isolated target databases
+      ansible.builtin.set_fact:
+        restore_artifacts: "{{ bikehub_backup_artifacts + (['mail-database.dump', 'mail-tables.txt', 'kafka.tar.gz', 'kafka.sha256', 'kafka-offsets.txt'] if restore_manifest.formatVersion == 2 else []) }}"
+        restore_databases: "{{ [{'name': 'bikehub_restore_check', 'dump': 'database.dump', 'counts': 'tables.txt'}] + ([{'name': 'bikehub_restore_mail', 'dump': 'mail-database.dump', 'counts': 'mail-tables.txt'}] if restore_manifest.formatVersion == 2 else []) }}"
+        restore_archives: "{{ ['media', 'auth'] + (['kafka'] if restore_manifest.formatVersion == 2 else []) }}"
 
     - name: Check every artifact before executing pg_restore
       ansible.builtin.stat:
         path: "{{ bikehub_backup_directory }}/{{ item }}"
         checksum_algorithm: sha256
-      loop: "{{ bikehub_backup_artifacts }}"
+      loop: "{{ restore_artifacts }}"
       register: restore_checksums
 
     - name: Refuse damaged or missing backup files
@@ -71,29 +80,39 @@
 
         - name: Wait for the disposable database
           ansible.builtin.command:
-            argv: [docker, exec, "{{ restore_resource }}", pg_isready, --username=restore_check, --dbname=bikehub_restore_check]
+            argv: [docker, exec, "{{ restore_resource }}", pg_isready, --host=127.0.0.1, --username=restore_check, --dbname=bikehub_restore_check]
           register: restore_ready
           until: restore_ready.rc == 0
           retries: 30
           delay: 2
           changed_when: false
 
-        - name: Restore using the local container socket only
+        - name: Create a separate disposable mail database for a complete backup
           ansible.builtin.command:
-            argv: [docker, exec, "{{ restore_resource }}", pg_restore, --username=restore_check, --dbname=bikehub_restore_check, --no-owner, --no-acl, --exit-on-error, --single-transaction, /backup/database.dump]
+            argv: [docker, exec, "{{ restore_resource }}", createdb, --username=restore_check, bikehub_restore_mail]
+          when: restore_manifest.formatVersion == 2
+
+        - name: Restore each database using the local container socket only
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ restore_resource }}", pg_restore, --username=restore_check, "--dbname={{ item.name }}", --no-owner, --no-acl, --exit-on-error, --single-transaction, "/backup/{{ item.dump }}"]
           no_log: true
+          loop: "{{ restore_databases }}"
 
         - name: Recount all restored application tables
           ansible.builtin.command:
-            argv: [docker, exec, --interactive, "{{ restore_resource }}", psql, --username=restore_check, --dbname=bikehub_restore_check, --no-psqlrc, --tuples-only, --no-align, --set=ON_ERROR_STOP=1]
+            argv: [docker, exec, --interactive, "{{ restore_resource }}", psql, --username=restore_check, "--dbname={{ item.name }}", --no-psqlrc, --tuples-only, --no-align, --set=ON_ERROR_STOP=1]
             stdin: "{{ bikehub_backup_sql }}"
           register: restore_table_counts
           changed_when: false
+          loop: "{{ restore_databases }}"
 
         - name: Compare restored row counts with the quiesced source
           ansible.builtin.assert:
             that:
-              - restore_table_counts.stdout | trim == lookup('ansible.builtin.file', bikehub_backup_directory ~ '/tables.txt') | trim
+              - item.stdout | trim == lookup('ansible.builtin.file', bikehub_backup_directory ~ '/' ~ item.item.counts) | trim
+          loop: "{{ restore_table_counts.results }}"
+          loop_control:
+            label: "{{ item.item.name }}"
 
         - name: Extract archives into disposable volumes and verify every file byte
           ansible.builtin.command:
@@ -110,14 +129,60 @@
               - --entrypoint=/bin/sh
               - "{{ bikehub_backup_image }}"
               - -ec
-              - "cd /restore; tar -xzf /backup/{{ item }}.tar.gz --no-same-owner; if [ -s /backup/{{ item }}.sha256 ]; then sha256sum --check --status /backup/{{ item }}.sha256; fi"
-          loop: [media, auth]
+              - "cd /restore; tar -xzf /backup/{{ item }}.tar.gz {{ '--numeric-owner' if item == 'kafka' else '--no-same-owner' }}; if [ -s /backup/{{ item }}.sha256 ]; then sha256sum --check --status /backup/{{ item }}.sha256; fi"
+          loop: "{{ restore_archives }}"
           no_log: true
+
+        - name: Boot restored Kafka offline without any original volume or application client
+          ansible.builtin.command:
+            argv:
+              - docker
+              - run
+              - --detach
+              - --name
+              - "{{ restore_resource }}-kafka"
+              - --hostname=localhost
+              - --network=none
+              - --mount
+              - "type=volume,source={{ restore_resource }}-kafka,target=/var/lib/kafka/data"
+              - --env=KAFKA_NODE_ID=1
+              - --env=KAFKA_PROCESS_ROLES=broker,controller
+              - --env=KAFKA_LISTENERS=PLAINTEXT://127.0.0.1:9092,CONTROLLER://127.0.0.1:9093
+              - --env=KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+              - --env=KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+              - --env=KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+              - --env=KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+              - --env=KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093
+              - --env=KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+              - --env=KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+              - --env=KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+              - --env=KAFKA_LOG_DIRS=/var/lib/kafka/data
+              - --env=KAFKA_HEAP_OPTS=-Xms256m -Xmx256m
+              - "--env=CLUSTER_ID={{ restore_manifest.kafkaCluster }}"
+              - "{{ restore_manifest.kafkaImage }}"
+          when: restore_manifest.formatVersion == 2
+
+        - name: Verify restored Kafka application-topic offsets through loopback only
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ restore_resource }}-kafka", /opt/kafka/bin/kafka-get-offsets.sh, --bootstrap-server, localhost:9092, --topic, bikehub.mail.send.v1, --time, '-1']
+          register: restore_kafka_offsets
+          until: restore_kafka_offsets.rc == 0 and (restore_kafka_offsets.stdout_lines | sort | join('\n') | trim) == (lookup('ansible.builtin.file', bikehub_backup_directory ~ '/kafka-offsets.txt') | trim)
+          retries: 20
+          delay: 2
+          changed_when: false
+          when: restore_manifest.formatVersion == 2
 
         - name: Report verified recovery without printing account or key data
           ansible.builtin.debug:
-            msg: Restored database row counts, media files and session keys match the source snapshot. Original volumes and database were never mounted or modified.
+            msg: "{{ 'API and mail databases, offline Kafka offsets' if restore_manifest.formatVersion == 2 else 'Legacy API-only database (mail and Kafka are absent from this format)' }}: row counts and archived file hashes match the snapshot. Original volumes and databases were never mounted or modified."
       always:
+        - name: Remove only this run's disposable Kafka container
+          ansible.builtin.command:
+            argv: [docker, rm, --force, --volumes, "{{ restore_resource }}-kafka"]
+          register: restore_kafka_cleanup
+          failed_when: restore_kafka_cleanup.rc != 0 and 'No such container' not in restore_kafka_cleanup.stderr
+          changed_when: restore_kafka_cleanup.rc == 0
+          when: restore_manifest.formatVersion == 2
         - name: Remove only this run's disposable database container
           ansible.builtin.command:
             argv: [docker, rm, --force, --volumes, "{{ restore_resource }}"]
@@ -128,7 +193,7 @@
         - name: Remove only this run's disposable volumes
           ansible.builtin.command:
             argv: [docker, volume, rm, "{{ restore_resource }}-{{ item }}"]
-          loop: [database, media, auth]
+          loop: "{{ ['database'] + restore_archives }}"
           register: restore_volume_cleanup
           failed_when: restore_volume_cleanup.rc != 0 and 'no such volume' not in restore_volume_cleanup.stderr | lower
           changed_when: restore_volume_cleanup.rc == 0

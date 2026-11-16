@@ -10,6 +10,9 @@
     bikehub_backup_uid: "{{ lookup('ansible.builtin.pipe', 'id -u') }}"
     bikehub_backup_gid: "{{ lookup('ansible.builtin.pipe', 'id -g') }}"
     bikehub_backup_sql: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../files/backup-table-counts.sql') }}"
+    bikehub_backup_databases:
+      - { name: bikehub_local, dump: database.dump, counts: tables.txt }
+      - { name: bikehub_mail, dump: mail-database.dump, counts: mail-tables.txt }
   tasks:
     - name: Choose a new private backup directory
       ansible.builtin.set_fact:
@@ -29,10 +32,11 @@
       register: backup_running_services
       changed_when: false
 
-    - name: Require a running local database
+    - name: Require running local database and Kafka
       ansible.builtin.assert:
         that:
           - "'postgres' in backup_running_services.stdout_lines"
+          - "'kafka' in backup_running_services.stdout_lines"
         fail_msg: Start the local Compose stack before taking a backup.
 
     - name: Locate the local API container and its persistent volumes
@@ -65,6 +69,41 @@
         state: directory
         mode: '0700'
 
+    - name: Locate the local Kafka container
+      ansible.builtin.command:
+        argv: [docker, compose, ps, --quiet, kafka]
+        chdir: "{{ bikehub_source_dir }}"
+      register: backup_kafka_container
+      changed_when: false
+
+    - name: Inspect only Kafka volume mounts and image name
+      ansible.builtin.command:
+        argv: [docker, inspect, --format, "{% raw %}{{json .Mounts}}|{{.Config.Image}}{% endraw %}", "{{ backup_kafka_container.stdout }}"]
+      register: backup_kafka_metadata
+      changed_when: false
+
+    - name: Select the actual Kafka volume and image
+      ansible.builtin.set_fact:
+        backup_kafka_volume: "{{ (backup_kafka_metadata.stdout.split('|')[0] | from_json | selectattr('Destination', 'equalto', '/var/lib/kafka/data') | selectattr('Type', 'equalto', 'volume') | first).Name }}"
+        backup_kafka_image: "{{ backup_kafka_metadata.stdout.split('|')[1] }}"
+
+    - name: Read only the Kafka cluster identity
+      ansible.builtin.command:
+        argv: [docker, compose, exec, -T, kafka, cat, /var/lib/kafka/data/meta.properties]
+        chdir: "{{ bikehub_source_dir }}"
+      register: backup_kafka_properties
+      changed_when: false
+
+    - name: Remember and validate the cluster identity
+      ansible.builtin.set_fact:
+        backup_kafka_cluster: "{{ (backup_kafka_properties.stdout | regex_search('(?m)^cluster.id=([A-Za-z0-9_-]+)$', '\\1')) | first }}"
+
+    - name: Validate the exact Kafka image before stopping writers
+      ansible.builtin.assert:
+        that:
+          - backup_kafka_image is match('^[A-Za-z0-9./_:@-]+$')
+          - backup_kafka_properties.stdout is regex('(?m)^node.id=1$')
+
     - name: Export a coherent snapshot while local writers are stopped
       block:
         - name: Pause only previously running API and mail services
@@ -73,29 +112,52 @@
             chdir: "{{ bikehub_source_dir }}"
           when: backup_writers | length > 0
 
-        - name: Dump the entire local application database without credentials in output
+        - name: Read application-topic end offsets after writers stop
+          ansible.builtin.command:
+            argv: [docker, compose, exec, -T, kafka, /opt/kafka/bin/kafka-get-offsets.sh, --bootstrap-server, localhost:9092, --topic, bikehub.mail.send.v1, --time, '-1']
+            chdir: "{{ bikehub_source_dir }}"
+          register: backup_kafka_offsets
+          changed_when: false
+
+        - name: Save Kafka offsets without message content
+          ansible.builtin.copy:
+            dest: "{{ bikehub_backup_directory }}/kafka-offsets.txt"
+            content: "{{ backup_kafka_offsets.stdout_lines | sort | join('\n') }}\n"
+            mode: '0600'
+
+        - name: Stop Kafka cleanly before copying its log files
+          ansible.builtin.command:
+            argv: [docker, compose, stop, --timeout, '40', kafka]
+            chdir: "{{ bikehub_source_dir }}"
+
+        - name: Dump both local databases without credentials in output
           ansible.builtin.shell: >-
             umask 077;
             docker compose exec -T postgres pg_dump --username=bikehub_local
-            --dbname=bikehub_local --format=custom --no-owner --no-acl
-            > {{ (bikehub_backup_directory ~ '/database.dump') | quote }}
+            --dbname={{ item.name | quote }} --format=custom --no-owner --no-acl
+            > {{ (bikehub_backup_directory ~ '/' ~ item.dump) | quote }}
           args:
             chdir: "{{ bikehub_source_dir }}"
           no_log: true
+          loop: "{{ bikehub_backup_databases }}"
 
         - name: Count table rows without reading application content
           ansible.builtin.command:
-            argv: [docker, compose, exec, -T, postgres, psql, --username=bikehub_local, --dbname=bikehub_local, --no-psqlrc, --tuples-only, --no-align, --set=ON_ERROR_STOP=1]
+            argv: [docker, compose, exec, -T, postgres, psql, --username=bikehub_local, "--dbname={{ item.name }}", --no-psqlrc, --tuples-only, --no-align, --set=ON_ERROR_STOP=1]
             chdir: "{{ bikehub_source_dir }}"
             stdin: "{{ bikehub_backup_sql }}"
           register: backup_table_counts
           changed_when: false
+          loop: "{{ bikehub_backup_databases }}"
 
         - name: Save the database inventory
           ansible.builtin.copy:
-            dest: "{{ bikehub_backup_directory }}/tables.txt"
-            content: "{{ backup_table_counts.stdout | trim }}\n"
+            dest: "{{ bikehub_backup_directory }}/{{ item.item.counts }}"
+            content: "{{ item.stdout | trim }}\n"
             mode: '0600'
+          loop: "{{ backup_table_counts.results }}"
+          loop_control:
+            label: "{{ item.item.name }}"
 
         - name: Archive read-only source volumes and hash their individual files
           ansible.builtin.command:
@@ -116,20 +178,26 @@
           loop:
             - { name: media, volume: "{{ backup_media_volume }}" }
             - { name: auth, volume: "{{ backup_auth_volume }}" }
+            - { name: kafka, volume: "{{ backup_kafka_volume }}" }
 
         - name: Hash every backup artifact
           ansible.builtin.stat:
             path: "{{ bikehub_backup_directory }}/{{ item }}"
             checksum_algorithm: sha256
-          loop: [database.dump, tables.txt, media.tar.gz, media.sha256, auth.tar.gz, auth.sha256]
+          loop: [database.dump, tables.txt, mail-database.dump, mail-tables.txt, media.tar.gz, media.sha256, auth.tar.gz, auth.sha256, kafka.tar.gz, kafka.sha256, kafka-offsets.txt]
           register: backup_checksums
 
         - name: Write the manifest last so interrupted exports cannot look complete
           ansible.builtin.copy:
             dest: "{{ bikehub_backup_directory }}/manifest.json"
             mode: '0600'
-            content: "{{ {'formatVersion': 1, 'source': 'local-compose', 'database': 'bikehub_local', 'createdAt': now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ'), 'artifacts': dict(backup_checksums.results | map(attribute='item') | zip(backup_checksums.results | map(attribute='stat.checksum')))} | to_nice_json }}\n"
+            content: "{{ {'formatVersion': 2, 'source': 'local-compose', 'database': 'bikehub_local', 'mailDatabase': 'bikehub_mail', 'kafkaImage': backup_kafka_image, 'kafkaCluster': backup_kafka_cluster, 'createdAt': now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ'), 'artifacts': dict(backup_checksums.results | map(attribute='item') | zip(backup_checksums.results | map(attribute='stat.checksum')))} | to_nice_json }}\n"
       always:
+        - name: Resume the previously running Kafka and wait for readiness
+          ansible.builtin.command:
+            argv: [docker, compose, up, --detach, --no-build, --wait, kafka]
+            chdir: "{{ bikehub_source_dir }}"
+
         - name: Resume exactly the services that were running before the backup
           ansible.builtin.command:
             argv: "{{ ['docker', 'compose', 'start', '--wait', '--wait-timeout', '120'] + backup_writers }}"
