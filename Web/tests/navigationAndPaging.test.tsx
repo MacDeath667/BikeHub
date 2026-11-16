@@ -59,6 +59,28 @@ test("a failed feed page keeps readable stories and retries that page without du
   assert.equal(screen.getAllByText("История 2").length, 1); assert.deepEqual(requested, [1, 2, 2]);
 });
 
+test("a slow or failed recommendation request does not block the page or restart it on retry", async () => {
+  window.location.hash = "/search?q=Гравий&kind=people";
+  let release: (response: Response) => void = () => {}, fail = true, sessions = 0, searches = 0;
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/auth/session") { sessions++; return json({ user: null, enabled: true, csrfToken: "test" }); }
+    if (path === "/api/search/people") { searches++; return json(page([user])); }
+    if (path === "/api/communities/catalog") return json(page([]));
+    if (path === "/api/feed/overview") return fail ? new Promise(resolve => { release = resolve; }) : json({ tags: [], featuredBike: null });
+    throw Error("Unexpected request: " + path);
+  };
+  render(<App />);
+  await waitFor(() => assert.ok(screen.getByText(user.name)));
+  await act(async () => { fail = false; release(json({ title: "Статистика недоступна" }, 503)); });
+  await waitFor(() => assert.ok(screen.getByText("Не удалось обновить рекомендации сообщества.")));
+  fireEvent.change(screen.getByLabelText("Поисковый запрос"), { target: { value: "Несохранённый запрос" } });
+  fireEvent.click(screen.getByText(/Попробовать снова/));
+  await waitFor(() => assert.ok(!screen.queryByText("Не удалось обновить рекомендации сообщества.")));
+  assert.equal((screen.getByLabelText("Поисковый запрос") as HTMLInputElement).value, "Несохранённый запрос");
+  assert.equal(sessions, 1); assert.equal(searches, 1);
+});
+
 test("bike directory failures offer retry, retain the loaded page and merge overlapping bikes", async () => {
   let fail = true;
   globalThis.fetch = async input => {

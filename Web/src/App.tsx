@@ -66,6 +66,7 @@ export default function App() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [bootError, setBootError] = useState("");
+  const [railError, setRailError] = useState(""), [railRevision, setRailRevision] = useState(0);
   const [version, setVersion] = useState(0);
   const [modal, setModal] = useState<"post" | "bike" | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -82,17 +83,11 @@ export default function App() {
   const reload = useCallback(() => setVersion((v) => v + 1), []);
   useEffect(() => {
     let active = true;
-    Promise.all([
-      api<AuthSession>("/auth/session"),
-      api<Overview>("/feed/overview"),
-      api<Page<Community>>("/communities/catalog?pageSize=5"),
-    ])
-      .then(([session, stats, groups]) => {
+    api<AuthSession>("/auth/session")
+      .then(session => {
         if (active) {
           setMe(session.user);
           setAuthSession(session);
-          setOverview(stats);
-          setCommunities(groups.items);
           setBootError("");
         }
       })
@@ -104,6 +99,17 @@ export default function App() {
       active = false;
     };
   }, [version]);
+  useEffect(() => {
+    let active = true; setRailError("");
+    Promise.allSettled([api<Overview>("/feed/overview"), api<Page<Community>>("/communities/catalog?pageSize=5")])
+      .then(([stats, groups]) => {
+        if (!active) return;
+        setOverview(stats.status === "fulfilled" ? stats.value : null);
+        setCommunities(groups.status === "fulfilled" ? groups.value.items : []);
+        if (stats.status === "rejected" || groups.status === "rejected") setRailError("Не удалось обновить рекомендации сообщества.");
+      });
+    return () => { active = false; };
+  }, [version, railRevision]);
   useEffect(() => {
     setMobileOpen(false);
   }, [route]);
@@ -158,7 +164,7 @@ export default function App() {
       path: "/communities",
       icon: Users,
       text: "Сообщества",
-      active: section === "communities",
+      active: ["communities", "community", "group-entry"].includes(section),
     },
     {
       path: "/saved",
@@ -259,6 +265,9 @@ export default function App() {
                   bikes: "Велосипеды",
                   bike: "Бортжурнал",
                   communities: "Сообщества",
+                  community: "Сообщество",
+                  "group-entry": "Обсуждение сообщества",
+                  moderation: "Модерация",
                   saved: "Закладки",
                   garage: "Мой гараж",
                   user: "Профиль",
@@ -415,6 +424,8 @@ export default function App() {
                 <RightRail
                   overview={overview}
                   communities={communities}
+                  error={railError}
+                  retry={() => setRailRevision(v => v + 1)}
                   onCreate={() => create("bike")}
                 />
               </div>

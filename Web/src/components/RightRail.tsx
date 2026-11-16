@@ -11,20 +11,25 @@ import {
 } from "lucide-react";
 import { categories, number } from "../api";
 import type { Community, Overview } from "../api";
-import { Avatar } from "./ui";
+import { Avatar, ErrorBox } from "./ui";
 
 export function RightRail({
   overview,
   communities,
   onCreate,
+  error,
+  retry,
 }: {
   overview: Overview | null;
   communities: Community[];
   onCreate: () => void;
+  error?: string;
+  retry?: () => void;
 }) {
   const [membersOf, setMembersOf] = useState<Community | null>(null);
   return (
     <aside className="right-rail">
+      {error && <ErrorBox message={error} retry={retry} />}
       {membersOf && <CommunityMembers community={membersOf} close={() => setMembersOf(null)} />}
       <section className="garage-promo">
         <div className="eyebrow">

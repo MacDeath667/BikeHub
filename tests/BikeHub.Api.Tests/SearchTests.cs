@@ -129,6 +129,35 @@ public sealed class SearchTests
         public BikeHubDbContext CreateDbContext() => new(new DbContextOptionsBuilder<BikeHubDbContext>().UseNpgsql(connection).AddInterceptors(queries).Options);
     }
     [Fact]
+    public async Task Feed_and_comment_pages_keep_query_counts_bounded_and_omit_route_bodies()
+    {
+        await using var database = await PersistenceTestDatabase.CreateAsync(); var (owner, bike, _) = await Seed(database);
+        using var db = database.CreateDbContext(); var first = Post(owner, bike, "Initial ride"); db.Posts.Add(first);
+        for (var i = 0; i < 55; i++)
+        {
+            var author = new AuthAccountEntity { Id = Guid.CreateVersion7(), Email = $"paging_{i}@example.test", DisplayName = "Rider " + i, Handle = "paging_" + i };
+            var bicycle = new Bike { Id = Guid.CreateVersion7(), OwnerId = author.Id, Name = "Bicycle " + i };
+            var post = Post(author.Id, bicycle.Id, "Route " + i);
+            post.RouteJson = """{"name":"Route body must stay out of feeds","segments":[[{"lat":55,"lng":37},{"lat":56,"lng":38}]],"markers":[]}""";
+            db.Accounts.Add(author); db.Bikes.Add(bicycle); db.Posts.Add(post);
+            db.Comments.Add(new CommunityComment { Id = Guid.CreateVersion7(), PostId = first.Id, AuthorId = author.Id, Text = "Comment " + i, CreatedAt = DateTimeOffset.UnixEpoch });
+        }
+        await db.SaveChangesAsync();
+        var queries = new Queries(); await using var app = App(new MeasuredFactory(db.Database.GetConnectionString()!, queries)); using var guest = app.Browser();
+        foreach (var size in new[] { 1, 50 })
+        {
+            queries.Commands.Clear();
+            var feed = (await guest.GetFromJsonAsync<Page<PostDto>>($"/api/feed?pageSize={size}"))!;
+            Assert.Equal(size, feed.Items.Count); Assert.Equal(56, feed.Total); Assert.True(feed.HasMore);
+            Assert.Equal(2, queries.Commands.Count);
+            Assert.All(feed.Items, post => { Assert.True(post.HasRoute); Assert.Null(post.Route); });
+            queries.Commands.Clear();
+            var comments = (await guest.GetFromJsonAsync<Page<CommentDto>>($"/api/posts/{first.Id}/comments?pageSize={size}"))!;
+            Assert.Equal(size, comments.Items.Count); Assert.Equal(55, comments.Total); Assert.True(comments.HasMore);
+            Assert.Equal(3, queries.Commands.Count);
+        }
+    }
+    [Fact]
     public async Task Discussion_replies_batch_authors_and_keep_stable_private_filtered_paging()
     {
         await using var database = await PersistenceTestDatabase.CreateAsync(); var (owner, _, group) = await Seed(database);
