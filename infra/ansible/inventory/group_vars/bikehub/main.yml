@@ -75,6 +75,10 @@ bikehub_web_node_port: 30083
 bikehub_staging_web_node_port: 30084
 bikehub_web_replica_count: 1
 
+# NAS backup destination is intentionally unset until a dedicated dataset is mounted.
+# /dev/null is a sentinel, never a destination for an actual archive.
+bikehub_backup_root: /dev/null
+
 # Verified account authorized to moderate both BikeHub instances.
 bikehub_moderator_emails:
   - gashkovrom@gmail.com
