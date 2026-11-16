@@ -18,5 +18,6 @@
     <ProjectReference Include="../../src/BikeHub.Api/BikeHub.Api.csproj" />
     <ProjectReference Include="../../tools/BikeHub.Tools/BikeHub.Tools.csproj" />
     <Using Include="Xunit" />
+    <EmbeddedResource Include="../../infra/ansible/files/backup-table-counts.sql" LogicalName="BikeHub.Backup.TableCounts.sql" />
   </ItemGroup>
 </Project>

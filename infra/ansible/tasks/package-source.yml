@@ -7,7 +7,7 @@
   ansible.builtin.stat:
     path: "{{ bikehub_canonical_source_dir }}/{{ item }}"
     checksum_algorithm: sha256
-  loop: [src, Web, .dockerignore, .editorconfig, Directory.Build.props]
+  loop: "{{ ['src', 'Web', '.dockerignore', '.editorconfig', 'Directory.Build.props'] + (['tools/BikeHub.Tools'] if bikehub_package_tools | default(false) | bool else []) }}"
   delegate_to: localhost
   become: false
   register: bikehub_source_inputs
@@ -24,7 +24,7 @@
 
 - name: Inventory source files and their content hashes
   ansible.builtin.find:
-    paths: ["{{ bikehub_canonical_source_dir }}/src", "{{ bikehub_canonical_source_dir }}/Web"]
+    paths: "{{ [bikehub_canonical_source_dir ~ '/src', bikehub_canonical_source_dir ~ '/Web'] + ([bikehub_canonical_source_dir ~ '/tools/BikeHub.Tools'] if bikehub_package_tools | default(false) | bool else []) }}"
     recurse: true
     hidden: true
     follow: false
@@ -39,7 +39,7 @@
     bikehub_source_entries: >-
       {{ (bikehub_source_inventory.files +
           (bikehub_source_inputs.results | map(attribute='stat') | list))
-         | rejectattr('path', 'search', '/(bin|obj|node_modules|dist|wwwroot|App_Data|__pycache__|[.]git|[.]idea|[.]vs)(/|$)|/[.]env[^/]*($|/)|[.](user|pyc|tsbuildinfo|pfx|p12)$|/[.]DS_Store$')
+         | rejectattr('path', 'search', '/(bin|obj|node_modules|dist|wwwroot|App_Data|__pycache__|[.]git|[.]idea|[.]vs|[.]local|[.]codex-attachments)(/|$)|/[.]env[^/]*($|/)|[.](user|pyc|tsbuildinfo|pfx|p12)$|/[.]DS_Store$|/(client_secret[^/]*|gmail-oauth[^/]*)[.]json$')
          | sort(attribute='path') | list }}
 
 - name: Reject symlinks in the selected build context
