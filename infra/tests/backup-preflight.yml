@@ -1,0 +1,27 @@
+---
+- name: Verify the NAS sentinel refuses before SSH and service operations
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Run the actual entry point against an unreachable documentation address
+      ansible.builtin.command:
+        argv:
+          - ansible-playbook
+          - -i
+          - '192.0.2.1,'
+          - "{{ playbook_dir }}/../ansible/playbooks/backup-nas.yml"
+          - -e
+          - bikehub_target_group=all
+      register: unset_backup
+      changed_when: false
+      failed_when: false
+
+    - name: Require a controller-only refusal with no remote phase
+      ansible.builtin.assert:
+        that:
+          - unset_backup.rc != 0
+          - "'Replace bikehub_backup_root=/dev/null' in unset_backup.stdout"
+          - "'Back up both BikeHub contours' not in unset_backup.stdout"
+          - "'UNREACHABLE' not in unset_backup.stdout"
+          - "'localhost' in unset_backup.stdout"

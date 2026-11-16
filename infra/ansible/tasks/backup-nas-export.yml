@@ -1,0 +1,243 @@
+---
+- name: Create a new private snapshot directory on the mounted dataset
+  ansible.builtin.file:
+    path: "{{ backup_directory }}"
+    state: directory
+    mode: '0700'
+
+- name: Copy the schema-independent inventory query into the private configuration directory
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../files/backup-table-counts.sql"
+    dest: "{{ backup_config_directory.path }}/table-counts.sql"
+    mode: '0600'
+
+- name: Export each connection directly from Kubernetes to private libpq files on the VM
+  ansible.builtin.shell: |
+    set -o pipefail
+    umask 077
+    k3s kubectl get secret {{ item.secret | quote }} -n {{ backup_namespace | quote }} -o 'jsonpath={.data.connection-string}' |
+      base64 --decode |
+      docker run --rm --interactive --network=none --user=0 --read-only --tmpfs /tmp:rw,nosuid,noexec,size=16m \
+        --label {{ ('bikehub.backup.run=' ~ backup_run_id) | quote }} \
+        --env DOTNET_EnableDiagnostics=0 \
+        --mount {{ ('type=bind,source=' ~ backup_config_directory.path ~ ',target=/config') | quote }} \
+        {{ backup_tools_image | quote }} backup-pg --directory {{ ('/config/' ~ item.name) | quote }}
+  args:
+    executable: /bin/bash
+  loop: "{{ backup_database_secrets }}"
+  no_log: true
+
+- name: Verify both database connections before stopping any services
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - --network=host
+      - --label
+      - "bikehub.backup.run={{ backup_run_id }}"
+      - --read-only
+      - --add-host
+      - "{{ bikehub_truenas_hostname }}:{{ bikehub_truenas_ip }}"
+      - --mount
+      - "type=bind,source={{ backup_config_directory.path }},target=/config,readonly"
+      - --entrypoint=/bin/sh
+      - "{{ backup_postgres_image }}"
+      - -ec
+      - 'timeout --kill-after=15s {{ backup_command_timeout | int }}s psql --no-password --no-psqlrc --dbname="$(cat /config/{{ item.name }}/connection)" --set=ON_ERROR_STOP=1 --command="SELECT 1" >/dev/null'
+  loop: "{{ backup_database_secrets }}"
+  no_log: true
+  changed_when: false
+
+- name: Read only the on-disk Kafka cluster identities
+  ansible.builtin.slurp:
+    src: "{{ (backup_volumes | selectattr('name', 'equalto', item.name) | first).path }}/meta.properties"
+  loop: "{{ backup_brokers }}"
+  register: backup_kafka_properties
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Require compatible single-node Kafka identities
+  ansible.builtin.assert:
+    that:
+      - item.content | b64decode is regex('(?m)^node.id=1$')
+      - item.content | b64decode is regex('(?m)^cluster.id=[A-Za-z0-9_-]+$')
+  loop: "{{ backup_kafka_properties.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Initialize broker recovery metadata
+  ansible.builtin.set_fact:
+    backup_kafkas: []
+
+- name: Remember broker recovery identities without message content
+  ansible.builtin.set_fact:
+    backup_kafkas: "{{ backup_kafkas + [item.item | combine({'cluster': (item.content | b64decode | regex_search('(?m)^cluster.id=([A-Za-z0-9_-]+)$', '\\1')) | first})] }}"
+  loop: "{{ backup_kafka_properties.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Write the durable replica journal before the first scale operation
+  ansible.builtin.copy:
+    dest: "{{ backup_journal_path }}"
+    content: "{{ {'namespace': backup_namespace, 'writers': backup_writers, 'brokers': backup_brokers, 'runId': backup_run_id, 'credentialsDirectory': backup_config_directory.path} | to_nice_json }}\n"
+    mode: '0600'
+
+- name: Preserve non-secret runtime metadata in the snapshot
+  ansible.builtin.copy:
+    dest: "{{ backup_directory }}/runtime.json"
+    content: "{{ {'namespace': backup_namespace, 'writers': backup_writers, 'brokers': backup_brokers, 'volumes': backup_volumes | map(attribute='name') | list, 'operatorImage': backup_tools_image} | to_nice_json }}\n"
+    mode: '0600'
+
+- name: Preserve the current namespace configuration before changing replica counts
+  ansible.builtin.shell: >-
+    umask 077;
+    k3s kubectl get deployment,statefulset,service,configmap,pvc
+    -n {{ backup_namespace | quote }} -o json
+    > {{ (backup_directory ~ '/kubernetes.json') | quote }}
+  no_log: true
+
+- name: Pause only previously running application writers
+  ansible.builtin.command:
+    argv: [k3s, kubectl, scale, "{{ item.resource }}", -n, "{{ backup_namespace }}", --replicas=0]
+  loop: "{{ backup_writers }}"
+  when: item.replicas | int > 0
+
+- name: Wait for all selected writer pods to terminate
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, pods, -n, "{{ backup_namespace }}", -l, "app.kubernetes.io/name={{ item.label }}", -o, 'jsonpath={.items[*].metadata.name}']
+  loop: "{{ backup_writers }}"
+  register: backup_writer_pods
+  until: backup_writer_pods.rc == 0 and backup_writer_pods.stdout | trim == ''
+  retries: 90
+  delay: 2
+  changed_when: false
+
+- name: Read application-topic end offsets after consumers stop
+  ansible.builtin.command:
+    argv: [k3s, kubectl, exec, "{{ item.pod }}", -n, "{{ backup_namespace }}", --, /opt/kafka/bin/kafka-get-offsets.sh, --bootstrap-server, localhost:9092, --topic, "{{ item.topic }}", --time, '-1']
+  loop: "{{ backup_brokers }}"
+  register: backup_topic_offsets
+  changed_when: false
+
+- name: Save offsets without message bodies
+  ansible.builtin.copy:
+    dest: "{{ backup_directory }}/{{ item.item.name }}-offsets.txt"
+    content: "{{ item.stdout_lines | sort | join('\n') }}\n"
+    mode: '0600'
+  loop: "{{ backup_topic_offsets.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Stop managed brokers cleanly before copying their files
+  ansible.builtin.command:
+    argv: [k3s, kubectl, scale, "{{ item.resource }}", -n, "{{ backup_namespace }}", --replicas=0]
+  loop: "{{ backup_brokers }}"
+
+- name: Wait for broker termination
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, pods, -n, "{{ backup_namespace }}", -l, "app.kubernetes.io/name={{ item.label }}", -o, 'jsonpath={.items[*].metadata.name}']
+  loop: "{{ backup_brokers }}"
+  register: backup_broker_pods
+  until: backup_broker_pods.rc == 0 and backup_broker_pods.stdout | trim == ''
+  retries: 90
+  delay: 2
+  changed_when: false
+
+- name: Dump both complete source databases and record all application schemas
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - --network=host
+      - --label
+      - "bikehub.backup.run={{ backup_run_id }}"
+      - --read-only
+      - --add-host
+      - "{{ bikehub_truenas_hostname }}:{{ bikehub_truenas_ip }}"
+      - --mount
+      - "type=bind,source={{ backup_config_directory.path }},target=/config,readonly"
+      - --mount
+      - "type=bind,source={{ backup_directory }},target=/backup"
+      - --entrypoint=/bin/sh
+      - "{{ backup_postgres_image }}"
+      - -ec
+      - 'umask 077; timeout --kill-after=15s {{ backup_command_timeout | int }}s pg_dump --no-password --dbname="$(cat /config/{{ item.name }}/connection)" --format=custom --no-owner --no-acl --file=/backup/{{ item.dump }}; timeout --kill-after=15s {{ backup_command_timeout | int }}s psql --no-password --dbname="$(cat /config/{{ item.name }}/connection)" --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 --file=/config/table-counts.sql > /backup/{{ item.counts }}'
+  loop: "{{ backup_database_secrets }}"
+  no_log: true
+
+- name: Archive only referenced application Secrets on the VM
+  ansible.builtin.shell: >-
+    umask 077;
+    k3s kubectl get secret {{ backup_secret_names | map('quote') | join(' ') }}
+    -n {{ backup_namespace | quote }} -o json
+    > {{ (backup_directory ~ '/secrets.json') | quote }}
+  no_log: true
+
+- name: Archive read-only source volumes and hash each file
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - --network=none
+      - --label
+      - "bikehub.backup.run={{ backup_run_id }}"
+      - --read-only
+      - --mount
+      - "type=bind,source={{ item.path }},target=/source,readonly"
+      - --mount
+      - "type=bind,source={{ backup_directory }},target=/backup"
+      - --entrypoint=/bin/sh
+      - "{{ backup_postgres_image }}"
+      - -ec
+      - "umask 077; cd /source; tar -czf /backup/{{ item.name }}.tar.gz .; find . -type f -exec sha256sum {} + > /backup/{{ item.name }}.sha256.unsorted; LC_ALL=C sort /backup/{{ item.name }}.sha256.unsorted > /backup/{{ item.name }}.sha256; rm /backup/{{ item.name }}.sha256.unsorted"
+  loop: "{{ backup_volumes }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Hash only this run's completed artifacts without reading contents into the controller
+  ansible.builtin.find:
+    paths: "{{ backup_directory }}"
+    file_type: file
+    recurse: false
+    get_checksum: true
+    checksum_algorithm: sha256
+  register: backup_artifacts
+
+- name: Recheck that no concurrent rollout restarted selected workloads
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "{{ item.resource }}", -n, "{{ backup_namespace }}", -o, 'jsonpath={.spec.replicas}']
+  loop: "{{ backup_writers + backup_brokers }}"
+  register: backup_quiescent_states
+  changed_when: false
+
+- name: Refuse to publish a snapshot if any selected writer restarted
+  ansible.builtin.assert:
+    that: item.stdout | trim == '0'
+  loop: "{{ backup_quiescent_states.results }}"
+  loop_control:
+    label: "{{ item.item.resource }}"
+
+- name: Require the recovery journal to remain present until completion
+  ansible.builtin.stat:
+    path: "{{ backup_journal_path }}"
+  register: backup_completion_journal
+
+- name: Reject an operation interrupted by manual recovery
+  ansible.builtin.assert:
+    that:
+      - backup_completion_journal.stat.isreg | default(false)
+      - not backup_completion_journal.stat.islnk | default(false)
+
+- name: Write the completion manifest last
+  ansible.builtin.copy:
+    dest: "{{ backup_directory }}/manifest.json"
+    mode: '0600'
+    content: "{{ {'formatVersion': 3, 'source': 'nas-k3s', 'createdAt': now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ'), 'volumes': backup_volumes | map(attribute='name') | list, 'kafkas': backup_kafkas, 'artifacts': dict(backup_artifacts.files | map(attribute='path') | map('basename') | zip(backup_artifacts.files | map(attribute='checksum')))} | to_nice_json }}\n"
+
+- name: Report only the snapshot location
+  ansible.builtin.debug:
+    msg: "NAS snapshot completed at {{ backup_directory }}. Secrets and private data remain on the dataset."

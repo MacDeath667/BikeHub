@@ -1,0 +1,11 @@
+---
+- name: Inspect the managed backup lock before deployment changes
+  ansible.builtin.stat:
+    path: "{{ bikehub_remote_root | default('/opt/bikehub') }}/backup-active"
+    follow: false
+  register: bikehub_deployment_backup_lock
+
+- name: Refuse deployment while backup or recovery is pending
+  ansible.builtin.assert:
+    that: not bikehub_deployment_backup_lock.stat.exists
+    fail_msg: A BikeHub backup or interrupted-backup recovery is active. Finish it or run resume-backup-nas.yml before deploying.

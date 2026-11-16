@@ -38,6 +38,9 @@
     - name: Gather guest facts
       ansible.builtin.setup:
 
+    - name: Require completed backup recovery before deployment changes
+      ansible.builtin.import_tasks: ../tasks/check-backup-lock.yml
+
     - name: Resolve authentication mode while preserving the deployed setting
       ansible.builtin.import_tasks: ../tasks/auth-mode.yml
 

@@ -1,0 +1,139 @@
+---
+- name: Validate the NAS backup destination before connecting anywhere
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  any_errors_fatal: true
+  vars_files:
+    - ../inventory/group_vars/bikehub/main.yml
+  tasks:
+    - name: Require a configured external dataset instead of the sentinel
+      ansible.builtin.assert:
+        that:
+          - bikehub_backup_root != '/dev/null'
+          - bikehub_backup_root is match('^/[A-Za-z0-9_/-]+$')
+          - bikehub_backup_root != '/'
+          - bikehub_backup_root is not search('(^|/)[.][.]?(/|$)')
+          - bikehub_backup_root is not match('^/(dev|proc|sys|run|var/lib/rancher/k3s)(/|$)')
+        fail_msg: Replace bikehub_backup_root=/dev/null with a real mounted NAS dataset before running backup. No VM connection or service changes were attempted.
+
+- name: Back up both BikeHub contours on the existing NAS VM
+  hosts: "{{ bikehub_target_group | default('bikehub') }}"
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../inventory/group_vars/bikehub/main.yml
+  vars:
+    bikehub_source_dir: "{{ playbook_dir }}/../../.."
+    bikehub_package_tools: true
+    backup_namespace: "{{ bikehub_namespace | default('bikehub') }}"
+    backup_postgres_image: "{{ bikehub_backup_postgres_image | default('postgres:18.6') }}"
+    backup_command_timeout: "{{ bikehub_backup_command_timeout | default(900) | int }}"
+    backup_lock_directory: "{{ bikehub_remote_root }}/backup-active"
+    backup_journal_path: "{{ backup_lock_directory }}/state.json"
+    backup_claim_root: "{{ bikehub_backup_volume_root | default('/var/lib/rancher/k3s/storage') }}"
+    backup_expected_writers:
+      - { resource: "deployment/{{ bikehub_deployment }}", label: bikehub-api }
+      - { resource: deployment/bikehub-mail, label: bikehub-mail }
+      - { resource: "deployment/{{ bikehub_staging_prefix }}-api", label: "{{ bikehub_staging_prefix }}-api" }
+      - { resource: "deployment/{{ bikehub_staging_prefix }}-mail", label: "{{ bikehub_staging_prefix }}-mail" }
+    backup_expected_brokers:
+      - { resource: statefulset/bikehub-kafka, label: bikehub-kafka, pod: bikehub-kafka-0, name: kafka, topic: "{{ bikehub_mail_topic }}" }
+      - { resource: "statefulset/{{ bikehub_staging_prefix }}-kafka", label: "{{ bikehub_staging_prefix }}-kafka", pod: "{{ bikehub_staging_prefix }}-kafka-0", name: staging-kafka, topic: bikehub.staging.mail.send.v1 }
+  tasks:
+    - name: Validate namespace and managed paths
+      ansible.builtin.assert:
+        that:
+          - backup_namespace is match('^[a-z0-9][a-z0-9-]*$')
+          - bikehub_remote_root is match('^/opt/[A-Za-z0-9_-]+$')
+          - backup_postgres_image is match('^[A-Za-z0-9./_:@-]+$')
+          - backup_claim_root is match('^/[A-Za-z0-9_/-]+$')
+          - backup_claim_root != '/'
+          - backup_command_timeout | int >= 60
+          - backup_command_timeout | int <= 7200
+          - bikehub_truenas_hostname is match('^[A-Za-z0-9.-]+$')
+          - bikehub_truenas_ip is match('^[0-9A-Fa-f:.]+$')
+
+    - name: Require a mounted external filesystem
+      ansible.builtin.command:
+        argv: [findmnt, --noheadings, --output, FSTYPE, --target, "{{ bikehub_backup_root }}"]
+      register: backup_filesystem
+      changed_when: false
+
+    - name: Refuse the VM root disk as a backup destination
+      ansible.builtin.assert:
+        that:
+          - backup_filesystem.stdout | trim in ['nfs', 'nfs4', 'cifs', 'fuse.sshfs', 'virtiofs', '9p']
+        fail_msg: Mount the dedicated external dataset before backing up. A directory on the VM system disk is not sufficient.
+
+    - name: Inspect backup root and any interrupted operation
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop: ["{{ bikehub_backup_root }}", "{{ backup_lock_directory }}"]
+      register: backup_paths
+
+    - name: Require a real directory and no unfinished backup journal
+      ansible.builtin.assert:
+        that:
+          - backup_paths.results[0].stat.isdir | default(false)
+          - not backup_paths.results[0].stat.islnk | default(false)
+          - not backup_paths.results[1].stat.exists
+        fail_msg: Check the mounted dataset or run resume-backup-nas.yml for the interrupted operation first.
+
+    - name: Acquire an exclusive backup directory before discovering replica counts
+      ansible.builtin.command:
+        argv: [mkdir, --mode=0700, "{{ backup_lock_directory }}"]
+
+    - name: Prepare a snapshot with a durable recovery journal
+      block:
+        - name: Build only the operator image from the current reviewed sources
+          ansible.builtin.include_tasks: ../tasks/backup-nas-build.yml
+
+        - name: Discover resource metadata without reading any Secret values
+          ansible.builtin.include_tasks: ../tasks/backup-nas-discover.yml
+
+        - name: Create an ephemeral private directory for database credentials
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: bikehub-backup-config-
+          register: backup_config_directory
+
+        - name: Export application data while all BikeHub writers are paused
+          ansible.builtin.include_tasks: ../tasks/backup-nas-export.yml
+      always:
+        - name: Attempt recovery and always remove ephemeral credentials
+          block:
+            - name: Restore original replicas from the durable journal if present
+              ansible.builtin.include_tasks: ../tasks/resume-backup-nas.yml
+          always:
+            - name: Remove only this run's ephemeral credentials
+              ansible.builtin.file:
+                path: "{{ backup_config_directory.path }}"
+                state: absent
+              when: backup_config_directory.path is defined
+              no_log: true
+
+            - name: Remove only the temporary controller source archive
+              ansible.builtin.file:
+                path: "{{ bikehub_source_archive.path }}"
+                state: absent
+              delegate_to: localhost
+              become: false
+              when: bikehub_source_archive.path is defined
+
+            - name: Remove only the managed operator build directory
+              ansible.builtin.file:
+                path: "{{ backup_build_directory }}"
+                state: absent
+              when: backup_build_directory is defined
+
+            - name: Check whether manual recovery is still needed
+              ansible.builtin.stat:
+                path: "{{ backup_journal_path }}"
+              register: backup_pending_recovery
+
+            - name: Release only the empty successful-operation lock
+              ansible.builtin.command:
+                argv: [rmdir, "{{ backup_lock_directory }}"]
+              when: not backup_pending_recovery.stat.exists

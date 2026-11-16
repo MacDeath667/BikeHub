@@ -6,5 +6,8 @@
   vars:
     ansible_ssh_pipelining: true
   tasks:
+    - name: Require completed backup recovery before rotating mail credentials
+      ansible.builtin.import_tasks: ../tasks/check-backup-lock.yml
+
     - name: Configure the mail transport and preserve existing authentication keys
       ansible.builtin.import_tasks: ../tasks/configure-mail.yml

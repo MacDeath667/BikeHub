@@ -1,0 +1,194 @@
+---
+- name: Require the supported single-node K3s topology
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, nodes, -o, 'jsonpath={.items[*].metadata.name}']
+  register: backup_nodes
+  changed_when: false
+
+- name: Refuse a topology requiring a distributed storage backup plan
+  ansible.builtin.assert:
+    that: backup_nodes.stdout.split() | length == 1
+    fail_msg: This backup supports the existing single-node NAS VM only.
+
+- name: Read writer replica counts only
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "{{ item.resource }}", --ignore-not-found, -n, "{{ backup_namespace }}", -o, 'jsonpath={.spec.replicas}']
+  loop: "{{ backup_expected_writers }}"
+  register: backup_writer_states
+  changed_when: false
+
+- name: Read broker replica counts and image references only
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "{{ item.resource }}", --ignore-not-found, -n, "{{ backup_namespace }}", -o, 'jsonpath={.spec.replicas}{"|"}{.spec.template.spec.containers[0].image}']
+  loop: "{{ backup_expected_brokers }}"
+  register: backup_broker_states
+  changed_when: false
+
+- name: Require the existing production services and brokers before any changes
+  ansible.builtin.assert:
+    that:
+      - backup_writer_states.results[0].stdout is match('^[0-9]+$')
+      - backup_writer_states.results[1].stdout is match('^[0-9]+$')
+      - backup_broker_states.results[0].stdout is match('^1[|][A-Za-z0-9./_:@-]+$')
+      - backup_broker_states.results[1].stdout in ['', '|'] or backup_broker_states.results[1].stdout is match('^1[|][A-Za-z0-9./_:@-]+$')
+      - backup_writer_states.results[2].stdout | length == 0 or backup_broker_states.results[1].stdout is match('^1[|][A-Za-z0-9./_:@-]+$')
+    fail_msg: Require running single-node managed Kafka and the existing BikeHub deployments. No writers were paused.
+
+- name: Initialize discovered metadata
+  ansible.builtin.set_fact:
+    backup_writers: []
+    backup_brokers: []
+    backup_volumes: []
+    backup_secret_names: ["{{ bikehub_database_secret_name | default('bikehub-database') }}", "{{ bikehub_mail_database_secret_name }}"]
+
+- name: Remember exact original writer replicas
+  ansible.builtin.set_fact:
+    backup_writers: "{{ backup_writers + [item.item | combine({'replicas': item.stdout | int})] }}"
+  loop: "{{ backup_writer_states.results }}"
+  when: item.stdout | length > 0
+  loop_control:
+    label: "{{ item.item.resource }}"
+
+- name: Remember exact original broker configuration
+  ansible.builtin.set_fact:
+    backup_brokers: "{{ backup_brokers + [item.item | combine({'replicas': item.stdout.split('|')[0] | int, 'image': item.stdout.split('|')[1]})] }}"
+  loop: "{{ backup_broker_states.results }}"
+  when: item.stdout not in ['', '|']
+  loop_control:
+    label: "{{ item.item.resource }}"
+
+- name: Select production and present staging application claims
+  ansible.builtin.set_fact:
+    backup_claims: >-
+      {{ [{'name': 'auth', 'claim': bikehub_auth_key_claim},
+          {'name': 'media', 'claim': bikehub_auth_key_claim ~ '-media'}] +
+         ([{'name': 'staging-auth', 'claim': bikehub_staging_prefix ~ '-auth-keys'},
+           {'name': 'staging-media', 'claim': bikehub_staging_prefix ~ '-auth-keys-media'}]
+          if backup_writer_states.results[2].stdout | length > 0 else []) }}
+
+- name: Select existing Kafka claims
+  ansible.builtin.set_fact:
+    backup_claims: "{{ backup_claims + [{'name': item.name, 'claim': 'data-' ~ item.pod}] }}"
+  loop: "{{ backup_brokers }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Read bound volume identifiers without any file contents
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, pvc, "{{ item.claim }}", -n, "{{ backup_namespace }}", -o, 'jsonpath={.spec.volumeName}']
+  loop: "{{ backup_claims }}"
+  register: backup_claim_volumes
+  changed_when: false
+
+- name: Resolve only the managed local-path directories
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, pv, "{{ item.stdout }}", -o, 'jsonpath={.spec.hostPath.path}{.spec.local.path}']
+  loop: "{{ backup_claim_volumes.results }}"
+  register: backup_volume_paths
+  changed_when: false
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Refuse unexpected volume locations before reading data
+  ansible.builtin.assert:
+    that:
+      - item.stdout.startswith(backup_claim_root ~ '/')
+      - item.stdout is match('^/[A-Za-z0-9_/-]+$')
+      - item.stdout is not search('(^|/)[.][.]?(/|$)')
+      - not item.stdout.startswith(bikehub_backup_root ~ '/')
+    fail_msg: Expected a dedicated local-path PVC directory belonging to the selected BikeHub instance.
+  loop: "{{ backup_volume_paths.results }}"
+  loop_control:
+    label: "{{ item.item.item.name }}"
+
+- name: Remember read-only application volume sources
+  ansible.builtin.set_fact:
+    backup_volumes: "{{ backup_volumes + [item.item.item | combine({'path': item.stdout})] }}"
+  loop: "{{ backup_volume_paths.results }}"
+  loop_control:
+    label: "{{ item.item.item.name }}"
+
+- name: Inspect source volume directories without following symbolic links
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+    follow: false
+  loop: "{{ backup_volumes }}"
+  register: backup_source_directories
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Require the actual local PVC directories before pausing writers
+  ansible.builtin.assert:
+    that:
+      - item.stat.isdir | default(false)
+      - not item.stat.islnk | default(false)
+  loop: "{{ backup_source_directories.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Discover only Secret reference names from existing application deployments
+  ansible.builtin.command:
+    argv: [k3s, kubectl, get, "{{ item.resource }}", -n, "{{ backup_namespace }}", -o, 'jsonpath={..secretKeyRef.name}{" "}{..secretRef.name}{" "}{..secretName}']
+  loop: "{{ backup_writers }}"
+  register: backup_secret_references
+  changed_when: false
+
+- name: Inspect only the managed BikeHub TLS directory
+  ansible.builtin.stat:
+    path: "{{ bikehub_tls_directory }}"
+    follow: false
+  register: backup_tls_directory
+
+- name: Require a dedicated TLS directory if it exists
+  ansible.builtin.assert:
+    that:
+      - bikehub_tls_directory is match('^/etc/nginx/[A-Za-z0-9_/-]+$')
+      - bikehub_tls_directory is not search('(^|/)[.][.]?(/|$)')
+      - backup_tls_directory.stat.isdir
+      - not backup_tls_directory.stat.islnk
+  when: backup_tls_directory.stat.exists
+
+- name: Include managed TLS material without reading keys into the controller
+  ansible.builtin.set_fact:
+    backup_volumes: "{{ backup_volumes + [{'name': 'tls', 'path': bikehub_tls_directory}] }}"
+  when: backup_tls_directory.stat.exists
+
+- name: Collect referenced Secret names without loading their values
+  ansible.builtin.set_fact:
+    backup_secret_names: "{{ (backup_secret_names + item.stdout.split()) | unique | list }}"
+  loop: "{{ backup_secret_references.results }}"
+  loop_control:
+    label: "{{ item.item.resource }}"
+
+- name: Validate referenced Secret identifiers
+  ansible.builtin.assert:
+    that: item is match('^[a-z0-9][a-z0-9.-]*$')
+  loop: "{{ backup_secret_names }}"
+
+- name: Read only Kafka storage identity metadata
+  ansible.builtin.slurp:
+    src: "{{ (backup_volumes | selectattr('name', 'equalto', item.name) | first).path }}/meta.properties"
+  loop: "{{ backup_brokers }}"
+  register: backup_broker_identities
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Require the supported single-node broker identity
+  ansible.builtin.assert:
+    that:
+      - item.content | b64decode is regex('(?m)^node.id=1$')
+      - item.content | b64decode is regex('(?m)^cluster.id=[A-Za-z0-9_-]+$')
+  loop: "{{ backup_broker_identities.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Select this run's private destination
+  ansible.builtin.set_fact:
+    backup_directory: "{{ bikehub_backup_root }}/{{ now(utc=true, fmt='%Y%m%dT%H%M%S%fZ') }}"
+    backup_database_secrets:
+      - { name: api, secret: "{{ bikehub_database_secret_name | default('bikehub-database') }}", dump: database.dump, counts: tables.txt }
+      - { name: mail, secret: "{{ bikehub_mail_database_secret_name }}", dump: mail-database.dump, counts: mail-tables.txt }
+
+- name: Select a unique label for this run's disposable helpers
+  ansible.builtin.set_fact:
+    backup_run_id: "{{ backup_directory | basename }}"

@@ -10,6 +10,9 @@
     bikehub_image_deployment: "{{ bikehub_staging_prefix }}-api"
     bikehub_mail_image_deployment: "{{ bikehub_staging_prefix }}-mail"
   tasks:
+    - name: Require completed backup recovery before updating staging
+      ansible.builtin.import_tasks: ../tasks/check-backup-lock.yml
+
     - name: Build and import API and mail images without updating production deployments
       ansible.builtin.import_tasks: ../tasks/source.yml
 

@@ -1,0 +1,209 @@
+---
+- name: Validate an explicit NAS snapshot before connecting to the VM
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Require a concrete snapshot directory instead of the destination sentinel
+      ansible.builtin.assert:
+        that:
+          - bikehub_backup_directory is defined
+          - bikehub_backup_directory is match('^/[A-Za-z0-9_/-]+$')
+          - bikehub_backup_directory not in ['/', '/dev/null']
+          - bikehub_backup_directory is not match('^/(dev|proc|sys|run)(/|$)')
+          - bikehub_backup_directory is not search('(^|/)[.][.]?(/|$)')
+
+- name: Verify a NAS snapshot in disposable offline containers
+  hosts: "{{ bikehub_target_group | default('bikehub') }}"
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../inventory/group_vars/bikehub/main.yml
+  vars:
+    restore_postgres_image: "{{ bikehub_backup_postgres_image | default('postgres:18.6') }}"
+    restore_allowed_volumes: [auth, media, kafka, staging-auth, staging-media, staging-kafka, tls]
+    restore_sql: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../files/backup-table-counts.sql') }}"
+  tasks:
+    - name: Read only the completion manifest metadata
+      ansible.builtin.slurp:
+        src: "{{ bikehub_backup_directory }}/manifest.json"
+      register: restore_manifest_file
+
+    - name: Parse metadata and allocate a unique disposable-resource prefix
+      ansible.builtin.set_fact:
+        restore_manifest: "{{ restore_manifest_file.content | b64decode | from_json }}"
+        restore_resource: "bikehub-nas-restore-{{ now(utc=true, fmt='%Y%m%d%H%M%S%f') }}"
+
+    - name: Require the NAS format and bounded archive lists
+      ansible.builtin.assert:
+        that:
+          - restore_manifest.formatVersion == 3
+          - restore_manifest.source == 'nas-k3s'
+          - restore_postgres_image is match('^[A-Za-z0-9./_:@-]+$')
+          - restore_manifest.volumes is sequence and restore_manifest.volumes is not string and restore_manifest.volumes is not mapping
+          - restore_manifest.kafkas is sequence and restore_manifest.kafkas is not string and restore_manifest.kafkas is not mapping
+          - restore_manifest.volumes | difference(restore_allowed_volumes) | length == 0
+          - restore_manifest.volumes | unique | length == restore_manifest.volumes | length
+          - "['auth', 'media', 'kafka'] | difference(restore_manifest.volumes) | length == 0"
+          - restore_manifest.kafkas | length > 0
+          - restore_manifest.kafkas | length <= 2
+          - restore_manifest.kafkas | map(attribute='name') | sort == restore_manifest.volumes | select('search', '(^|-)kafka$') | sort
+          - restore_manifest.artifacts is mapping
+
+    - name: Validate broker values as data before using them as Docker arguments
+      ansible.builtin.assert:
+        that:
+          - item.name in ['kafka', 'staging-kafka']
+          - item.image is match('^[A-Za-z0-9./_:@-]+$')
+          - item.cluster is match('^[A-Za-z0-9_-]+$')
+          - item.topic is match('^[A-Za-z0-9._-]+$')
+      loop: "{{ restore_manifest.kafkas }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Select the exact expected artifact set
+      ansible.builtin.set_fact:
+        restore_artifacts: [database.dump, mail-database.dump, tables.txt, mail-tables.txt, runtime.json, secrets.json, kubernetes.json]
+        restore_databases:
+          - { name: bikehub_restore_api, dump: database.dump, counts: tables.txt }
+          - { name: bikehub_restore_mail, dump: mail-database.dump, counts: mail-tables.txt }
+
+    - name: Include each validated volume archive and checksum inventory
+      ansible.builtin.set_fact:
+        restore_artifacts: "{{ restore_artifacts + [item ~ '.tar.gz', item ~ '.sha256'] }}"
+      loop: "{{ restore_manifest.volumes }}"
+
+    - name: Include broker offset inventories
+      ansible.builtin.set_fact:
+        restore_artifacts: "{{ restore_artifacts + [item.name ~ '-offsets.txt'] }}"
+      loop: "{{ restore_manifest.kafkas }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Refuse unexpected files or incomplete manifests
+      ansible.builtin.assert:
+        that: restore_manifest.artifacts.keys() | sort == restore_artifacts | sort
+
+    - name: Hash every artifact without reading private contents into the controller
+      ansible.builtin.stat:
+        path: "{{ bikehub_backup_directory }}/{{ item }}"
+        follow: false
+        checksum_algorithm: sha256
+      loop: "{{ restore_artifacts }}"
+      register: restore_checksums
+
+    - name: Reject missing, linked or damaged artifacts before creating resources
+      ansible.builtin.assert:
+        that:
+          - item.stat.isreg | default(false)
+          - not item.stat.islnk | default(false)
+          - item.stat.checksum | default('') == restore_manifest.artifacts[item.item]
+      loop: "{{ restore_checksums.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Exercise recovery without source volumes or external networking
+      block:
+        - name: Start an isolated PostgreSQL with a new disposable data volume
+          ansible.builtin.command:
+            argv: [docker, run, --detach, --name, "{{ restore_resource }}", --network=none, --mount, "type=volume,source={{ restore_resource }}-database,target=/var/lib/postgresql", --mount, "type=bind,source={{ bikehub_backup_directory }},target=/backup,readonly", --env=POSTGRES_USER=restore_check, --env=POSTGRES_DB=bikehub_restore_api, --env=POSTGRES_HOST_AUTH_METHOD=trust, "{{ restore_postgres_image }}"]
+
+        - name: Wait for the permanent PostgreSQL process rather than its bootstrap socket
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ restore_resource }}", pg_isready, --host=127.0.0.1, --username=restore_check, --dbname=bikehub_restore_api]
+          register: restore_ready
+          until: restore_ready.rc == 0
+          retries: 30
+          delay: 2
+          changed_when: false
+
+        - name: Create the separate disposable mail target
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ restore_resource }}", createdb, --username=restore_check, bikehub_restore_mail]
+
+        - name: Restore both databases through the internal socket only
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ restore_resource }}", pg_restore, --username=restore_check, "--dbname={{ item.name }}", --no-owner, --no-acl, --exit-on-error, --single-transaction, "/backup/{{ item.dump }}"]
+          loop: "{{ restore_databases }}"
+          no_log: true
+
+        - name: Recount every restored application schema including staging
+          ansible.builtin.command:
+            argv: [docker, exec, --interactive, "{{ restore_resource }}", psql, --username=restore_check, "--dbname={{ item.name }}", --no-psqlrc, --tuples-only, --no-align, --set=ON_ERROR_STOP=1]
+            stdin: "{{ restore_sql }}"
+          loop: "{{ restore_databases }}"
+          register: restore_counts
+          changed_when: false
+
+        - name: Compare inventories on the VM without transferring table content
+          ansible.builtin.command:
+            argv: [cmp, --silent, "{{ bikehub_backup_directory }}/{{ item.item.counts }}", '-']
+            stdin: "{{ (item.stdout | trim) ~ ('\n' if item.stdout | trim | length > 0 else '') }}"
+            stdin_add_newline: false
+          loop: "{{ restore_counts.results }}"
+          changed_when: false
+          loop_control:
+            label: "{{ item.item.name }}"
+
+        - name: Extract only into new disposable volumes and compare file hashes
+          ansible.builtin.command:
+            argv: [docker, run, --rm, --network=none, --read-only, --mount, "type=volume,source={{ restore_resource }}-{{ item }},target=/restore", --mount, "type=bind,source={{ bikehub_backup_directory }},target=/backup,readonly", --entrypoint=/bin/sh, "{{ restore_postgres_image }}", -ec, "cd /restore; tar -xzf /backup/{{ item }}.tar.gz {{ '--numeric-owner' if item in ['kafka', 'staging-kafka'] else '--no-same-owner' }}; if [ -s /backup/{{ item }}.sha256 ]; then sha256sum --check --status /backup/{{ item }}.sha256; fi"]
+          loop: "{{ restore_manifest.volumes }}"
+          no_log: true
+
+        - name: Start each recovered broker offline with loopback listeners
+          ansible.builtin.command:
+            argv: [docker, run, --detach, --name, "{{ restore_resource }}-{{ item.name }}", --hostname=localhost, --network=none, --mount, "type=volume,source={{ restore_resource }}-{{ item.name }},target=/var/lib/kafka/data", --env=KAFKA_NODE_ID=1, '--env=KAFKA_PROCESS_ROLES=broker,controller', '--env=KAFKA_LISTENERS=PLAINTEXT://127.0.0.1:9092,CONTROLLER://127.0.0.1:9093', --env=KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092, '--env=KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT', --env=KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT, --env=KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER, --env=KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093, --env=KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1, --env=KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1, --env=KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1, --env=KAFKA_LOG_DIRS=/var/lib/kafka/data, '--env=KAFKA_HEAP_OPTS=-Xms256m -Xmx256m', "--env=CLUSTER_ID={{ item.cluster }}", "{{ item.image }}"]
+          loop: "{{ restore_manifest.kafkas }}"
+          loop_control:
+            label: "{{ item.name }}"
+
+        - name: Load expected offset inventories on the VM
+          ansible.builtin.slurp:
+            src: "{{ bikehub_backup_directory }}/{{ item.name }}-offsets.txt"
+          loop: "{{ restore_manifest.kafkas }}"
+          register: restore_expected_offsets
+          loop_control:
+            label: "{{ item.name }}"
+
+        - name: Verify broker recovery without any mail consumer or network
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ restore_resource }}-{{ item.item.name }}", /opt/kafka/bin/kafka-get-offsets.sh, --bootstrap-server, localhost:9092, --topic, "{{ item.item.topic }}", --time, '-1']
+          loop: "{{ restore_expected_offsets.results }}"
+          register: restore_offsets
+          until: restore_offsets.rc == 0 and (restore_offsets.stdout_lines | sort | join('\n') | trim) == (item.content | b64decode | trim)
+          retries: 20
+          delay: 2
+          changed_when: false
+          loop_control:
+            label: "{{ item.item.name }}"
+
+        - name: Report verified recovery without account or key values
+          ansible.builtin.debug:
+            msg: Both databases, all selected volume files and Kafka topic offsets match. Secrets were hash-checked only; no applications or mail consumers were started.
+      always:
+        - name: Remove only this run's disposable brokers
+          ansible.builtin.command:
+            argv: [docker, rm, --force, --volumes, "{{ restore_resource }}-{{ item.name }}"]
+          loop: "{{ restore_manifest.kafkas }}"
+          register: restore_broker_cleanup
+          failed_when: restore_broker_cleanup.rc != 0 and 'No such container' not in restore_broker_cleanup.stderr
+          changed_when: restore_broker_cleanup.rc == 0
+          loop_control:
+            label: "{{ item.name }}"
+
+        - name: Remove only this run's disposable database container
+          ansible.builtin.command:
+            argv: [docker, rm, --force, --volumes, "{{ restore_resource }}"]
+          register: restore_database_cleanup
+          failed_when: restore_database_cleanup.rc != 0 and 'No such container' not in restore_database_cleanup.stderr
+          changed_when: restore_database_cleanup.rc == 0
+
+        - name: Remove only this run's disposable volumes
+          ansible.builtin.command:
+            argv: [docker, volume, rm, "{{ restore_resource }}-{{ item }}"]
+          loop: "{{ ['database'] + restore_manifest.volumes }}"
+          register: restore_volume_cleanup
+          failed_when: restore_volume_cleanup.rc != 0 and 'no such volume' not in restore_volume_cleanup.stderr | lower
+          changed_when: restore_volume_cleanup.rc == 0

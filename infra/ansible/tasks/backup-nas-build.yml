@@ -1,0 +1,31 @@
+---
+- name: Package application and operator sources without private local files
+  ansible.builtin.include_tasks: package-source.yml
+
+- name: Select an immutable operator image and managed build directory
+  ansible.builtin.set_fact:
+    backup_tools_image: "bikehub-tools:backup-{{ bikehub_source_digest[:16] }}"
+    backup_build_directory: "{{ bikehub_remote_root }}/backup-build/{{ bikehub_source_digest[:16] }}"
+
+- name: Create the managed operator build directory
+  ansible.builtin.file:
+    path: "{{ backup_build_directory }}"
+    state: directory
+    mode: '0755'
+
+- name: Transfer only the selected source archive
+  ansible.builtin.unarchive:
+    src: "{{ bikehub_source_archive.path }}"
+    dest: "{{ backup_build_directory }}"
+    mode: 'u=rwX,g=rX,o=rX'
+
+- name: Build the operator image without updating deployed applications
+  ansible.builtin.command:
+    argv: [docker, build, --tag, "{{ backup_tools_image }}", --file, tools/BikeHub.Tools/Dockerfile, .]
+    chdir: "{{ backup_build_directory }}"
+  changed_when: true
+
+- name: Pull the PostgreSQL client image before pausing writers
+  ansible.builtin.command:
+    argv: [docker, pull, "{{ backup_postgres_image }}"]
+  changed_when: true

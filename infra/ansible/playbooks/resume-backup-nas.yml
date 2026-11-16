@@ -1,0 +1,30 @@
+---
+- name: Recover original BikeHub replica counts after an interrupted backup
+  hosts: "{{ bikehub_target_group | default('bikehub') }}"
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../inventory/group_vars/bikehub/main.yml
+  vars:
+    backup_namespace: "{{ bikehub_namespace | default('bikehub') }}"
+    backup_lock_directory: "{{ bikehub_remote_root }}/backup-active"
+    backup_journal_path: "{{ backup_lock_directory }}/state.json"
+  tasks:
+    - name: Validate only the managed recovery target
+      ansible.builtin.assert:
+        that:
+          - backup_namespace is match('^[a-z0-9][a-z0-9-]*$')
+          - bikehub_remote_root is match('^/opt/[A-Za-z0-9_-]+$')
+
+    - name: Restore original workloads without deploying images or reading Secrets
+      ansible.builtin.include_tasks: ../tasks/resume-backup-nas.yml
+
+    - name: Check the operation lock
+      ansible.builtin.stat:
+        path: "{{ backup_lock_directory }}"
+      register: backup_recovery_lock
+
+    - name: Remove only the empty recovered-operation lock
+      ansible.builtin.command:
+        argv: [rmdir, "{{ backup_lock_directory }}"]
+      when: backup_recovery_lock.stat.isdir | default(false)

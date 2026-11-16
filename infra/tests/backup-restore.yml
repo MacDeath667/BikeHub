@@ -1,0 +1,213 @@
+---
+- name: Exercise the NAS recovery protocol with synthetic offline data only
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    fixture_postgres_image: postgres:18.6
+    fixture_kafka_image: apache/kafka:4.0.2
+    fixture_cluster: MkU3OEVBNTcwNTJENDM2Qk
+    fixture_volumes: [auth, media, staging-auth, staging-media, kafka, staging-kafka]
+    fixture_databases:
+      - { name: fixture_api, dump: database.dump, counts: tables.txt }
+      - { name: fixture_mail, dump: mail-database.dump, counts: mail-tables.txt }
+    fixture_brokers:
+      - { name: kafka, topic: bikehub.restore.fixture.v1 }
+      - { name: staging-kafka, topic: bikehub.staging.fixture.v1 }
+    fixture_uid: "{{ lookup('ansible.builtin.pipe', 'id -u') }}"
+    fixture_gid: "{{ lookup('ansible.builtin.pipe', 'id -g') }}"
+  tasks:
+    - name: Allocate only this test's private directory and resource prefix
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: bikehub-nas-restore-fixture-
+      register: fixture
+
+    - name: Select unique disposable resource names
+      ansible.builtin.set_fact:
+        fixture_resource: "bikehub-fixture-{{ now(utc=true, fmt='%Y%m%d%H%M%S%f') }}"
+        fixture_snapshot: "{{ fixture.path }}/snapshot"
+
+    - name: Create and verify a complete synthetic NAS snapshot
+      block:
+        - name: Create private fixture directories
+          ansible.builtin.file:
+            path: "{{ fixture.path }}/{{ item }}"
+            state: directory
+            mode: '0700'
+          loop: [snapshot, auth, media, staging-auth, staging-media]
+
+        - name: Write synthetic file data without any real account or key
+          ansible.builtin.copy:
+            dest: "{{ fixture.path }}/{{ item }}/fixture.dat"
+            content: "synthetic-{{ item }}\n"
+            mode: '0600'
+          loop: [auth, media, staging-auth, staging-media]
+
+        - name: Start the disposable source database without network or published ports
+          ansible.builtin.command:
+            argv: [docker, run, --detach, --name, "{{ fixture_resource }}-postgres", --network=none, --env=POSTGRES_USER=fixture, --env=POSTGRES_DB=fixture_api, --env=POSTGRES_HOST_AUTH_METHOD=trust, "{{ fixture_postgres_image }}"]
+
+        - name: Wait for the permanent source PostgreSQL process
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ fixture_resource }}-postgres", pg_isready, --host=127.0.0.1, --username=fixture, --dbname=fixture_api]
+          register: fixture_pg_ready
+          until: fixture_pg_ready.rc == 0
+          retries: 30
+          delay: 2
+          changed_when: false
+
+        - name: Create an independent mail database
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ fixture_resource }}-postgres", createdb, --username=fixture, fixture_mail]
+
+        - name: Create public and staging records
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ fixture_resource }}-postgres", psql, --username=fixture, --dbname=fixture_api, --set=ON_ERROR_STOP=1, --command, 'CREATE TABLE public.api_probe(id int); INSERT INTO public.api_probe VALUES(1),(2); CREATE SCHEMA staging; CREATE TABLE staging.stage_probe(id int); INSERT INTO staging.stage_probe VALUES(1),(2),(3);']
+
+        - name: Create synthetic mail queue records
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ fixture_resource }}-postgres", psql, --username=fixture, --dbname=fixture_mail, --set=ON_ERROR_STOP=1, --command, 'CREATE SCHEMA mail; CREATE TABLE mail.mail_probe(id int); INSERT INTO mail.mail_probe VALUES(1);']
+
+        - name: Export both synthetic databases
+          ansible.builtin.shell: >-
+            umask 077;
+            docker exec {{ (fixture_resource ~ '-postgres') | quote }} pg_dump --username=fixture
+            --dbname={{ item.name | quote }} --format=custom --no-owner --no-acl
+            > {{ (fixture_snapshot ~ '/' ~ item.dump) | quote }}
+          loop: "{{ fixture_databases }}"
+
+        - name: Count all fixture application schemas using the production query
+          ansible.builtin.command:
+            argv: [docker, exec, --interactive, "{{ fixture_resource }}-postgres", psql, --username=fixture, "--dbname={{ item.name }}", --no-psqlrc, --tuples-only, --no-align, --set=ON_ERROR_STOP=1]
+            stdin: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../ansible/files/backup-table-counts.sql') }}"
+          loop: "{{ fixture_databases }}"
+          register: fixture_counts
+          changed_when: false
+
+        - name: Save fixture row inventories
+          ansible.builtin.copy:
+            dest: "{{ fixture_snapshot }}/{{ item.item.counts }}"
+            content: "{{ item.stdout | trim }}\n"
+            mode: '0600'
+          loop: "{{ fixture_counts.results }}"
+          loop_control:
+            label: "{{ item.item.name }}"
+
+        - name: Start a completely offline source broker
+          ansible.builtin.command:
+            argv: [docker, run, --detach, --name, "{{ fixture_resource }}-kafka", --hostname=localhost, --network=none, --mount, "type=volume,source={{ fixture_resource }}-kafka,target=/var/lib/kafka/data", --env=KAFKA_NODE_ID=1, '--env=KAFKA_PROCESS_ROLES=broker,controller', '--env=KAFKA_LISTENERS=PLAINTEXT://127.0.0.1:9092,CONTROLLER://127.0.0.1:9093', --env=KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092, '--env=KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT', --env=KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT, --env=KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER, --env=KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093, --env=KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1, --env=KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1, --env=KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1, --env=KAFKA_LOG_DIRS=/var/lib/kafka/data, '--env=KAFKA_HEAP_OPTS=-Xms256m -Xmx256m', "--env=CLUSTER_ID={{ fixture_cluster }}", "{{ fixture_kafka_image }}"]
+
+        - name: Create both contour topics through loopback only
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ fixture_resource }}-kafka", /opt/kafka/bin/kafka-topics.sh, --bootstrap-server, localhost:9092, --create, --if-not-exists, --topic, "{{ item.topic }}", --partitions, '1', --replication-factor, '1']
+          loop: "{{ fixture_brokers }}"
+          register: fixture_topics
+          until: fixture_topics.rc == 0
+          retries: 10
+          delay: 2
+
+        - name: Produce only synthetic events with no email addresses
+          ansible.builtin.command:
+            argv: [docker, exec, --interactive, "{{ fixture_resource }}-kafka", /opt/kafka/bin/kafka-console-producer.sh, --bootstrap-server, localhost:9092, --topic, "{{ item.topic }}"]
+            stdin: synthetic-recovery-event
+          loop: "{{ fixture_brokers }}"
+
+        - name: Read topic offsets without message content
+          ansible.builtin.command:
+            argv: [docker, exec, "{{ fixture_resource }}-kafka", /opt/kafka/bin/kafka-get-offsets.sh, --bootstrap-server, localhost:9092, --topic, "{{ item.topic }}", --time, '-1']
+          loop: "{{ fixture_brokers }}"
+          register: fixture_offsets
+          changed_when: false
+
+        - name: Save fixture broker inventories
+          ansible.builtin.copy:
+            dest: "{{ fixture_snapshot }}/{{ item.item.name }}-offsets.txt"
+            content: "{{ item.stdout_lines | sort | join('\n') }}\n"
+            mode: '0600'
+          loop: "{{ fixture_offsets.results }}"
+          loop_control:
+            label: "{{ item.item.name }}"
+
+        - name: Stop the source broker cleanly before archiving
+          ansible.builtin.command:
+            argv: [docker, stop, --time, '40', "{{ fixture_resource }}-kafka"]
+
+        - name: Archive synthetic media and key files
+          ansible.builtin.command:
+            argv: [docker, run, --rm, --network=none, --read-only, --mount, "type=bind,source={{ fixture.path }}/{{ item }},target=/source,readonly", --mount, "type=bind,source={{ fixture_snapshot }},target=/backup", --entrypoint=/bin/sh, "{{ fixture_postgres_image }}", -ec, "umask 077; cd /source; tar -czf /backup/{{ item }}.tar.gz .; find . -type f -exec sha256sum {} + > /backup/{{ item }}.sha256; chown {{ fixture_uid }}:{{ fixture_gid }} /backup/{{ item }}.tar.gz /backup/{{ item }}.sha256"]
+          loop: [auth, media, staging-auth, staging-media]
+
+        - name: Archive broker state for both isolated recovery targets
+          ansible.builtin.command:
+            argv: [docker, run, --rm, --network=none, --read-only, --mount, "type=volume,source={{ fixture_resource }}-kafka,target=/source,readonly", --mount, "type=bind,source={{ fixture_snapshot }},target=/backup", --entrypoint=/bin/sh, "{{ fixture_postgres_image }}", -ec, "umask 077; cd /source; tar -czf /backup/{{ item }}.tar.gz .; find . -type f -exec sha256sum {} + > /backup/{{ item }}.sha256; chown {{ fixture_uid }}:{{ fixture_gid }} /backup/{{ item }}.tar.gz /backup/{{ item }}.sha256"]
+          loop: [kafka, staging-kafka]
+
+        - name: Add only synthetic runtime and Secret snapshots
+          ansible.builtin.copy:
+            dest: "{{ fixture_snapshot }}/{{ item }}"
+            content: '{"synthetic":true}'
+            mode: '0600'
+          loop: [runtime.json, secrets.json, kubernetes.json]
+
+        - name: Hash every fixture artifact
+          ansible.builtin.find:
+            paths: "{{ fixture_snapshot }}"
+            file_type: file
+            get_checksum: true
+            checksum_algorithm: sha256
+          register: fixture_artifacts
+
+        - name: Write the complete NAS-format fixture manifest
+          ansible.builtin.copy:
+            dest: "{{ fixture_snapshot }}/manifest.json"
+            mode: '0600'
+            content: "{{ {'formatVersion': 3, 'source': 'nas-k3s', 'volumes': fixture_volumes, 'kafkas': [{'name': 'kafka', 'image': fixture_kafka_image, 'cluster': fixture_cluster, 'topic': fixture_brokers[0].topic}, {'name': 'staging-kafka', 'image': fixture_kafka_image, 'cluster': fixture_cluster, 'topic': fixture_brokers[1].topic}], 'artifacts': dict(fixture_artifacts.files | map(attribute='path') | map('basename') | zip(fixture_artifacts.files | map(attribute='checksum')))} | to_nice_json }}\n"
+
+        - name: Run the real NAS recovery entry point against only localhost
+          ansible.builtin.command:
+            argv: [ansible-playbook, -i, 'localhost,', --connection=local, "{{ playbook_dir }}/../ansible/playbooks/restore-check-nas.yml", -e, bikehub_target_group=all, -e, ansible_become=false, -e, "bikehub_backup_directory={{ fixture_snapshot }}"]
+          register: verified_restore
+
+        - name: Require successful offline recovery of both contours
+          ansible.builtin.assert:
+            that:
+              - verified_restore.rc == 0
+              - "'Secrets were hash-checked only' in verified_restore.stdout"
+
+        - name: Corrupt only the synthetic mail archive
+          ansible.builtin.copy:
+            dest: "{{ fixture_snapshot }}/mail-database.dump"
+            content: corrupt-test-archive
+            mode: '0600'
+
+        - name: Run the actual negative recovery path
+          ansible.builtin.command:
+            argv: [ansible-playbook, -i, 'localhost,', --connection=local, "{{ playbook_dir }}/../ansible/playbooks/restore-check-nas.yml", -e, bikehub_target_group=all, -e, ansible_become=false, -e, "bikehub_backup_directory={{ fixture_snapshot }}"]
+          register: rejected_restore
+          failed_when: false
+          changed_when: false
+
+        - name: Refuse damaged mail data before creating any target database
+          ansible.builtin.assert:
+            that:
+              - rejected_restore.rc != 0
+              - "'Start an isolated PostgreSQL' not in rejected_restore.stdout"
+      always:
+        - name: Remove only the fixture source containers
+          ansible.builtin.command:
+            argv: [docker, rm, --force, --volumes, "{{ fixture_resource }}-{{ item }}"]
+          loop: [postgres, kafka]
+          register: fixture_cleanup
+          failed_when: fixture_cleanup.rc != 0 and 'No such container' not in fixture_cleanup.stderr
+
+        - name: Remove only the fixture broker source volume
+          ansible.builtin.command:
+            argv: [docker, volume, rm, "{{ fixture_resource }}-kafka"]
+          register: fixture_volume_cleanup
+          failed_when: fixture_volume_cleanup.rc != 0 and 'no such volume' not in fixture_volume_cleanup.stderr | lower
+
+        - name: Remove only the private synthetic fixture directory
+          ansible.builtin.file:
+            path: "{{ fixture.path }}"
+            state: absent

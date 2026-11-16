@@ -64,6 +64,13 @@ jobs:
         run: |
           docker build --tag bikehub-tools:ci --file tools/BikeHub.Tools/Dockerfile .
           docker run --rm --network=none bikehub-tools:ci --help
+      - name: Export synthetic PostgreSQL credentials through stdin without network
+        run: |
+          operator_fixture_directory="$(mktemp -d)"
+          trap 'sudo rm -rf -- "$operator_fixture_directory"' EXIT
+          printf '%s' 'Host=localhost;Username=backup;Database=fixture;Password=fake-ci-only-password;SSL Mode=Disable' |
+            docker run --rm --interactive --network=none --user=0 --read-only --env DOTNET_EnableDiagnostics=0 --mount "type=bind,source=$operator_fixture_directory,target=/config" bikehub-tools:ci backup-pg --directory /config/api
+          docker run --rm --network=none --user=0 --read-only --entrypoint=/bin/sh --mount "type=bind,source=$operator_fixture_directory,target=/config,readonly" bikehub-tools:ci -ec 'test "$(stat -c %a /config/api)" = 700; test "$(stat -c %a /config/api/passwords)" = 600; test "$(stat -c %a /config/api/connection)" = 600; ! grep -Fq fake-ci-only-password /config/api/connection'
 
   infrastructure:
     name: Infrastructure isolation and configuration tests
@@ -83,5 +90,10 @@ jobs:
           ansible-playbook infra/tests/staging.yml
           ansible-playbook infra/tests/auth-mode.yml
           ansible-playbook infra/tests/configure-mail.yml
+          ansible-playbook infra/tests/backup-preflight.yml
+          ansible-playbook infra/tests/backup-restore.yml
           ansible-playbook --syntax-check infra/ansible/playbooks/backup-local.yml
           ansible-playbook --syntax-check infra/ansible/playbooks/restore-check-local.yml
+          ansible-playbook --syntax-check infra/ansible/playbooks/backup-nas.yml
+          ansible-playbook --syntax-check infra/ansible/playbooks/resume-backup-nas.yml
+          ansible-playbook --syntax-check infra/ansible/playbooks/restore-check-nas.yml

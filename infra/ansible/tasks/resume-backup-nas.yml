@@ -1,0 +1,100 @@
+---
+- name: Check for a durable replica journal
+  ansible.builtin.stat:
+    path: "{{ backup_journal_path }}"
+    follow: false
+  register: backup_recovery_journal
+
+- name: Restore only journaled BikeHub workloads
+  when: backup_recovery_journal.stat.exists
+  block:
+    - name: Require an ordinary root-private journal
+      ansible.builtin.assert:
+        that:
+          - backup_recovery_journal.stat.isreg
+          - not backup_recovery_journal.stat.islnk
+          - backup_recovery_journal.stat.mode == '0600'
+          - backup_recovery_journal.stat.uid == 0
+
+    - name: Read replica metadata without application Secrets
+      ansible.builtin.slurp:
+        src: "{{ backup_journal_path }}"
+      register: backup_recovery_file
+
+    - name: Decode the original replica counts
+      ansible.builtin.set_fact:
+        backup_recovery: "{{ backup_recovery_file.content | b64decode | from_json }}"
+
+    - name: Require the configured namespace and bounded resource lists
+      ansible.builtin.assert:
+        that:
+          - backup_recovery.namespace == backup_namespace
+          - backup_recovery.writers | length > 0
+          - backup_recovery.writers | length <= 4
+          - backup_recovery.brokers | length > 0
+          - backup_recovery.brokers | length <= 2
+          - backup_recovery.runId is match('^[0-9]{8}T[0-9]{12}Z$')
+          - backup_recovery.credentialsDirectory is match('^/tmp/bikehub-backup-config-[A-Za-z0-9_]+$')
+
+    - name: Reject resources outside the managed BikeHub instances
+      ansible.builtin.assert:
+        that:
+          - item.resource in backup_allowed_resources
+          - item.replicas is integer
+          - item.replicas | int >= 0
+          - item.replicas | int <= 100
+      vars:
+        backup_allowed_resources:
+          - "deployment/{{ bikehub_deployment }}"
+          - deployment/bikehub-mail
+          - "deployment/{{ bikehub_staging_prefix }}-api"
+          - "deployment/{{ bikehub_staging_prefix }}-mail"
+          - statefulset/bikehub-kafka
+          - "statefulset/{{ bikehub_staging_prefix }}-kafka"
+      loop: "{{ backup_recovery.brokers + backup_recovery.writers }}"
+      loop_control:
+        label: "{{ item.resource }}"
+
+    - name: Find only this interrupted run's disposable Docker helpers
+      ansible.builtin.command:
+        argv: [docker, ps, --all, --quiet, --filter, "label=bikehub.backup.run={{ backup_recovery.runId }}"]
+      register: backup_recovery_helpers
+      changed_when: false
+
+    - name: Stop only the interrupted snapshot's helpers before writers resume
+      ansible.builtin.command:
+        argv: [docker, rm, --force, "{{ item }}"]
+      loop: "{{ backup_recovery_helpers.stdout_lines }}"
+
+    - name: Restore exact original broker replicas before application clients
+      ansible.builtin.command:
+        argv: [k3s, kubectl, scale, "{{ item.resource }}", -n, "{{ backup_namespace }}", "--replicas={{ item.replicas | int }}"]
+      loop: "{{ backup_recovery.brokers }}"
+
+    - name: Wait for restored brokers
+      ansible.builtin.command:
+        argv: [k3s, kubectl, rollout, status, "{{ item.resource }}", -n, "{{ backup_namespace }}", --timeout=300s]
+      loop: "{{ backup_recovery.brokers }}"
+      when: item.replicas | int > 0
+
+    - name: Restore exact original API and mail replicas
+      ansible.builtin.command:
+        argv: [k3s, kubectl, scale, "{{ item.resource }}", -n, "{{ backup_namespace }}", "--replicas={{ item.replicas | int }}"]
+      loop: "{{ backup_recovery.writers }}"
+
+    - name: Wait only for previously running applications
+      ansible.builtin.command:
+        argv: [k3s, kubectl, rollout, status, "{{ item.resource }}", -n, "{{ backup_namespace }}", --timeout=300s]
+      loop: "{{ backup_recovery.writers }}"
+      when: item.replicas | int > 0
+
+    - name: Remove only the journaled ephemeral database credentials
+      ansible.builtin.file:
+        path: "{{ backup_recovery.credentialsDirectory }}"
+        state: absent
+      no_log: true
+
+    - name: Remove the journal only after successful recovery
+      ansible.builtin.file:
+        path: "{{ backup_journal_path }}"
+        state: absent
