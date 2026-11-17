@@ -24,6 +24,7 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 const user = { id: "owner", name: "Велосипедист", handle: "rider", city: "Казань", initials: "В", color: "green", bio: "", followers: 0, isFollowing: false, bikesCount: 1, postsCount: 2 };
 const bike = { id: "bike", name: "Гравийный велосипед", ownerId: user.id, brand: "Test", description: "Описание велосипеда", category: "gravel", year: 2025, mileage: 100, imageUrl: "/test-bike.webp", color: "", owner: user };
 const post = (id: string) => ({ id, title: "История " + id, content: "Поездка", author: user, bike, category: "ride", imageUrl: "/test-post.webp", tags: [], createdAt: "2026-11-16T12:00:00Z", likes: 0, commentsCount: 3, isLiked: false, isSaved: false });
+const feedPost = (id: string) => ({ id: "post:" + id, kind: 1, createdAt: post(id).createdAt, post: post(id), groupEntry: null });
 const comment = (id: string) => ({ id, author: user, text: "Комментарий " + id, createdAt: "2026-11-16T12:00:00Z" });
 const page = (items: unknown[], pageNumber = 1, hasMore = false) => ({ items, total: 3, pageNumber, pageSize: 2, hasMore });
 beforeEach(() => { window.location.hash = "/"; window.confirm = () => true; globalThis.fetch = async () => { throw Error("Unexpected request"); }; });
@@ -50,7 +51,7 @@ test("a failed feed page keeps readable stories and retries that page without du
   let fail = true; const requested: number[] = [];
   globalThis.fetch = async input => {
     const current = Number(new URL(String(input)).searchParams.get("page")); requested.push(current);
-    return current === 1 ? json(page([post("1"), post("2")], 1, true)) : fail ? json({ title: "Лента временно недоступна" }, 503) : json(page([post("2"), post("3")], 2));
+    return current === 1 ? json(page([feedPost("1"), feedPost("2")], 1, true)) : fail ? json({ title: "Лента временно недоступна" }, 503) : json(page([feedPost("2"), feedPost("3")], 2));
   };
   render(<Feed saved={false} search="" version={0} me={null} notify={() => {}} onCreate={() => {}} />);
   await waitFor(() => assert.ok(screen.getByText("История 1")));
@@ -256,4 +257,25 @@ test("changing accounts in the app clears an unpublished discussion reply", asyn
   await waitFor(() => assert.equal(screen.getByLabelText("Открыть мой профиль").getAttribute("href"), "#/u/other"));
   await waitFor(() => assert.equal((screen.getByLabelText("Ваш ответ") as HTMLTextAreaElement).value, ""));
   assert.ok(!screen.queryByDisplayValue("Личный ответ первого аккаунта"));
+});
+
+
+test("mixed feed retains distinct post and community IDs and nested post reactions", async () => {
+  const story = feedPost("same-id");
+  const entry = { id: "same-id", groupId: "group", groupName: "Вместе по городу", author: user, kind: 2, title: "Обсудим выходные", content: "Куда поедем?", photos: [], imageIds: [], createdAt: story.createdAt, repliesCount: 4 };
+  const paths: string[] = [];
+  globalThis.fetch = async (input, options) => {
+    const url = new URL(String(input)); paths.push(url.pathname);
+    if (url.pathname === "/api/auth/session") return json({ user, csrfToken: "test", enabled: true });
+    if (url.pathname.endsWith("/like")) { assert.equal(options?.method, "PUT"); return json({ ...story.post, likes: 1, isLiked: true }); }
+    assert.equal(url.pathname, "/api/feed/timeline");
+    return json(page([story, { id: "group:same-id", kind: 2, createdAt: entry.createdAt, post: null, groupEntry: entry }]));
+  };
+  render(<Feed saved={false} search="" version={0} me={user} notify={() => {}} onCreate={() => {}} />);
+  await waitFor(() => assert.ok(screen.getByText(entry.title)));
+  assert.ok(screen.getByText(story.post.title));
+  assert.equal(screen.getByText(entry.groupName).closest("a")?.getAttribute("href"), "#/community/group");
+  fireEvent.click(screen.getByLabelText("Нравится"));
+  await waitFor(() => assert.equal(screen.getByLabelText("Убрать лайк").getAttribute("aria-pressed"), "true"));
+  assert.ok(screen.getByText(entry.title)); assert.ok(paths.includes("/api/posts/same-id/like"));
 });

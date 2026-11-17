@@ -7,10 +7,11 @@ import {
   Settings2,
 } from "lucide-react";
 import { api, query } from "../api";
-import type { Page, Post, User } from "../api";
+import type { FeedItem, Page, Post, User } from "../api";
 import { Avatar, Empty, ErrorBox, Loading } from "../components/ui";
 import { CategoryFilter } from "../components/CategoryFilter";
 import { PostCard } from "../components/PostCard";
+import { GroupEntryCard } from "../components/GroupEntryCard";
 import { appendUnique } from "../components/paging";
 
 export function Feed({
@@ -31,7 +32,7 @@ export function Feed({
   const [tab, setTab] = useState("all");
   const [category, setCategory] = useState("");
   const [page, setPage] = useState(1);
-  const [data, setData] = useState<Page<Post> | null>(null);
+  const [data, setData] = useState<Page<FeedItem> | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [retry, setRetry] = useState(0);
@@ -42,8 +43,8 @@ export function Feed({
     pending.current = true;
     setError("");
     if (page === 1) setData(null);
-    api<Page<Post>>(
-      `/feed?${query({ tab: saved ? "saved" : tab, category, q: search, page, pageSize: 5 })}`,
+    api<Page<FeedItem>>(
+      `/feed/timeline?${query({ tab: saved ? "saved" : tab, category, q: search, page, pageSize: 5 })}`,
     )
       .then((next) => {
         if (active)
@@ -72,12 +73,12 @@ export function Feed({
             previous.total -
             (saved &&
             !post.isSaved &&
-            previous.items.some((p) => p.id === post.id)
+            previous.items.some((p) => p.post?.id === post.id)
               ? 1
               : 0),
           items: previous.items
-            .map((p) => (p.id === post.id ? post : p))
-            .filter((p) => !saved || p.isSaved),
+            .map((p): FeedItem => p.post?.id === post.id ? { ...p, kind: 1, post, groupEntry: null } : p)
+            .filter((p) => !saved || p.post?.isSaved),
         },
     );
   }
@@ -164,7 +165,7 @@ export function Feed({
         </div>
         <span className="sort-label">
           <Settings2 size={15} />
-          {tab === "popular" ? "По лайкам" : "Свежее"}
+          {tab === "popular" ? "По активности" : "Свежее"}
         </span>
       </div>
       <CategoryFilter
@@ -182,10 +183,10 @@ export function Feed({
             <Loading />
           ) : data?.items.length ? (
             <div className="post-list">
-              {data.items.map((post) => (
+              {data.items.map((item) => item.kind === 2 ? <GroupEntryCard key={item.id} entry={item.groupEntry} /> : (
                 <PostCard
-                  key={post.id}
-                  post={post}
+                  key={item.id}
+                  post={item.post}
                   update={update}
                   notify={notify}
                 />
@@ -197,12 +198,13 @@ export function Feed({
                 saved
                   ? "Здесь будут ваши находки"
                   : tab === "following"
-                    ? "Пока нет историй от подписок"
+                    ? "В подписках пока тихо"
                     : "Пока ничего не нашлось"
               }
               description={
                 saved
                   ? "Нажмите на закладку под записью, чтобы сохранить её здесь."
+                  : tab === "following" ? "Подпишитесь на авторов или вступите в сообщества — их записи появятся здесь."
                   : "Попробуйте другой тип велосипеда, поиск или загляните в общую ленту."
               }
             />

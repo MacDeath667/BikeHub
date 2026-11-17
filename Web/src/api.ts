@@ -102,6 +102,9 @@ export interface Comment {
   text: string;
   createdAt: string;
 }
+export type FeedItem =
+  | { id: string; kind: 1; createdAt: string; post: Post; groupEntry: null }
+  | { id: string; kind: 2; createdAt: string; post: null; groupEntry: GroupEntry };
 export interface Community {
   ownerId?: string | null;
   id: string;

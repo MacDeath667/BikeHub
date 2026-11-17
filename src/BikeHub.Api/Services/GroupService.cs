@@ -98,7 +98,7 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
         db.GroupEntries.Where(e => e.GroupId == id).ExecuteUpdate(u => u.SetProperty(e => e.IsDeleted, true).SetProperty(e => e.ImageIds, Array.Empty<Guid>()));
         db.SaveChanges(); transaction.Commit();
     }
-    private IQueryable<GroupEntry> Visible(BikeHubDbContext db) => db.GroupEntries.AsNoTracking().Where(e => !e.IsDeleted && !e.IsHidden &&
+    internal IQueryable<GroupEntry> Visible(BikeHubDbContext db) => db.GroupEntries.AsNoTracking().Where(e => !e.IsDeleted && !e.IsHidden &&
         db.Communities.Any(g => g.Id == e.GroupId && !g.IsDeleted && !g.IsHidden) && db.Accounts.Any(a => a.Id == e.AuthorId && !a.IsBlocked));
     private GroupEntryDto View(BikeHubDbContext db, GroupEntry e, bool includeRoute = true) => new(e.Id, e.GroupId,
         db.Communities.Where(g => g.Id == e.GroupId).Select(g => g.Name).Single(), community.Users(db).Single(u => u.Id == e.AuthorId),
@@ -107,15 +107,18 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
     private Page<GroupEntryDto> PageEntries(BikeHubDbContext db, IQueryable<GroupEntry> query, int page, int size)
     {
         page = Math.Clamp(page, 1, 1000000); size = Math.Clamp(size, 1, 50);
-        var rows = query.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id).Skip((page - 1) * size).Take(size)
-            .Select(e => new { e.Id, e.GroupId, e.AuthorId, e.Kind, e.Title, e.Content, e.ImageIds, e.CreatedAt,
+        return new(Summaries(db, query.OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id).Skip((page - 1) * size).Take(size)), query.Count(), page, size);
+    }
+    internal IReadOnlyList<GroupEntryDto> Summaries(BikeHubDbContext db, IQueryable<GroupEntry> query)
+    {
+        var rows = query.Select(e => new { e.Id, e.GroupId, e.AuthorId, e.Kind, e.Title, e.Content, e.ImageIds, e.CreatedAt,
                 GroupName = db.Communities.Where(g => g.Id == e.GroupId).Select(g => g.Name).Single(),
                 RepliesCount = db.GroupReplies.Count(r => r.EntryId == e.Id && !r.IsDeleted && !r.IsHidden && db.Accounts.Any(a => a.Id == r.AuthorId && !a.IsBlocked)),
                 HasRoute = e.RouteJson != null }).ToArray();
         var authorIds = rows.Select(e => e.AuthorId).Distinct().ToArray();
         var authors = community.Users(db).Where(u => authorIds.Contains(u.Id)).ToDictionary(u => u.Id);
-        return new(rows.Where(e => authors.ContainsKey(e.AuthorId)).Select(e => new GroupEntryDto(e.Id, e.GroupId, e.GroupName,
-            authors[e.AuthorId], e.Kind, e.Title, e.Content, e.ImageIds, e.CreatedAt, e.RepliesCount, HasRoute: e.HasRoute)).ToArray(), query.Count(), page, size);
+        return rows.Where(e => authors.ContainsKey(e.AuthorId)).Select(e => new GroupEntryDto(e.Id, e.GroupId, e.GroupName,
+            authors[e.AuthorId], e.Kind, e.Title, e.Content, e.ImageIds, e.CreatedAt, e.RepliesCount, HasRoute: e.HasRoute)).ToArray();
     }
     public Page<GroupEntryDto> Entries(Guid groupId, GroupEntryKind kind, int page, string? search = null)
     {
