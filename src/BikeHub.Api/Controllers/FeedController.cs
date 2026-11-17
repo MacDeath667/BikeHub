@@ -10,6 +10,7 @@ namespace BikeHub.Api.Controllers;
 public sealed class FeedController(IFeedService service, ICurrentUser current, ActivityFeedService activity) : ControllerBase
 {
     [HttpGet("timeline")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public ActionResult<Page<FeedItemDto>> Timeline([FromQuery] PaginationQuery paging,
         [FromQuery] string? tab, [FromQuery] BikeCategory? category, [FromQuery] string? q)
     {
