@@ -148,9 +148,7 @@ public sealed class RideService(IDbContextFactory<BikeHubDbContext> contexts, IC
         {
             throw new CommunityProblem(400, InvalidDateTitle);
         }
-        try { _ = TimeZoneInfo.FindSystemTimeZoneById(request.TimeZone); }
-        catch (TimeZoneNotFoundException) { throw new CommunityProblem(400, InvalidDateTitle); }
-        catch (InvalidTimeZoneException) { throw new CommunityProblem(400, InvalidDateTitle); }
+        var timeZone = CalendarDates.Zone(request.TimeZone, InvalidDateTitle).Id;
         if (request.MeetingPoint is { } point && (!double.IsFinite(point.Lat) || !double.IsFinite(point.Lng) || point.Lat is < -90 or > 90 || point.Lng is < -180 or > 180))
         {
             throw new CommunityProblem(400, InvalidPointTitle);
@@ -167,7 +165,7 @@ public sealed class RideService(IDbContextFactory<BikeHubDbContext> contexts, IC
         var route = RouteService.Save(request.Route);
         var unchanged = ride.Title == request.Title.Trim() && ride.Description == request.Description.Trim() && ride.City == request.City.Trim() &&
             ride.MeetingName == request.MeetingName.Trim() && ride.MeetingLat == request.MeetingPoint?.Lat && ride.MeetingLng == request.MeetingPoint?.Lng &&
-            ride.StartsAt == startsAt && ride.TimeZone == request.TimeZone && ride.DistanceKm == request.DistanceKm &&
+            ride.StartsAt == startsAt && ride.TimeZone == timeZone && ride.DistanceKm == request.DistanceKm &&
             ride.AverageSpeedKmh == request.AverageSpeedKmh && ride.Difficulty == request.Difficulty && ride.Capacity == request.Capacity &&
             ride.GroupId == request.GroupId && RouteJson.Write(RouteJson.Read(ride.RouteJson)) == route;
         if (id.HasValue && unchanged)
@@ -176,7 +174,7 @@ public sealed class RideService(IDbContextFactory<BikeHubDbContext> contexts, IC
         }
         ride.Title = request.Title.Trim(); ride.Description = request.Description.Trim(); ride.City = request.City.Trim(); ride.MeetingName = request.MeetingName.Trim();
         ride.MeetingLat = request.MeetingPoint?.Lat; ride.MeetingLng = request.MeetingPoint?.Lng;
-        ride.StartsAt = startsAt; ride.TimeZone = request.TimeZone;
+        ride.StartsAt = startsAt; ride.TimeZone = timeZone;
         ride.DistanceKm = request.DistanceKm; ride.AverageSpeedKmh = request.AverageSpeedKmh; ride.Difficulty = request.Difficulty;
         ride.Capacity = request.Capacity; ride.GroupId = request.GroupId; ride.RouteJson = route; ride.Revision++; ride.UpdatedAt = now;
         if (!id.HasValue)

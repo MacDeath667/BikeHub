@@ -116,7 +116,9 @@ public sealed class RideTests
             using var response = await AuthTestClient.Post(owner, "/api/rides", invalid); Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         }
         var ride = await Create<RideDto>(owner, "/api/rides", request); Assert.Equal(group.Id, ride.GroupId);
-        Assert.Single((await guest.GetFromJsonAsync<Page<RideDto>>($"/api/rides?groupId={group.Id}"))!.Items);
+        var windowsZone = await Create<RideDto>(owner, "/api/rides", request with { TimeZone = "Russian Standard Time", Title = "Совместимый часовой пояс" });
+        Assert.Equal("Europe/Moscow", windowsZone.TimeZone);
+        Assert.Equal(2, (await guest.GetFromJsonAsync<Page<RideDto>>($"/api/rides?groupId={group.Id}"))!.Items.Count);
         using (var db = database.CreateDbContext()) { await db.Communities.Where(g => g.Id == group.Id).ExecuteUpdateAsync(u => u.SetProperty(g => g.IsHidden, true)); }
         Assert.Equal(HttpStatusCode.NotFound, (await guest.GetAsync($"/api/rides/{ride.Id}/participants")).StatusCode);
         using (var db = database.CreateDbContext())
