@@ -136,12 +136,15 @@ public sealed class RideService(IDbContextFactory<BikeHubDbContext> contexts, IC
         using var db = contexts.CreateDbContext();
         using var transaction = db.Database.BeginTransaction();
         var now = clock.GetUtcNow();
+        // PostgreSQL timestamps store microseconds; normalize before comparing a repeated request.
+        var startsAt = request.StartsAt.ToUniversalTime();
+        startsAt = startsAt.AddTicks(-(startsAt.Ticks % TimeSpan.TicksPerMicrosecond));
         var ride = id.HasValue ? Locked(db, id.Value) : new GroupRide { Id = Guid.CreateVersion7(), OwnerId = actor, CreatedAt = now, Status = RideStatus.Scheduled };
         if (id.HasValue)
         {
             Manage(ride); Revision(ride, request.Revision);
         }
-        if (request.StartsAt <= now || request.StartsAt > now.AddYears(2))
+        if (startsAt <= now || startsAt > now.AddYears(2))
         {
             throw new CommunityProblem(400, InvalidDateTitle);
         }
@@ -164,7 +167,7 @@ public sealed class RideService(IDbContextFactory<BikeHubDbContext> contexts, IC
         var route = RouteService.Save(request.Route);
         var unchanged = ride.Title == request.Title.Trim() && ride.Description == request.Description.Trim() && ride.City == request.City.Trim() &&
             ride.MeetingName == request.MeetingName.Trim() && ride.MeetingLat == request.MeetingPoint?.Lat && ride.MeetingLng == request.MeetingPoint?.Lng &&
-            ride.StartsAt == request.StartsAt && ride.TimeZone == request.TimeZone && ride.DistanceKm == request.DistanceKm &&
+            ride.StartsAt == startsAt && ride.TimeZone == request.TimeZone && ride.DistanceKm == request.DistanceKm &&
             ride.AverageSpeedKmh == request.AverageSpeedKmh && ride.Difficulty == request.Difficulty && ride.Capacity == request.Capacity &&
             ride.GroupId == request.GroupId && RouteJson.Write(RouteJson.Read(ride.RouteJson)) == route;
         if (id.HasValue && unchanged)
@@ -173,7 +176,7 @@ public sealed class RideService(IDbContextFactory<BikeHubDbContext> contexts, IC
         }
         ride.Title = request.Title.Trim(); ride.Description = request.Description.Trim(); ride.City = request.City.Trim(); ride.MeetingName = request.MeetingName.Trim();
         ride.MeetingLat = request.MeetingPoint?.Lat; ride.MeetingLng = request.MeetingPoint?.Lng;
-        ride.StartsAt = request.StartsAt.ToUniversalTime(); ride.TimeZone = request.TimeZone;
+        ride.StartsAt = startsAt; ride.TimeZone = request.TimeZone;
         ride.DistanceKm = request.DistanceKm; ride.AverageSpeedKmh = request.AverageSpeedKmh; ride.Difficulty = request.Difficulty;
         ride.Capacity = request.Capacity; ride.GroupId = request.GroupId; ride.RouteJson = route; ride.Revision++; ride.UpdatedAt = now;
         if (!id.HasValue)
