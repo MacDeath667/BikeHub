@@ -2798,3 +2798,25 @@ textarea {
 .maintenance-check { display: flex; gap: .5rem; align-items: center; margin-block: .75rem; }
 .maintenance-check input[type="checkbox"] { width: auto; }
 .maintenance-due { border-inline-start: 4px solid var(--green, #698e4d); }
+
+.conversation-card { display: flex; align-items: flex-start; gap: 14px; color: var(--theme-ink, #25352e); text-decoration: none; }
+.conversation-card > div { min-width: 0; flex: 1; }
+.conversation-card small { display: block; margin-top: 3px; color: var(--theme-muted, #64756b); }
+.conversation-card p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-block: 8px; }
+.conversation-card.unread { border-color: var(--theme-accent, #386e49); }
+.message-heading h1 { margin: 0; font-size: clamp(1.2rem, 4vw, 1.8rem); overflow-wrap: anywhere; }
+.message-log { display: flex; flex-direction: column; gap: 12px; height: min(58dvh, 720px); min-height: 240px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--theme-soft, #f1f5ef); }
+.direct-message { align-self: flex-start; max-width: min(88%, 620px); padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--theme-surface, #fff); overflow-wrap: anywhere; }
+.direct-message.outgoing { align-self: flex-end; border-color: var(--theme-accent, #8da981); }
+.direct-message small { color: var(--theme-muted, #64756b); font-size: 11px; }
+.direct-message .group-content { margin-block: 7px; line-height: 1.65; }
+.direct-message .text-button { font-size: 11px; }
+.message-compose textarea { min-height: 86px; }
+.message-jump { margin-block: 10px; }
+.reported-message { white-space: pre-wrap; overflow-wrap: anywhere; margin-inline: 0; padding: 14px; border-inline-start: 3px solid var(--theme-accent, #386e49); background: var(--theme-soft, #f1f5ef); }
+@media (max-width: 700px) {
+  .message-tabs { gap: 6px; }
+  .message-tabs .button { padding: 9px 11px; font-size: 12px; }
+  .message-log { padding: 8px; height: 54dvh; }
+  .direct-message { max-width: 94%; padding: 10px; }
+}

@@ -13,8 +13,8 @@ public sealed record PrivateMessageResolutionRequest([Required, StringLength(200
 public sealed record MessagePeerDto(Guid? Id, string Name, string? Handle, string? AvatarUrl, bool Available);
 public sealed record MessageTargetDto(MessagePeerDto Peer, Guid? ConversationId, bool CanRequest, bool BlockedByMe);
 public sealed record ConversationDto(Guid Id, MessagePeerDto Peer, ConversationStatus Status, bool RequestedByMe,
-    bool CanSend, bool CanAccept, bool BlockedByMe, int UnreadCount, long LatestSequence, DateTimeOffset UpdatedAt, string? LastText);
+    bool CanSend, bool CanAccept, bool BlockedByMe, int UnreadCount, long LatestSequence, DateTimeOffset UpdatedAt, string? LastText, bool IsArchived = false);
 public sealed record PrivateMessageDto(Guid Id, Guid? SenderId, long Sequence, string? Text, bool IsDeleted, bool IsHidden, DateTimeOffset CreatedAt);
 public sealed record MessagePageDto(IReadOnlyList<PrivateMessageDto> Items, bool HasMoreBefore, bool HasMoreAfter, long LatestSequence);
 public sealed record PrivateMessageReportDto(Guid Id, Guid? MessageId, MessagePeerDto Reporter, MessagePeerDto ReportedUser,
-    string MessageText, string Reason, DateTimeOffset CreatedAt);
+    string MessageText, string Reason, DateTimeOffset CreatedAt, bool CanChangeVisibility);

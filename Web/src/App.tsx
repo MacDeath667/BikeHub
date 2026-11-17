@@ -13,6 +13,7 @@ import {
   House,
   Menu,
   Map as MapIcon,
+  MessageCircle,
   LogOut,
   MailCheck,
   Mountain,
@@ -41,6 +42,9 @@ import { Communities } from "./pages/Communities";
 import { Rides, RideDetail } from "./pages/Rides";
 import { RouteLibrary, LibraryRouteDetail } from "./pages/RouteLibrary";
 import { Maintenance } from "./pages/Maintenance";
+import { Messages, MessageCount } from "./pages/Messages";
+import { Conversation } from "./pages/Conversation";
+import { MessageReports } from "./pages/MessageReports";
 import { NotificationBell, Notifications } from "./pages/Notifications";
 import { clearLocalDrafts } from "./components/useDraft";
 import { SearchResults, searchKind } from "./pages/SearchResults";
@@ -177,6 +181,7 @@ export default function App() {
     },
     { path: "/rides", icon: CalendarDays, text: "Покатушки", active: section === "rides" || section === "ride" },
     { path: "/routes", icon: MapIcon, text: "Маршруты", active: section === "routes" || section === "route" },
+    { path: "/messages", icon: MessageCircle, text: "Сообщения", active: section === "messages" || section === "message" },
     {
       path: "/saved",
       icon: Bookmark,
@@ -214,6 +219,7 @@ export default function App() {
             >
               <item.icon size={20} strokeWidth={1.7} />
               {item.text}
+              {item.path === "/messages" && me && <MessageCount userId={me.id} />}
               {item.active && <span className="nav-dot" />}
             </a>
           ))}
@@ -286,6 +292,9 @@ export default function App() {
                   routes: "Маршруты",
                   route: "Маршрут",
                   maintenance: "Обслуживание",
+                  messages: "Сообщения",
+                  message: "Переписка",
+                  "message-reports": "Жалобы на сообщения",
                   community: "Сообщество",
                   "group-entry": "Обсуждение сообщества",
                   moderation: "Модерация",
@@ -410,6 +419,9 @@ export default function App() {
                   {section === "rides" && <Rides key={`${new URLSearchParams(search).get("group") || "all"}-${me?.id || "guest"}`} me={me} groupId={new URLSearchParams(search).get("group")} />}
                   {section === "routes" && <RouteLibrary key={me?.id || "guest"} me={me} />}
                   {section === "maintenance" && <Maintenance key={`${path}-${me?.id || "guest"}`} bikeId={path.split("/")[2]} me={me} />}
+                  {section === "messages" && <Messages key={`${new URLSearchParams(search).get("to") || "inbox"}-${me?.id || "guest"}`} me={me} toUserId={new URLSearchParams(search).get("to")} />}
+                  {section === "message" && <Conversation key={`${path}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} />}
+                  {section === "message-reports" && <MessageReports key={me?.id || "guest"} me={me} />}
                   {section === "route" && <LibraryRouteDetail key={`${route}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} source={(["post", "entry", "ride"] as const).map(kind => ({ kind, id: new URLSearchParams(search).get(kind) || "" })).find(item => !!item.id)} />}
                   {section === "ride" && <RideDetail key={`${path}-${new URLSearchParams(search).get("group") || ""}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} groupId={new URLSearchParams(search).get("group")} />}
                   {section === "communities" && (
@@ -440,6 +452,9 @@ export default function App() {
                       "routes",
                       "route",
                       "maintenance",
+                      "messages",
+                      "message",
+                      "message-reports",
                       "search",
                     ].includes(section) && (
                       <Empty

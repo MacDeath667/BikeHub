@@ -131,6 +131,14 @@ export interface MaintenanceRecord {
   id: string; componentId: string | null; componentName: string | null; kind: number; title: string; notes: string;
   performedOn: string; mileage: number; costRub: number | null; resetsInterval: boolean; revision: number;
 }
+export interface MessagePeer { id: string | null; name: string; handle: string | null; avatarUrl: string | null; available: boolean; }
+export interface Conversation {
+  id: string; peer: MessagePeer; status: 1 | 2 | 3; requestedByMe: boolean; canSend: boolean;
+  canAccept: boolean; blockedByMe: boolean; unreadCount: number; latestSequence: number; updatedAt: string; lastText: string | null;
+  isArchived?: boolean;
+}
+export interface DirectMessage { id: string; senderId: string | null; sequence: number; text: string | null; isDeleted: boolean; isHidden: boolean; createdAt: string; }
+export interface MessagePage { items: DirectMessage[]; hasMoreBefore: boolean; hasMoreAfter: boolean; latestSequence: number; }
 export interface Community {
   ownerId?: string | null;
   id: string;

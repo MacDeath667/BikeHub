@@ -41,7 +41,7 @@ public sealed class PrivateMessageTests
         await using var app = App(database); using var sender = app.Browser(); using var recipient = app.Browser(); using var outsider = app.Browser(); using var guest = app.Browser();
         var (s, sl) = await AuthTestClient.Login(sender, "message-sender@example.test"); sl.Dispose();
         var (r, rl) = await AuthTestClient.Login(recipient, "message-recipient@example.test"); rl.Dispose();
-        var (_, ol) = await AuthTestClient.Login(outsider, "message-outside@example.test"); ol.Dispose();
+        var (outside, ol) = await AuthTestClient.Login(outsider, "message-outside@example.test"); ol.Dispose();
         var key = Guid.NewGuid(); var start = new StartConversationRequest(r.User!.Id, "PRIVATE_CONTACT_REQUEST", key);
         var conversation = await Create<ConversationDto>(sender, "/api/messages/conversations", start); var path = $"/api/messages/conversations/{conversation.Id}";
         Assert.False(conversation.CanSend); Assert.True(conversation.RequestedByMe);
@@ -71,6 +71,15 @@ public sealed class PrivateMessageTests
         Assert.Equal(0, await outsider.GetFromJsonAsync<int>("/api/notifications/unread-count"));
         Assert.Equal(HttpStatusCode.BadRequest, (await sender.GetAsync(path + "/messages?pageSize=51")).StatusCode);
         Assert.Equal(s.User!.Id, first.SenderId);
+        using var archived = await Change(sender, path + "/archive", new { archived = true }); Assert.Equal(HttpStatusCode.NoContent, archived.StatusCode);
+        Assert.True((await sender.GetFromJsonAsync<ConversationDto>(path))!.IsArchived);
+        Assert.Empty((await sender.GetFromJsonAsync<Page<ConversationDto>>("/api/messages/conversations"))!.Items);
+        Assert.Single((await recipient.GetFromJsonAsync<Page<ConversationDto>>("/api/messages/conversations"))!.Items);
+        await Create<PrivateMessageDto>(recipient, path + "/messages", new SendPrivateMessageRequest("Новое сообщение возвращает диалог", Guid.NewGuid()));
+        Assert.False((await sender.GetFromJsonAsync<ConversationDto>(path))!.IsArchived);
+        var withdrawn = await Create<ConversationDto>(sender, "/api/messages/conversations", new StartConversationRequest(outside.User!.Id, "Запрос можно отозвать", Guid.NewGuid()));
+        var withdrawal = await Success<ConversationDto>(await Change(sender, $"/api/messages/conversations/{withdrawn.Id}/request", method: HttpMethod.Delete)); Assert.Equal(ConversationStatus.Declined, withdrawal.Status);
+        Assert.Empty((await outsider.GetFromJsonAsync<Page<ConversationDto>>("/api/messages/conversations?requests=true"))!.Items);
     }
 
     [Fact]

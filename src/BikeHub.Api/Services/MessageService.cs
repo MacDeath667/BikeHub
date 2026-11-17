@@ -20,6 +20,7 @@ public sealed class MessageService(IDbContextFactory<BikeHubDbContext> contexts,
     private const string RequestRateTitle = "Лимит запросов контакта достигнут. Попробуйте позднее.";
     private const string BlocksLimitTitle = "Список блокировок заполнен.";
     private const string ReadTitle = "Некорректная позиция прочтения.";
+    private const string WithdrawTitle = "Отозвать можно только свой ожидающий запрос.";
     private Guid Actor => current.Id ?? throw new CommunityProblem(401, Constants.Messages.SignInTitle);
 
     internal static IQueryable<PrivateConversation> Own(BikeHubDbContext db, Guid actor) => db.PrivateConversations.AsNoTracking()
@@ -51,6 +52,7 @@ public sealed class MessageService(IDbContextFactory<BikeHubDbContext> contexts,
     {
         var actor = Actor;
         var rows = query.Select(c => new { c.Id, c.Status, c.RequestedById, c.LatestSequence, c.UpdatedAt,
+            Archived = c.FirstUserId == actor ? c.FirstArchived : c.SecondArchived,
             PeerId = c.FirstUserId == actor ? c.SecondUserId : c.FirstUserId,
             ReadSequence = c.FirstUserId == actor ? c.FirstReadSequence : c.SecondReadSequence,
             LastText = db.PrivateMessages.Where(m => m.ConversationId == c.Id).OrderByDescending(m => m.Sequence)
@@ -68,7 +70,7 @@ public sealed class MessageService(IDbContextFactory<BikeHubDbContext> contexts,
                 !unavailable && r.Status == ConversationStatus.Accepted,
                 !unavailable && r.RequestedById.HasValue && r.RequestedById != actor && r.Status != ConversationStatus.Accepted,
                 blocked.Any(b => b.UserId == actor && b.BlockedUserId == r.PeerId), unavailable || r.Status == ConversationStatus.Declined ? 0 : r.Unread,
-                r.LatestSequence, r.UpdatedAt, r.LastText);
+                r.LatestSequence, r.UpdatedAt, r.LastText, r.Archived);
         }).ToArray();
     }
     public ConversationDto Get(Guid id)
@@ -214,13 +216,23 @@ public sealed class MessageService(IDbContextFactory<BikeHubDbContext> contexts,
             transaction.Commit(); return Get(id);
         }
         conversation.Status = accept ? ConversationStatus.Accepted : ConversationStatus.Declined;
-        if (accept) { SetRead(conversation, actor, conversation.LatestSequence); }
+        if (accept)
+        {
+            SetRead(conversation, actor, conversation.LatestSequence);
+            if (conversation.FirstUserId == actor) { conversation.FirstArchived = false; } else { conversation.SecondArchived = false; }
+        }
         db.SaveChanges(); MarkNotificationsRead(db, id, conversation.LatestSequence); transaction.Commit(); return Get(id);
     }
     private static void SetRead(PrivateConversation conversation, Guid actor, long sequence)
     {
         if (conversation.FirstUserId == actor) { conversation.FirstReadSequence = Math.Max(conversation.FirstReadSequence, sequence); }
         else { conversation.SecondReadSequence = Math.Max(conversation.SecondReadSequence, sequence); }
+    }
+    public ConversationDto Withdraw(Guid id)
+    {
+        var actor = Actor; using var db = contexts.CreateDbContext(); using var transaction = db.Database.BeginTransaction(); var conversation = Locked(db, id);
+        if (conversation.RequestedById != actor || conversation.Status == ConversationStatus.Accepted) { throw new CommunityProblem(409, WithdrawTitle); }
+        conversation.Status = ConversationStatus.Declined; db.SaveChanges(); transaction.Commit(); return Get(id);
     }
     private void MarkNotificationsRead(BikeHubDbContext db, Guid id, long sequence)
     {

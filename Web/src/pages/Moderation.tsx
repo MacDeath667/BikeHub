@@ -28,7 +28,7 @@ export function Moderation({ me }: { me: User | null }) {
     try { await api(path, { method, body: JSON.stringify(body) }); setRevision(v => v + 1); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
-  return <><h1>Модерация</h1><p>Открытые жалобы пользователей.</p>
+  return <><h1>Модерация</h1><p>Открытые жалобы пользователей.</p><a className="button secondary" href="#/message-reports">Жалобы на личные сообщения</a>
     {error && <ErrorBox message={error} retry={() => setRevision(v => v + 1)} />}
     <label>Результат проверки<textarea maxLength={2000} value={resolution} onChange={e => setResolution(e.target.value)} placeholder="Укажите результат перед закрытием жалобы" /></label>
     {!reports ? !error && <Loading /> : !reports.length ? <Empty title="Жалоб нет" description="Открытые обращения появятся здесь." /> : reports.map(report => <section className="profile-card moderation-report" key={report.id}>

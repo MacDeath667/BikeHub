@@ -102,6 +102,7 @@ export function UserProfile({
                 {user.isFollowing ? "Вы подписаны" : "Подписаться"}
               </button>
             )}
+            {user.id !== me?.id && <button className="button secondary" onClick={() => { if (!me) { requestLogin(); return; } window.location.hash = `/messages?to=${user.id}`; }}>Написать</button>}
           </div>
           <p>{user.bio}</p>
           <div className="profile-stats">

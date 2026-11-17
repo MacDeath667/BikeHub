@@ -23,6 +23,8 @@ public sealed class MessagesController(MessageService messages, MessageModeratio
     public ActionResult<ConversationDto> Start(StartConversationRequest request) => Ok(messages.Start(request));
     [HttpPut("conversations/{id:guid}/request")]
     public ActionResult<ConversationDto> Decide(Guid id, MessageRequestDecision request) => Ok(messages.Decide(id, request.Accept));
+    [HttpDelete("conversations/{id:guid}/request")]
+    public ActionResult<ConversationDto> Withdraw(Guid id) => Ok(messages.Withdraw(id));
     [HttpPut("conversations/{id:guid}/read")]
     public IActionResult Read(Guid id, ReadConversationRequest request) { messages.Read(id, request.Sequence); return NoContent(); }
     [HttpPut("conversations/{id:guid}/archive")]

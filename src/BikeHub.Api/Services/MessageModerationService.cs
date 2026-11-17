@@ -43,10 +43,13 @@ public sealed class MessageModerationService(IDbContextFactory<BikeHubDbContext>
         var rows = query.OrderByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id).Skip((page - 1) * size).Take(size).ToArray();
         var ids = rows.SelectMany(r => new[] { (Guid?)r.ReporterId, r.ReportedUserId }).Where(u => u.HasValue).Select(u => u!.Value).Distinct().ToArray();
         var users = db.Accounts.AsNoTracking().Where(a => ids.Contains(a.Id)).ToDictionary(a => a.Id);
+        var messageIds = rows.Where(r => r.MessageId.HasValue).Select(r => r.MessageId!.Value).Distinct().ToArray();
+        var available = db.PrivateMessages.Where(m => messageIds.Contains(m.Id) && !m.IsDeleted).Select(m => m.Id).ToHashSet();
         MessagePeerDto User(Guid? id) => id.HasValue && users.TryGetValue(id.Value, out var user)
             ? new(user.Id, user.DisplayName, user.Handle, user.AvatarId.HasValue ? Constants.MediaPathPrefix + user.AvatarId.Value : null, !user.IsBlocked)
             : new(null, Constants.Messages.DeletedAccountName, null, null, false);
-        return new(rows.Select(r => new PrivateMessageReportDto(r.Id, r.MessageId, User(r.ReporterId), User(r.ReportedUserId), r.MessageText, r.Reason, r.CreatedAt)).ToArray(), query.Count(), page, size);
+        return new(rows.Select(r => new PrivateMessageReportDto(r.Id, r.MessageId, User(r.ReporterId), User(r.ReportedUserId), r.MessageText, r.Reason, r.CreatedAt,
+            r.MessageId.HasValue && available.Contains(r.MessageId.Value))).ToArray(), query.Count(), page, size);
     }
     public void Resolve(Guid id, string resolution)
     {

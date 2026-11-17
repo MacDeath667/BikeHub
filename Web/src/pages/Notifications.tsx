@@ -10,7 +10,7 @@ type Notification = {
 };
 const changedEvent = "bikehub:notifications-changed";
 const refresh = () => window.dispatchEvent(new Event(changedEvent));
-const descriptions: Record<number, string> = { 1: "прокомментировал вашу запись", 2: "ответил вам", 3: "подписался на вас", 4: "упомянул вас", 5: "изменил покатушку — проверьте время и место", 6: "отменил покатушку", 7: "оставил отзыв о вашем маршруте", 8: "Пора проверить обслуживание велосипеда" };
+const descriptions: Record<number, string> = { 1: "прокомментировал вашу запись", 2: "ответил вам", 3: "подписался на вас", 4: "упомянул вас", 5: "изменил покатушку — проверьте время и место", 6: "отменил покатушку", 7: "оставил отзыв о вашем маршруте", 8: "Пора проверить обслуживание велосипеда", 9: "отправил личное сообщение", 10: "отправил запрос на переписку" };
 function destination(item: Notification) {
   if (item.targetType === 4) { return item.actorNickname ? `#/u/${encodeURIComponent(item.actorNickname)}` : `#/user/${item.actorId}`; }
   if (item.targetType === 2) { return `#/post/${item.targetId}`; }
@@ -19,6 +19,7 @@ function destination(item: Notification) {
   if (item.targetType === 10) { return `#/ride/${item.containerId}`; }
   if (item.targetType === 12) { return `#/route/${item.containerId}`; }
   if (item.targetType === 13) { return `#/maintenance/${item.containerId}`; }
+  if (item.targetType === 14) { return `#/message/${item.containerId}`; }
   return `#/group-entry/${item.targetId}`;
 }
 
