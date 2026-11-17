@@ -21,8 +21,8 @@ public sealed class CityPersistenceTests
         await db.GetService<IMigrator>().MigrateAsync("20261117102805_PrivateMessages");
         var owner = new AuthAccountEntity { Id = Guid.CreateVersion7(), Email = "city-migration@example.test", DisplayName = "Rider", City = "ПиТеР" };
         db.Accounts.AddRange(owner,
-            new AuthAccountEntity { Id = Guid.CreateVersion7(), Email = "ambiguous-city@example.test", City = "Киров" },
-            new AuthAccountEntity { Id = Guid.CreateVersion7(), Email = "unknown-city@example.test", City = "Старый неизвестный город" });
+            new AuthAccountEntity { Id = Guid.CreateVersion7(), Email = "ambiguous-city@example.test", DisplayName = "Other rider", City = "Киров" },
+            new AuthAccountEntity { Id = Guid.CreateVersion7(), Email = "unknown-city@example.test", DisplayName = "Legacy rider", City = "Старый неизвестный город" });
         db.Rides.Add(new GroupRide { Id = Guid.CreateVersion7(), OwnerId = owner.Id, Title = "Ride", City = " САНКТ ПЕТЕРБУРГ ", Revision = 1, Status = RideStatus.Scheduled, Difficulty = RideDifficulty.Easy });
         db.LibraryRoutes.Add(new LibraryRoute { Id = Guid.CreateVersion7(), OwnerId = owner.Id, Title = "Route", City = "г. СПб", Surface = RouteSurface.Mixed, Revision = 1, RouteJson = """{"name":"Route","segments":[],"markers":[]}""" });
         await db.SaveChangesAsync();
