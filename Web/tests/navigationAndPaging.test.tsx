@@ -19,6 +19,7 @@ const { BikeDirectory, BikeDetail } = await import("../src/pages/Bikes");
 const { PostDetail } = await import("../src/pages/PostDetail");
 const { UserProfile } = await import("../src/pages/UserProfile");
 const { GroupEntryDetail } = await import("../src/pages/CommunityDetail");
+const { LibraryRouteDetail } = await import("../src/pages/RouteLibrary");
 const { RideDetail } = await import("../src/pages/Rides");
 const { Moderation } = await import("../src/pages/Moderation");
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
@@ -354,4 +355,31 @@ test("new rides submit the chosen meeting zone as a UTC instant and enforce sign
   await waitFor(() => assert.equal(submitted?.startsAt, "2027-05-01T07:00:00.000Z"));
   assert.equal(submitted?.timeZone, "Europe/Moscow"); assert.equal(submitted?.capacity, null); assert.equal(submitted?.groupId, null);
   await waitFor(() => assert.equal(window.location.hash, "#/ride/ride"));
+});
+
+
+test("private route notes survive a failed save and can be retried without reloading the page", async () => {
+  const value = { id: "library", author: user, title: "Речной маршрут", description: "Дорога у воды", city: "Казань", surface: 2 as const, distanceKm: 11.12, revision: 1, createdAt: "2026-11-17T10:00:00Z", reviewsCount: 0, rating: null, isSaved: true, collectionId: null, myNote: "Прежняя личная заметка", route: null };
+  let fail = true, writes = 0;
+  globalThis.fetch = async (input, options) => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/auth/session") return json({ user, enabled: true, csrfToken: "test" });
+    if (path === "/api/route-collections") return json([{ id: "collection", name: "Выходные", routesCount: 0 }]);
+    if (path.endsWith("/reviews")) return json(page([]));
+    if (path.endsWith("/bookmark")) { writes++; const body = JSON.parse(String(options?.body)); return fail ? json({ title: "Сохранение временно недоступно" }, 503) : json({ ...value, myNote: body.note, collectionId: body.collectionId }); }
+    return json(value);
+  };
+  render(<LibraryRouteDetail id="library" me={user} />);
+  await waitFor(() => assert.ok(screen.getByLabelText("Личная заметка")));
+  await waitFor(() => assert.ok(screen.getByRole("option", { name: "Выходные" })));
+  const note = screen.getByLabelText("Личная заметка") as HTMLTextAreaElement;
+  fireEvent.change(note, { target: { value: "Заехать за водой до старта" } });
+  fireEvent.change(screen.getByLabelText("Подборка"), { target: { value: "collection" } });
+  fireEvent.click(screen.getByText("Сохранить заметку и маршрут"));
+  await waitFor(() => assert.ok(screen.getByText("Сохранение временно недоступно")));
+  assert.equal(note.value, "Заехать за водой до старта"); assert.equal(writes, 1);
+  fail = false; fireEvent.click(screen.getByText("Сохранить заметку и маршрут"));
+  await waitFor(() => assert.ok(!screen.queryByText("Сохранение временно недоступно")));
+  assert.equal(note.value, "Заехать за водой до старта"); assert.equal(writes, 2);
+  assert.equal((screen.getByLabelText("Подборка") as HTMLSelectElement).value, "collection");
 });

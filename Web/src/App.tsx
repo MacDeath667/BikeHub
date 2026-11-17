@@ -12,6 +12,7 @@ import {
   Compass,
   House,
   Menu,
+  Map as MapIcon,
   LogOut,
   MailCheck,
   Mountain,
@@ -38,6 +39,7 @@ import { CommunityDetail, GroupEntryDetail } from "./pages/CommunityDetail";
 import { Settings } from "./pages/Settings";
 import { Communities } from "./pages/Communities";
 import { Rides, RideDetail } from "./pages/Rides";
+import { RouteLibrary, LibraryRouteDetail } from "./pages/RouteLibrary";
 import { NotificationBell, Notifications } from "./pages/Notifications";
 import { clearLocalDrafts } from "./components/useDraft";
 import { SearchResults, searchKind } from "./pages/SearchResults";
@@ -173,6 +175,7 @@ export default function App() {
       active: ["communities", "community", "group-entry"].includes(section),
     },
     { path: "/rides", icon: CalendarDays, text: "Покатушки", active: section === "rides" || section === "ride" },
+    { path: "/routes", icon: MapIcon, text: "Маршруты", active: section === "routes" || section === "route" },
     {
       path: "/saved",
       icon: Bookmark,
@@ -279,6 +282,8 @@ export default function App() {
                   communities: "Сообщества",
                   rides: "Покатушки",
                   ride: "Покатушка",
+                  routes: "Маршруты",
+                  route: "Маршрут",
                   community: "Сообщество",
                   "group-entry": "Обсуждение сообщества",
                   moderation: "Модерация",
@@ -401,6 +406,8 @@ export default function App() {
                   {section === "community" && <CommunityDetail key={`${path}-${searchQuery}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} reload={reload} search={searchQuery} />}
                   {section === "group-entry" && <GroupEntryDetail key={`${path}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} targetComment={new URLSearchParams(search).get("comment")} />}
                   {section === "rides" && <Rides key={`${new URLSearchParams(search).get("group") || "all"}-${me?.id || "guest"}`} me={me} groupId={new URLSearchParams(search).get("group")} />}
+                  {section === "routes" && <RouteLibrary key={me?.id || "guest"} me={me} />}
+                  {section === "route" && <LibraryRouteDetail key={`${route}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} source={(["post", "entry", "ride"] as const).map(kind => ({ kind, id: new URLSearchParams(search).get(kind) || "" })).find(item => !!item.id)} />}
                   {section === "ride" && <RideDetail key={`${path}-${new URLSearchParams(search).get("group") || ""}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} groupId={new URLSearchParams(search).get("group")} />}
                   {section === "communities" && (
                     <Communities
@@ -427,6 +434,8 @@ export default function App() {
                       "notifications",
                       "rides",
                       "ride",
+                      "routes",
+                      "route",
                       "search",
                     ].includes(section) && (
                       <Empty

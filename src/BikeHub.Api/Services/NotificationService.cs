@@ -26,6 +26,8 @@ public sealed class NotificationService(IDbContextFactory<BikeHubDbContext> cont
         var entries = db.GroupEntries.Where(e => !e.IsDeleted && !e.IsHidden && users.Any(a => a.Id == e.AuthorId)
             && db.Communities.Any(g => g.Id == e.GroupId && !g.IsDeleted && !g.IsHidden));
         var rides = RideService.Visible(db);
+        var routes = RouteLibraryService.Visible(db);
+        var reviews = RouteLibraryService.VisibleReviews(db);
         return db.Notifications.AsNoTracking().Where(n => n.RecipientId == actor && users.Any(a => a.Id == n.ActorId) && (
             n.TargetType == ReportTarget.User && users.Any(a => a.Id == n.TargetId) ||
             n.TargetType == ReportTarget.Post && posts.Any(p => p.Id == n.TargetId) ||
@@ -34,7 +36,8 @@ public sealed class NotificationService(IDbContextFactory<BikeHubDbContext> cont
             n.TargetType == ReportTarget.GroupEntry && entries.Any(e => e.Id == n.TargetId) ||
             n.TargetType == ReportTarget.GroupReply && db.GroupReplies.Any(r => r.Id == n.TargetId && !r.IsDeleted && !r.IsHidden
                 && entries.Any(e => e.Id == r.EntryId) && users.Any(a => a.Id == r.AuthorId)) ||
-            n.TargetType == ReportTarget.RideChange && db.RideChanges.Any(c => c.Id == n.TargetId && rides.Any(r => r.Id == c.RideId))));
+            n.TargetType == ReportTarget.RideChange && db.RideChanges.Any(c => c.Id == n.TargetId && rides.Any(r => r.Id == c.RideId)) ||
+            n.TargetType == ReportTarget.RouteReview && reviews.Any(r => r.Id == n.TargetId && routes.Any(route => route.Id == r.RouteId))));
     }
 
     public Page<NotificationDto> List(int page, int pageSize)

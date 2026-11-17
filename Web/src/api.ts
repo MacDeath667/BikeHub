@@ -114,6 +114,13 @@ export interface Ride {
   difficulty: 1 | 2 | 3; capacity: number | null; status: 1 | 2; revision: number;
   going: number; maybe: number; attendance: 1 | 2 | null; hasRoute: boolean; route: RouteData | null;
 }
+export interface LibraryRoute {
+  id: string; author: User; title: string; description: string; city: string; surface: 1 | 2 | 3 | 4;
+  distanceKm: number; revision: number; createdAt: string; reviewsCount: number; rating: number | null;
+  isSaved: boolean; collectionId: string | null; myNote: string | null; route: RouteData | null;
+}
+export interface RouteCollection { id: string; name: string; routesCount: number; }
+export interface RouteReview { id: string; author: User; rating: number; text: string; riddenOn: string; updatedAt: string; }
 export interface Community {
   ownerId?: string | null;
   id: string;

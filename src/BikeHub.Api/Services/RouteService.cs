@@ -6,6 +6,21 @@ namespace BikeHub.Api.Services;
 
 public static class RouteService
 {
+    private const double EarthRadiusMeters = 6371000;
+    public static decimal DistanceKm(MapRoute route)
+    {
+        var meters = 0d;
+        foreach (var segment in route.Segments)
+        {
+            for (var i = 1; i < segment.Length; i++)
+            {
+                var a = segment[i - 1]; var b = segment[i]; var radians = Math.PI / 180;
+                var h = Math.Pow(Math.Sin((b.Lat - a.Lat) * radians / 2), 2) + Math.Cos(a.Lat * radians) * Math.Cos(b.Lat * radians) * Math.Pow(Math.Sin((b.Lng - a.Lng) * radians / 2), 2);
+                meters += EarthRadiusMeters * 2 * Math.Asin(Math.Sqrt(Math.Clamp(h, 0, 1)));
+            }
+        }
+        return Math.Round((decimal)(meters / 1000), 2);
+    }
     public const long MaximumFileBytes = 5 * 1024 * 1024;
     public const int MaximumPoints = 30000;
     private const int MaximumMarkers = 100;

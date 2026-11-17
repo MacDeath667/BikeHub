@@ -566,6 +566,8 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             ReportTarget.GroupEntry => db.GroupEntries.Any(e => e.Id == request.TargetId && !e.IsDeleted && !e.IsHidden && db.Communities.Any(g => g.Id == e.GroupId && !g.IsDeleted && !g.IsHidden)),
             ReportTarget.GroupReply => db.GroupReplies.Any(r => r.Id == request.TargetId && !r.IsDeleted && !r.IsHidden && db.GroupEntries.Any(e => e.Id == r.EntryId && !e.IsDeleted && !e.IsHidden && db.Communities.Any(g => g.Id == e.GroupId && !g.IsDeleted && !g.IsHidden))),
             ReportTarget.Ride => RideService.Visible(db).Any(r => r.Id == request.TargetId),
+            ReportTarget.LibraryRoute => RouteLibraryService.Visible(db).Any(r => r.Id == request.TargetId),
+            ReportTarget.RouteReview => RouteLibraryService.VisibleReviews(db).Any(r => r.Id == request.TargetId && db.LibraryRoutes.Any(route => route.Id == r.RouteId && !route.IsDeleted && !route.IsHidden && db.Accounts.Any(a => a.Id == route.OwnerId && !a.IsBlocked))),
             ReportTarget.Site => request.TargetId == Guid.Empty,
             _ => false
         };
@@ -633,6 +635,8 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             ReportTarget.GroupEntry => db.GroupEntries.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
             ReportTarget.GroupReply => db.GroupReplies.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
             ReportTarget.Ride => db.Rides.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
+            ReportTarget.LibraryRoute => db.LibraryRoutes.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
+            ReportTarget.RouteReview => db.RouteReviews.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
             _ => throw new CommunityProblem(400, MaterialTypeTitle)
         };
         if (count == 0)

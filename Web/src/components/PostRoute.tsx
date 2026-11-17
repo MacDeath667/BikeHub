@@ -24,12 +24,13 @@ function download(route: RouteData) {
   const link = document.createElement("a"); link.href = url; link.download = "bikehub-route.gpx"; link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-export function PostRoute({ route, showMap = true }: { route?: RouteData | null; showMap?: boolean }) {
+export function PostRoute({ route, showMap = true, copyHref }: { route?: RouteData | null; showMap?: boolean; copyHref?: string }) {
   const [open, setOpen] = useState(false);
   if (!route) return null;
   return <section className="post-route"><h2>{route.name}</h2><p className="form-hint">{distance(route)} км по линии · {route.markers.length} меток</p>
     {showMap && (open ? <Suspense fallback={<Loading />}><RouteMap route={route} /></Suspense> : <button type="button" className="button secondary" onClick={() => setOpen(true)}>Показать маршрут на карте</button>)}
     <button type="button" className="text-button" onClick={() => download(route)}>Скачать GPX</button>
+    {copyHref && <a className="text-button" href={copyHref}>Создать маршрут в библиотеке на основе этого</a>}
     {route.markers.length > 0 && <ol className="route-waypoints">{route.markers.map((p, i) => <li key={i}>{p.label || `Точка ${i + 1}`} <span className="muted">{p.lat.toFixed(5)}, {p.lng.toFixed(5)}</span></li>)}</ol>}
   </section>;
 }

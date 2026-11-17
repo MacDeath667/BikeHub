@@ -110,7 +110,7 @@ export function GroupEntryDetail({ id, me, targetComment }: { id: string; me: Us
   const gallery = galleryPhotos(entry.content, entry.photos);
   return <><a className="back-link" href={`#/community/${entry.groupId}`}>← {entry.groupName}</a><div className="eyebrow">{entry.kind === 1 ? "ПОСТ" : "ОБСУЖДЕНИЕ"}</div><h1>{entry.title}</h1><div className="content-tools"><Avatar user={entry.author} /><a href={userHref(entry.author)}>{entry.author.name}</a><span>{relativeTime(entry.createdAt)}</span></div>
     <PostText content={entry.content} photos={entry.photos} />{!entry.photos.length && entry.route ? <RouteCover route={entry.route} /> : gallery.length > 0 && <PhotoGallery photos={gallery} fallback={gallery[0].imageUrl} title={entry.title} />}
-    <PostRoute route={entry.route} showMap={!!entry.photos.length} />
+    <PostRoute copyHref={`#/route/new?entry=${id}`} route={entry.route} showMap={!!entry.photos.length} />
     <div className="content-tools">{entry.author.id === me?.id && !editing && <button className="text-button" onClick={() => setEditing(true)}>Редактировать</button>}{(entry.author.id === me?.id || manager) && <button className="text-button" disabled={busy} onClick={() => remove(`/group-entries/${id}`, true)}>Удалить</button>}{me && <ReportButton type={7} id={id} notify={setError} />}</div>
     {editing && me?.id === entry.author.id && <EntryEditor key={me.id} userId={me.id} groupId={entry.groupId} kind={entry.kind} entry={entry} close={() => setEditing(false)} saved={() => { setEditing(false); setRevision(v => v + 1); }} />}
     {error && <ErrorBox message={error} retry={() => setRevision(v => v + 1)} />}<h2>Ответы · {entry.repliesCount}</h2>

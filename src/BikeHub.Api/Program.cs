@@ -23,6 +23,7 @@ if (!migrationsOnly)
     builder.Services.AddScoped<GroupService>();
     builder.Services.AddScoped<ActivityFeedService>();
     builder.Services.AddScoped<RideService>();
+    builder.Services.AddScoped<RouteLibraryService>();
     builder.Services.AddScoped<NicknameService>();
     builder.Services.AddScoped<NotificationService>();
     builder.Services.AddScoped<DraftService>();

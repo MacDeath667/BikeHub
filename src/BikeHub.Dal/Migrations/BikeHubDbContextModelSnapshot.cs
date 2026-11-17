@@ -890,6 +890,85 @@ namespace BikeHub.Dal.Migrations
                         });
                 });
 
+            modelBuilder.Entity("BikeHub.Dal.Entities.LibraryRoute", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("city");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("character varying(10000)")
+                        .HasColumnName("description");
+
+                    b.Property<decimal>("DistanceKm")
+                        .HasColumnType("numeric")
+                        .HasColumnName("distance_km");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_hidden");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.Property<string>("RouteJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("route_json");
+
+                    b.Property<int>("Surface")
+                        .HasColumnType("integer")
+                        .HasColumnName("surface");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_library_routes");
+
+                    b.HasIndex("OwnerId")
+                        .HasDatabaseName("ix_library_routes_owner");
+
+                    b.HasIndex("CreatedAt", "Id")
+                        .HasDatabaseName("ix_library_routes_recent");
+
+                    b.HasIndex("Surface", "DistanceKm", "Id")
+                        .HasDatabaseName("ix_library_routes_filter");
+
+                    b.ToTable("library_routes", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_library_routes_values", "surface IN (1, 2, 3, 4) AND distance_km >= 0 AND revision > 0");
+                        });
+                });
+
             modelBuilder.Entity("BikeHub.Dal.Entities.MediaAsset", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1049,6 +1128,141 @@ namespace BikeHub.Dal.Migrations
                         {
                             t.HasCheckConstraint("ck_ride_attendance", "attendance IN (1, 2)");
                         });
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.RouteCollection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("normalized_name");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_route_collections");
+
+                    b.HasIndex("OwnerId", "NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("ix_route_collections_name");
+
+                    b.ToTable("route_collections", (string)null);
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.RouteReview", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AuthorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("author_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_hidden");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("integer")
+                        .HasColumnName("rating");
+
+                    b.Property<DateOnly>("RiddenOn")
+                        .HasColumnType("date")
+                        .HasColumnName("ridden_on");
+
+                    b.Property<Guid>("RouteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("route_id");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_route_reviews");
+
+                    b.HasIndex("AuthorId")
+                        .HasDatabaseName("ix_route_reviews_user");
+
+                    b.HasIndex("RouteId", "AuthorId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_route_reviews_author");
+
+                    b.HasIndex("RouteId", "CreatedAt", "Id")
+                        .HasDatabaseName("ix_route_reviews_recent");
+
+                    b.ToTable("route_reviews", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_route_review_rating", "rating BETWEEN 1 AND 5");
+                        });
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.SavedRoute", b =>
+                {
+                    b.Property<Guid>("RouteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("route_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid?>("CollectionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("collection_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("note");
+
+                    b.HasKey("RouteId", "UserId")
+                        .HasName("pk_saved_routes");
+
+                    b.HasIndex("CollectionId")
+                        .HasDatabaseName("ix_saved_routes_collection");
+
+                    b.HasIndex("UserId", "CollectionId")
+                        .HasDatabaseName("ix_saved_routes_user");
+
+                    b.ToTable("saved_routes", (string)null);
                 });
 
             modelBuilder.Entity("BikeHub.Dal.Bike", b =>
@@ -1235,6 +1449,16 @@ namespace BikeHub.Dal.Migrations
                         .HasConstraintName("fk_ride_owner");
                 });
 
+            modelBuilder.Entity("BikeHub.Dal.Entities.LibraryRoute", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_library_route_owner");
+                });
+
             modelBuilder.Entity("BikeHub.Dal.Entities.MediaAsset", b =>
                 {
                     b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
@@ -1280,6 +1504,56 @@ namespace BikeHub.Dal.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_ride_participant_user");
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.RouteCollection", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_route_collection_owner");
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.RouteReview", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_route_review_user");
+
+                    b.HasOne("BikeHub.Dal.Entities.LibraryRoute", null)
+                        .WithMany()
+                        .HasForeignKey("RouteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_route_review_route");
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.SavedRoute", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.RouteCollection", null)
+                        .WithMany()
+                        .HasForeignKey("CollectionId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_saved_route_collection");
+
+                    b.HasOne("BikeHub.Dal.Entities.LibraryRoute", null)
+                        .WithMany()
+                        .HasForeignKey("RouteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_saved_route_route");
+
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_saved_route_user");
                 });
 #pragma warning restore 612, 618
         }

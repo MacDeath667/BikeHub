@@ -131,7 +131,7 @@ export function PostDetail({
         {!post.photos?.length && post.route ? <RouteCover route={post.route} /> : (gallery.length > 0 || !post.photos?.length) && <PhotoGallery photos={gallery} fallback={post.imageUrl} title={post.title} className="post-photo-gallery" />}
         <div className="article-text">
           <PostText content={post.content} photos={post.photos} />
-          <PostRoute route={post.route} showMap={!!post.photos?.length} />
+          <PostRoute copyHref={`#/route/new?post=${id}`} route={post.route} showMap={!!post.photos?.length} />
           <div className="post-tags">
             {post.tags.map((tag) => (
               <a key={tag} href={`#/?q=${encodeURIComponent(tag)}`}>

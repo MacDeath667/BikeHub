@@ -10,6 +10,10 @@ public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options)
     public DbSet<GroupRide> Rides => Set<GroupRide>();
     public DbSet<RideParticipant> RideParticipants => Set<RideParticipant>();
     public DbSet<RideChange> RideChanges => Set<RideChange>();
+    public DbSet<LibraryRoute> LibraryRoutes => Set<LibraryRoute>();
+    public DbSet<RouteCollection> RouteCollections => Set<RouteCollection>();
+    public DbSet<SavedRoute> SavedRoutes => Set<SavedRoute>();
+    public DbSet<RouteReview> RouteReviews => Set<RouteReview>();
     public DbSet<ContentDraft> Drafts => Set<ContentDraft>();
     public DbSet<CommunityNotification> Notifications => Set<CommunityNotification>();
     public DbSet<MediaDeletion> MediaDeletions => Set<MediaDeletion>();
@@ -82,6 +86,7 @@ public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options)
 
         CommunityModel.Configure(modelBuilder);
         RideModel.Configure(modelBuilder);
+        RouteLibraryModel.Configure(modelBuilder);
 
         foreach (var entity in modelBuilder.Model.GetEntityTypes())
         {

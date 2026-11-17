@@ -101,7 +101,7 @@ export function RideDetail({ id, me, groupId }: { id: string; me: User | null; g
     <div className="content-tools"><Avatar user={ride.organizer} /><span>Организатор: <a href={userHref(ride.organizer)}>{ride.organizer.name}</a></span></div>
     <p className="group-content"><MentionText text={ride.description} /></p>
     {ride.meetingPoint && <PostRoute route={{ name: "Место встречи", segments: [], markers: [{ ...ride.meetingPoint, label: ride.meetingName }] }} />}
-    <PostRoute route={ride.route} />
+    <PostRoute copyHref={`#/route/new?ride=${id}`} route={ride.route} />
     <div className="content-tools"><button className="text-button" onClick={() => setMembers(v => !v)}>{members ? "Скрыть участников" : `Участники: ${ride.going} едут · ${ride.maybe} возможно`}</button>
       {me?.id !== ride.organizer.id && !closed && <><button className={`button ${ride.attendance === 1 ? "primary" : "secondary"}`} disabled={busy} aria-pressed={ride.attendance === 1} onClick={() => void mutate("attendance", "PUT", { attendance: 1 })}>Еду</button><button className={`button ${ride.attendance === 2 ? "primary" : "secondary"}`} disabled={busy} aria-pressed={ride.attendance === 2} onClick={() => void mutate("attendance", "PUT", { attendance: 2 })}>Возможно</button></>}
       {ride.attendance && me?.id !== ride.organizer.id && <button className="text-button" disabled={busy} onClick={() => void mutate("attendance", "DELETE")}>Не участвую</button>}
