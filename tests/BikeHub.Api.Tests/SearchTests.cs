@@ -158,6 +158,34 @@ public sealed class SearchTests
         }
     }
     [Fact]
+    public async Task Mixed_timeline_batches_both_sources_and_omits_route_bodies_at_any_page_size()
+    {
+        await using var database = await PersistenceTestDatabase.CreateAsync(); var (owner, bike, group) = await Seed(database);
+        using var db = database.CreateDbContext();
+        for (var i = 0; i < 55; i++)
+        {
+            var post = Post(owner, bike, "Timeline ride " + i); post.CreatedAt = DateTimeOffset.UnixEpoch.AddMinutes(i);
+            var entry = Entry(owner, group, "Timeline group " + i); entry.CreatedAt = post.CreatedAt;
+            post.RouteJson = entry.RouteJson = """{"name":"Route bodies stay out of lists","segments":[[{"lat":55,"lng":37},{"lat":56,"lng":38}]],"markers":[]}""";
+            db.Posts.Add(post); db.GroupEntries.Add(entry);
+        }
+        await db.SaveChangesAsync();
+        var queries = new Queries(); await using var app = App(new MeasuredFactory(db.Database.GetConnectionString()!, queries)); using var guest = app.Browser();
+        foreach (var size in new[] { 2, 50 })
+        {
+            queries.Commands.Clear();
+            var feed = (await guest.GetFromJsonAsync<Page<FeedItemDto>>($"/api/feed/timeline?pageSize={size}"))!;
+            Assert.Equal(size, feed.Items.Count); Assert.Equal(110, feed.Total); Assert.True(feed.HasMore);
+            Assert.Contains(feed.Items, item => item.Kind == FeedItemKind.Post); Assert.Contains(feed.Items, item => item.Kind == FeedItemKind.GroupEntry);
+            Assert.Equal(5, queries.Commands.Count);
+            Assert.All(feed.Items, item =>
+            {
+                if (item.Post is { } post) { Assert.True(post.HasRoute); Assert.Null(post.Route); }
+                if (item.GroupEntry is { } entry) { Assert.True(entry.HasRoute); Assert.Null(entry.Route); }
+            });
+        }
+    }
+    [Fact]
     public async Task Discussion_replies_batch_authors_and_keep_stable_private_filtered_paging()
     {
         await using var database = await PersistenceTestDatabase.CreateAsync(); var (owner, _, group) = await Seed(database);
