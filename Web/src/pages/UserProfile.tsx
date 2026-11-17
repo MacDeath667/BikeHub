@@ -1,7 +1,7 @@
 import { ProfileEditor } from "../components/ProfileEditor";
 import { ReportButton } from "../components/ContentTools";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bike as BikeIcon, Check, Plus } from "lucide-react";
+import { ArrowLeft, Bike as BikeIcon, Check, Pencil, Plus, ShieldCheck } from "lucide-react";
 import { api, number, requestLogin } from "../api";
 import type { Bike, Page, User } from "../api";
 import { Avatar, Empty, ErrorBox, Loading } from "../components/ui";
@@ -76,8 +76,10 @@ export function UserProfile({
         <ArrowLeft size={16} />В сообщество
       </a>
       {editing && user.id === me?.id && <ProfileEditor key={me.id} user={user} close={() => setEditing(false)} saved={reload} />}
-      {user.id === me?.id ? <button className="text-button" onClick={() => setEditing(true)}>Редактировать профиль</button> : me && <ReportButton type={4} id={user.id} notify={notify} />}
-      {me?.id === user.id && me.isModerator && <a className="text-button" href="#/moderation">Модерация</a>}
+      {me && <div className="content-tools profile-actions" role="group" aria-label="Действия с профилем">
+        {user.id === me.id ? <button type="button" className="button secondary" onClick={() => setEditing(true)}><Pencil size={16} aria-hidden="true" />Редактировать профиль</button> : <ReportButton type={4} id={user.id} notify={notify} />}
+        {me.id === user.id && me.isModerator && <a className="button secondary" href="#/moderation"><ShieldCheck size={16} aria-hidden="true" />Модерация</a>}
+      </div>}
       <section className="profile-card">
         <div className="profile-cover">
           <span>ЧЕЛОВЕК. ВЕЛОСИПЕД. ДОРОГА.</span>
