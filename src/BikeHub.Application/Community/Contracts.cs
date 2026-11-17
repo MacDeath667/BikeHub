@@ -32,7 +32,9 @@ public record PostDto(Guid Id, UserDto Author, BikeDto Bike, string Title, strin
     public PostDto() : this(default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!) { }
 }
 
-public record CommentDto(Guid Id, UserDto Author, string Text, DateTimeOffset CreatedAt);
+public record ReplyContextDto(Guid Id, string AuthorName, string AuthorHandle, string Text);
+public record CommentDto(Guid Id, UserDto Author, string Text, DateTimeOffset CreatedAt,
+    Guid? ReplyToId = null, ReplyContextDto? ReplyTo = null);
 public record CommunityDto(Guid Id, string Name, string Description, BikeCategory Category,
     string ImageUrl, int Members, bool IsJoined, Guid? OwnerId = null, Guid? ImageId = null)
 {
@@ -56,7 +58,7 @@ public sealed record CreatePostRequest(
     [Required, RegularExpression("^(ride|maintenance|upgrade|story)$")] string Category, Guid? ImageId = null,
     [MaxLength(Constants.MaximumContentPhotos)] Guid[]? ImageIds = null, MapRoute? Route = null);
 
-public sealed record CreateCommentRequest([Required, StringLength(2000)] string Text);
+public sealed record CreateCommentRequest([Required, StringLength(2000)] string Text, Guid? ReplyToId = null);
 
 public interface IFeedService
 {
@@ -79,6 +81,7 @@ public interface IPostService
     PostDto? SetLike(Guid id, bool active);
     PostDto? SetBookmark(Guid id, bool active);
     Page<CommentDto>? GetComments(Guid id, int page, int pageSize);
+    CommentDto? GetComment(Guid postId, Guid id);
     CommentDto? AddComment(Guid id, CreateCommentRequest request);
 }
 

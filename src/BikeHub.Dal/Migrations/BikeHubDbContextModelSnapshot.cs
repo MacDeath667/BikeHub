@@ -256,6 +256,10 @@ namespace BikeHub.Dal.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("post_id");
 
+                    b.Property<Guid?>("ReplyToId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reply_to_id");
+
                     b.Property<string>("Text")
                         .IsRequired()
                         .HasMaxLength(2000)
@@ -270,6 +274,9 @@ namespace BikeHub.Dal.Migrations
                         .HasName("pk_comments");
 
                     b.HasIndex("AuthorId");
+
+                    b.HasIndex("ReplyToId")
+                        .HasDatabaseName("ix_comments_reply_to");
 
                     b.HasIndex("PostId", "CreatedAt")
                         .HasDatabaseName("ix_comments_post");
@@ -730,6 +737,10 @@ namespace BikeHub.Dal.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_hidden");
 
+                    b.Property<Guid?>("ReplyToId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reply_to_id");
+
                     b.Property<string>("Text")
                         .IsRequired()
                         .HasMaxLength(2000)
@@ -744,6 +755,9 @@ namespace BikeHub.Dal.Migrations
                         .HasName("pk_group_replies");
 
                     b.HasIndex("AuthorId");
+
+                    b.HasIndex("ReplyToId")
+                        .HasDatabaseName("ix_group_replies_reply_to");
 
                     b.HasIndex("EntryId", "CreatedAt", "Id")
                         .HasDatabaseName("ix_group_replies_thread");
@@ -899,6 +913,12 @@ namespace BikeHub.Dal.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_comment_post");
+
+                    b.HasOne("BikeHub.Dal.Entities.CommunityComment", null)
+                        .WithMany()
+                        .HasForeignKey("ReplyToId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_comment_reply_to");
                 });
 
             modelBuilder.Entity("BikeHub.Dal.Entities.CommunityGroup", b =>
@@ -1008,6 +1028,12 @@ namespace BikeHub.Dal.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_reply_entry");
+
+                    b.HasOne("BikeHub.Dal.Entities.GroupReply", null)
+                        .WithMany()
+                        .HasForeignKey("ReplyToId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_reply_reply_to");
                 });
 
             modelBuilder.Entity("BikeHub.Dal.Entities.MediaAsset", b =>

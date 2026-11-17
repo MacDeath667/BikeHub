@@ -7,6 +7,7 @@ namespace BikeHub.Api.Controllers;
 
 [ApiController]
 [Route("api/posts")]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class PostsController(IPostService service) : ControllerBase
 {
     private const string InvalidBikeTitle = "Выберите велосипед из своего гаража.";
@@ -54,4 +55,8 @@ public sealed class PostsController(IPostService service) : ControllerBase
         service.AddComment(id, request) is { } comment
             ? Created($"/api/posts/{id}/comments", comment)
             : NotFound();
+
+    [HttpGet("{id:guid}/comments/{commentId:guid}")]
+    public ActionResult<CommentDto> Comment(Guid id, Guid commentId) =>
+        service.GetComment(id, commentId) is { } comment ? Ok(comment) : NotFound();
 }

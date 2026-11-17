@@ -23,6 +23,7 @@ public sealed class CommunityPost
 
 public sealed class CommunityComment
 {
+    public Guid? ReplyToId { get; set; }
     public Guid Id { get; set; }
     public Guid PostId { get; set; }
     public Guid AuthorId { get; set; }
@@ -97,6 +98,7 @@ public sealed class GroupEntry
 
 public sealed class GroupReply
 {
+    public Guid? ReplyToId { get; set; }
     public Guid Id { get; set; }
     public Guid EntryId { get; set; }
     public Guid AuthorId { get; set; }

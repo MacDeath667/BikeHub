@@ -279,3 +279,29 @@ test("mixed feed retains distinct post and community IDs and nested post reactio
   await waitFor(() => assert.equal(screen.getByLabelText("Убрать лайк").getAttribute("aria-pressed"), "true"));
   assert.ok(screen.getByText(entry.title)); assert.ok(paths.includes("/api/posts/same-id/like"));
 });
+
+test("replying selects context, sends its ID, and can open a comment outside the current page", async () => {
+  const original = comment("parent"), reply = { ...comment("reply"), text: "Ответ с контекстом", replyToId: original.id, replyTo: { id: original.id, authorName: original.author.name, authorHandle: original.author.handle, text: original.text } };
+  let sent: unknown;
+  globalThis.fetch = async (input, options) => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/auth/session") return json({ user, csrfToken: "test", enabled: true });
+    if (path.endsWith("/comments/reply")) return json(reply);
+    if (path.endsWith("/comments")) {
+      if (options?.method === "POST") { sent = JSON.parse(String(options.body)); return json(reply); }
+      return json(page([original]));
+    }
+    return json(post("1"));
+  };
+  render(<PostDetail id="1" me={user} targetComment="reply" notify={() => {}} />);
+  await waitFor(() => assert.ok(screen.getByLabelText("Комментарий по ссылке")));
+  assert.ok(screen.getByText(reply.text));
+  fireEvent.click(screen.getAllByText("Ответить").at(-1)!);
+  assert.ok(screen.getByLabelText("Отменить ответ на комментарий"));
+  fireEvent.change(screen.getByPlaceholderText("Поделитесь опытом или задайте вопрос…"), { target: { value: reply.text } });
+  fireEvent.click(screen.getByLabelText("Отправить комментарий"));
+  await waitFor(() => assert.deepEqual(sent, { text: reply.text, replyToId: original.id }));
+  await waitFor(() => assert.ok(!screen.queryByLabelText("Отменить ответ на комментарий")));
+  assert.equal(screen.getAllByText(reply.text).length, 1);
+  assert.equal(screen.getAllByLabelText(`К комментарию ${user.name}`).at(-1)?.getAttribute("href"), "#/post/1?comment=parent");
+});

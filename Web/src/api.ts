@@ -101,6 +101,8 @@ export interface Comment {
   author: User;
   text: string;
   createdAt: string;
+  replyToId?: string | null;
+  replyTo?: { id: string; authorName: string; authorHandle: string; text: string } | null;
 }
 export type FeedItem =
   | { id: string; kind: 1; createdAt: string; post: Post; groupEntry: null }

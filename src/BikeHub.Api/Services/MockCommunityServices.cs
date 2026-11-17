@@ -178,6 +178,14 @@ public sealed class MockPostService(MockCommunityStore store, ICurrentUser curre
         }
     }
 
+    public CommentDto? GetComment(Guid postId, Guid id)
+    {
+        lock (store.Gate)
+        {
+            return store.Posts.Any(p => p.Id == postId) ? store.Comments.GetValueOrDefault(postId)?.SingleOrDefault(c => c.Id == id) : null;
+        }
+    }
+
     public CommentDto? AddComment(Guid id, CreateCommentRequest request)
     {
         var account = current.Account ?? throw new UnauthorizedAccessException();
@@ -188,7 +196,10 @@ public sealed class MockPostService(MockCommunityStore store, ICurrentUser curre
                 return null;
             }
 
-            var comment = new CommentDto(Guid.CreateVersion7(), store.EnsureUser(account.Id, account.DisplayName), request.Text.Trim(), DateTimeOffset.UtcNow);
+            var parent = request.ReplyToId.HasValue ? store.Comments.GetValueOrDefault(id)?.SingleOrDefault(c => c.Id == request.ReplyToId)
+                ?? throw new CommunityProblem(404, CommentThreads.MissingReplyTitle) : null;
+            var comment = new CommentDto(Guid.CreateVersion7(), store.EnsureUser(account.Id, account.DisplayName), request.Text.Trim(), DateTimeOffset.UtcNow,
+                parent?.Id, parent is null ? null : new ReplyContextDto(parent.Id, parent.Author.Name, parent.Author.Handle, parent.Text));
             if (!store.Comments.ContainsKey(id))
             {
                 store.Comments[id] = [];

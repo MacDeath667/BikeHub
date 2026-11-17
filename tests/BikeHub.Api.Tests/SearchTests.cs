@@ -169,7 +169,7 @@ public sealed class SearchTests
         await db.SaveChangesAsync();
         var queries = new Queries(); await using var app = App(new MeasuredFactory(db.Database.GetConnectionString()!, queries)); using var guest = app.Browser();
         var first = (await guest.GetFromJsonAsync<Page<CommentDto>>($"/api/group-entries/{entry.Id}/replies"))!;
-        Assert.Equal(50, first.Items.Count); Assert.Equal(55, first.Total); Assert.True(first.HasMore); Assert.Equal(4, queries.Commands.Count);
+        Assert.Equal(50, first.Items.Count); Assert.Equal(55, first.Total); Assert.True(first.HasMore); Assert.Equal(3, queries.Commands.Count);
         var second = (await guest.GetFromJsonAsync<Page<CommentDto>>($"/api/group-entries/{entry.Id}/replies?page=2"))!;
         Assert.Equal(5, second.Items.Count); Assert.False(second.HasMore); Assert.Empty(first.Items.Select(r => r.Id).Intersect(second.Items.Select(r => r.Id)));
         Assert.DoesNotContain(first.Items.Concat(second.Items), r => r.Text.Contains("private", StringComparison.Ordinal));

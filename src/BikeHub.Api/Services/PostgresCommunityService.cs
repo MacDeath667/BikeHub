@@ -332,12 +332,14 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         {
             return null;
         }
-        var comments = from c in db.Comments.AsNoTracking()
-                       join u in Users(db) on c.AuthorId equals u.Id
-                       where c.PostId == id && !c.IsDeleted && !c.IsHidden
-                       orderby c.CreatedAt descending, c.Id descending
-                       select new CommentDto(c.Id, u, c.Text, c.CreatedAt);
+        var comments = CommentThreads.Posts(db, this, id).OrderByDescending(c => c.CreatedAt).ThenByDescending(c => c.Id);
         return Paginate(comments, page, pageSize);
+    }
+
+    public CommentDto? GetComment(Guid postId, Guid id)
+    {
+        using var db = contexts.CreateDbContext();
+        return Posts(db).Any(p => p.Id == postId) ? CommentThreads.Posts(db, this, postId).SingleOrDefault(c => c.Id == id) : null;
     }
 
     public CommentDto? AddComment(Guid id, CreateCommentRequest request)
@@ -348,21 +350,26 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         {
             return null;
         }
+        var parent = request.ReplyToId.HasValue
+            ? db.Comments.SingleOrDefault(c => c.Id == request.ReplyToId && c.PostId == id && !c.IsDeleted && !c.IsHidden && db.Accounts.Any(a => a.Id == c.AuthorId && !a.IsBlocked))
+                ?? throw new CommunityProblem(404, CommentThreads.MissingReplyTitle)
+            : null;
         var actor = Actor();
         var comment = new CommunityComment
         {
             Id = Guid.CreateVersion7(),
             PostId = id,
+            ReplyToId = parent?.Id,
             AuthorId = actor.Id,
             Text = RequiredText(request.Text),
             CreatedAt = clock.GetUtcNow()
         };
         db.Comments.Add(comment); db.SaveChanges();
-        var recipient = db.Posts.Where(p => p.Id == id).Select(p => p.AuthorId).Single();
-        NotificationWriter.Add(db, recipient, actor.Id, NotificationKind.Comment, ReportTarget.Comment, comment.Id, id, clock.GetUtcNow());
+        var recipient = parent?.AuthorId ?? db.Posts.Where(p => p.Id == id).Select(p => p.AuthorId).Single();
+        NotificationWriter.Add(db, recipient, actor.Id, parent is null ? NotificationKind.Comment : NotificationKind.Reply, ReportTarget.Comment, comment.Id, id, clock.GetUtcNow());
         NotificationWriter.Mentions(db, comment.Text, actor.Id, ReportTarget.Comment, comment.Id, id, clock.GetUtcNow(), recipient);
         transaction.Commit();
-        return new(comment.Id, Users(db).Single(u => u.Id == actor.Id), comment.Text, comment.CreatedAt);
+        return CommentThreads.Posts(db, this, id).Single(c => c.Id == comment.Id);
     }
 
     public CommentDto UpdateComment(Guid postId, Guid id, CreateCommentRequest request)
@@ -375,11 +382,16 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         {
             throw new CommunityProblem(404, MissingTitle);
         }
+        if (request.ReplyToId.HasValue && request.ReplyToId != comment.ReplyToId)
+        {
+            throw new CommunityProblem(400, CommentThreads.MissingReplyTitle);
+        }
         comment.Text = RequiredText(request.Text); comment.UpdatedAt = clock.GetUtcNow(); db.SaveChanges();
-        var recipient = db.Posts.Where(p => p.Id == postId).Select(p => p.AuthorId).Single();
+        var recipient = db.Comments.Where(c => c.Id == comment.ReplyToId).Select(c => (Guid?)c.AuthorId).SingleOrDefault()
+            ?? db.Posts.Where(p => p.Id == postId).Select(p => p.AuthorId).Single();
         NotificationWriter.Mentions(db, comment.Text, comment.AuthorId, ReportTarget.Comment, comment.Id, postId, clock.GetUtcNow(), recipient);
         transaction.Commit();
-        return new(comment.Id, Users(db).Single(u => u.Id == comment.AuthorId), comment.Text, comment.CreatedAt);
+        return CommentThreads.Posts(db, this, postId).Single(c => c.Id == comment.Id);
     }
 
     public void DeleteComment(Guid postId, Guid id)

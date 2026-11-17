@@ -59,6 +59,8 @@ internal static class CommunityModel
         comment.HasKey(x => x.Id).HasName("pk_comments");
         comment.Property(x => x.Id).ValueGeneratedNever();
         comment.Property(x => x.Text).HasMaxLength(2000);
+        comment.HasOne<CommunityComment>().WithMany().HasForeignKey(x => x.ReplyToId).OnDelete(DeleteBehavior.SetNull).HasConstraintName("fk_comment_reply_to");
+        comment.HasIndex(x => x.ReplyToId).HasDatabaseName("ix_comments_reply_to");
         comment.HasIndex(x => new { x.PostId, x.CreatedAt }).HasDatabaseName("ix_comments_post");
         comment.HasOne<CommunityPost>().WithMany().HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_comment_post");
         comment.HasOne<AuthAccountEntity>().WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_comment_author");
@@ -86,6 +88,8 @@ internal static class CommunityModel
         reply.HasKey(x => x.Id).HasName("pk_group_replies");
         reply.Property(x => x.Id).ValueGeneratedNever();
         reply.Property(x => x.Text).HasMaxLength(2000);
+        reply.HasOne<GroupReply>().WithMany().HasForeignKey(x => x.ReplyToId).OnDelete(DeleteBehavior.SetNull).HasConstraintName("fk_reply_reply_to");
+        reply.HasIndex(x => x.ReplyToId).HasDatabaseName("ix_group_replies_reply_to");
         reply.HasIndex(x => new { x.EntryId, x.CreatedAt, x.Id }).HasDatabaseName("ix_group_replies_thread");
         reply.HasOne<GroupEntry>().WithMany().HasForeignKey(x => x.EntryId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_reply_entry");
         reply.HasOne<AuthAccountEntity>().WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_reply_author");

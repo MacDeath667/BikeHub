@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace BikeHub.Api.Controllers;
 
 [ApiController, Route("api/group-entries")]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class GroupEntriesController(GroupService groups) : ControllerBase
 {
     [HttpGet("{id:guid}")]
@@ -19,6 +20,8 @@ public sealed class GroupEntriesController(GroupService groups) : ControllerBase
     public ActionResult<Page<CommentDto>> Replies(Guid id, [FromQuery] int page = 1) => Ok(groups.Replies(id, page));
     [Authorize, HttpPost("{id:guid}/replies")]
     public ActionResult<CommentDto> Reply(Guid id, CreateCommentRequest request) => Ok(groups.Reply(id, request));
+    [HttpGet("{id:guid}/replies/{replyId:guid}")]
+    public ActionResult<CommentDto> GetReply(Guid id, Guid replyId) => Ok(groups.GetReply(id, replyId));
     [Authorize, HttpDelete("{id:guid}/replies/{replyId:guid}")]
     public IActionResult DeleteReply(Guid id, Guid replyId) { groups.DeleteReply(id, replyId); return NoContent(); }
 }

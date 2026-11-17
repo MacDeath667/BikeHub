@@ -2783,3 +2783,10 @@ textarea {
 .draft-status p:last-child { margin-bottom: 0; }
 .draft-status [role="alert"] { color: var(--theme-danger, #a84234); }
 @media (max-width: 480px) { .post-editor-toolbar > button { min-width: 40px; min-height: 44px; } .post-editor-toolbar .post-preview-toggle { margin-left: 0; } .post-editor-toolbar .post-preview-toggle > span { font-size: 11px; } }
+
+.reply-quote { margin: .6rem 0; padding: .6rem .8rem; border-inline-start: 3px solid var(--green, #31573f); background: var(--surface, #e7eee91a); border-radius: 0 .5rem .5rem 0; font-size: .9em; overflow-wrap: anywhere; }
+.reply-quote a { display: grid; gap: .25rem; }
+.reply-quote span { white-space: pre-wrap; }
+.reply-selection { display: flex; justify-content: space-between; gap: 1rem; padding: .75rem; margin-block: .5rem; border: 1px solid var(--border, #a0b4a2); border-radius: .6rem; overflow-wrap: anywhere; }
+.reply-selection p { margin: .25rem 0; }
+.comment-target { outline: 2px solid var(--green, #587c61); outline-offset: 3px; scroll-margin-block: 6rem; }

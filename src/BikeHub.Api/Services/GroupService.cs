@@ -186,25 +186,36 @@ public sealed class GroupService(IDbContextFactory<BikeHubDbContext> contexts, I
             throw new CommunityProblem(404, Missing);
         }
         page = Math.Clamp(page, 1, 1000000);
-        var query = db.GroupReplies.AsNoTracking().Where(r => r.EntryId == id && !r.IsDeleted && !r.IsHidden && db.Accounts.Any(a => a.Id == r.AuthorId && !a.IsBlocked));
-        var rows = query.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id).Skip((page - 1) * 50).Take(50)
-            .Select(r => new { r.Id, r.AuthorId, r.Text, r.CreatedAt }).ToArray();
-        var authorIds = rows.Select(r => r.AuthorId).Distinct().ToArray();
-        var authors = community.Users(db).Where(a => authorIds.Contains(a.Id)).ToDictionary(a => a.Id);
-        return new(rows.Where(r => authors.ContainsKey(r.AuthorId)).Select(r => new CommentDto(r.Id, authors[r.AuthorId], r.Text, r.CreatedAt)).ToArray(), query.Count(), page, 50);
+        var query = CommentThreads.Groups(db, community, id);
+        return new(query.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id).Skip((page - 1) * 50).Take(50).ToArray(), query.Count(), page, 50);
     }
+    public CommentDto GetReply(Guid entryId, Guid id)
+    {
+        using var db = contexts.CreateDbContext();
+        if (!Visible(db).Any(e => e.Id == entryId))
+        {
+            throw new CommunityProblem(404, Missing);
+        }
+        return CommentThreads.Groups(db, community, entryId).SingleOrDefault(r => r.Id == id) ?? throw new CommunityProblem(404, Missing);
+    }
+
     public CommentDto Reply(Guid id, CreateCommentRequest request)
     {
         using var db = contexts.CreateDbContext();
         using var transaction = db.Database.BeginTransaction();
         var entry = Visible(db).SingleOrDefault(e => e.Id == id) ?? throw new CommunityProblem(404, Missing);
         Member(db, entry.GroupId);
-        var reply = new GroupReply { Id = Guid.CreateVersion7(), EntryId = id, AuthorId = Actor, Text = request.Text.Trim(), CreatedAt = clock.GetUtcNow() };
+        var parent = request.ReplyToId.HasValue
+            ? db.GroupReplies.SingleOrDefault(r => r.Id == request.ReplyToId && r.EntryId == id && !r.IsDeleted && !r.IsHidden && db.Accounts.Any(a => a.Id == r.AuthorId && !a.IsBlocked))
+                ?? throw new CommunityProblem(404, CommentThreads.MissingReplyTitle)
+            : null;
+        var reply = new GroupReply { Id = Guid.CreateVersion7(), EntryId = id, ReplyToId = parent?.Id, AuthorId = Actor, Text = request.Text.Trim(), CreatedAt = clock.GetUtcNow() };
         db.GroupReplies.Add(reply); db.SaveChanges();
-        NotificationWriter.Add(db, entry.AuthorId, reply.AuthorId, NotificationKind.Reply, ReportTarget.GroupReply, reply.Id, id, clock.GetUtcNow());
-        NotificationWriter.Mentions(db, reply.Text, reply.AuthorId, ReportTarget.GroupReply, reply.Id, id, clock.GetUtcNow(), entry.AuthorId);
+        var recipient = parent?.AuthorId ?? entry.AuthorId;
+        NotificationWriter.Add(db, recipient, reply.AuthorId, NotificationKind.Reply, ReportTarget.GroupReply, reply.Id, id, clock.GetUtcNow());
+        NotificationWriter.Mentions(db, reply.Text, reply.AuthorId, ReportTarget.GroupReply, reply.Id, id, clock.GetUtcNow(), recipient);
         transaction.Commit();
-        return new(reply.Id, community.Users(db).Single(a => a.Id == reply.AuthorId), reply.Text, reply.CreatedAt);
+        return CommentThreads.Groups(db, community, id).Single(r => r.Id == reply.Id);
     }
     public void DeleteReply(Guid entryId, Guid id)
     {

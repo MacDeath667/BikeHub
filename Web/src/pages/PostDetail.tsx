@@ -1,3 +1,4 @@
+import { ReplyQuote, ReplySelection, CommentTarget } from "../components/CommentReply";
 import { userHref } from "../api";
 import { RouteCover } from "../components/RouteCover";
 import { PostRoute } from "../components/PostRoute";
@@ -20,8 +21,10 @@ export function PostDetail({
   id,
   me,
   notify,
+  targetComment,
 }: {
   id: string;
+  targetComment?: string | null;
   me: User | null;
   notify: (s: string) => void;
 }) {
@@ -36,6 +39,10 @@ export function PostDetail({
   const [commentsError, setCommentsError] = useState("");
   const [commentsLoading, setCommentsLoading] = useState(true), [retry, setRetry] = useState(0), [postRetry, setPostRetry] = useState(0);
   const pending = useRef(false);
+  const [replyTo, setReplyTo] = useState<Comment | null>(null);
+  const form = useRef<HTMLFormElement>(null);
+  const commentHref = (commentId: string) => `#/post/${id}?comment=${commentId}`;
+  function selectReply(comment: Comment) { setReplyTo(comment); form.current?.querySelector("textarea")?.focus(); }
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   useEffect(() => {
@@ -69,7 +76,7 @@ export function PostDetail({
     if (post && window.location.hash.includes("comments=1"))
       document
         .getElementById("comments")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        ?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   }, [post?.id]);
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -78,11 +85,11 @@ export function PostDetail({
     try {
       const comment = await api<Comment>(`/posts/${id}/comments`, {
         method: "POST",
-        body: JSON.stringify({ text: text.trim() }),
+        body: JSON.stringify({ text: text.trim(), replyToId: replyTo?.id || null }),
       });
       setComments((c) => [comment, ...c]);
       setPost((p) => p && { ...p, commentsCount: p.commentsCount + 1 });
-      setText("");
+      setText(""); setReplyTo(null);
       notify("Комментарий добавлен");
     } catch (e) {
       notify((e as Error).message);
@@ -139,7 +146,8 @@ export function PostDetail({
         <h2>
           Обсудим?<span className="count">{post.commentsCount}</span>
         </h2>
-        {me ? <form className="comment-form" onSubmit={submit}>
+        {me && <ReplySelection comment={replyTo} cancel={() => setReplyTo(null)} />}
+        {me ? <form ref={form} className="comment-form" onSubmit={submit}>
           <Avatar user={me} small />
           <label>
             <span className="sr-only">Ваш комментарий</span>
@@ -160,21 +168,24 @@ export function PostDetail({
           </button>
         </form> : <div className="auth-comment-prompt"><p>Войдите, чтобы присоединиться к обсуждению.</p>
           <button className="button" onClick={() => window.dispatchEvent(new Event("bikehub:auth-required"))}>Войти по почте</button></div>}
+        <CommentTarget targetId={targetComment} endpoint={`/posts/${id}/comments`} visibleIds={comments.map(c => c.id)} href={commentHref} onReply={me ? selectReply : undefined} />
         <div className="comment-list">
           {comments.map((c) => (
-            <div className="comment" key={c.id}>
+            <div className={`comment${c.id === targetComment ? " comment-target" : ""}`} id={`comment-${c.id}`} tabIndex={-1} key={c.id}>
               <Avatar user={c.author} small />
               <div>
                 <div className="comment-meta">
                   <a href={userHref(c.author)}>{c.author.name}</a>
                   <time>{relativeTime(c.createdAt)}</time>
                 </div>
+                <ReplyQuote comment={c} href={commentHref} />
                 {editingComment === c.id && c.author.id === me?.id ? <form onSubmit={async e => {
                   e.preventDefault(); if (sending) return; setSending(true);
                   try { const next = await api<Comment>(`/posts/${id}/comments/${c.id}`, { method: "PUT", body: JSON.stringify({ text: commentText }) }); setComments(list => list.map(item => item.id === c.id ? next : item)); setEditingComment(null); }
                   catch (error) { notify((error as Error).message); } finally { setSending(false); }
                 }}><MentionTextarea aria-label="Текст комментария" required maxLength={2000} value={commentText} onValueChange={setCommentText} />
                   <button className="text-button" disabled={sending}>Сохранить</button><button type="button" className="text-button" onClick={() => setEditingComment(null)}>Отмена</button></form> : <p><MentionText text={c.text} /></p>}
+                {me && <button type="button" className="text-button" disabled={sending} onClick={() => selectReply(c)}>Ответить</button>}
                 {c.author.id === me?.id ? <><button className="text-button" onClick={() => { setEditingComment(c.id); setCommentText(c.text); }}>Изменить</button>
                   <button className="text-button" disabled={sending} onClick={async () => {
                     if (!window.confirm("Удалить комментарий?")) return; setSending(true);

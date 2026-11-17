@@ -372,8 +372,9 @@ export default function App() {
                   )}
                   {section === "post" && (
                     <PostDetail
-                      key={`${path}-${version}`}
+                      key={`${path}-${version}-${me?.id || "guest"}`}
                       id={path.split("/")[2]}
+                      targetComment={new URLSearchParams(search).get("comment")}
                       me={me}
                       notify={notify}
                     />
@@ -393,7 +394,7 @@ export default function App() {
                   {section === "moderation" && <Moderation key={me?.id || "guest"} me={me} />}
                   {section === "notifications" && <Notifications key={me?.id || "guest"} me={me} />}
                   {section === "community" && <CommunityDetail key={`${path}-${searchQuery}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} reload={reload} search={searchQuery} />}
-                  {section === "group-entry" && <GroupEntryDetail key={`${path}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} />}
+                  {section === "group-entry" && <GroupEntryDetail key={`${path}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} targetComment={new URLSearchParams(search).get("comment")} />}
                   {section === "communities" && (
                     <Communities
                       version={version}
