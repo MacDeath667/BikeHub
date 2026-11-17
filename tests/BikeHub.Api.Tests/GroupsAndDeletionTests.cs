@@ -95,6 +95,7 @@ public sealed class GroupsAndDeletionTests
             {
                 db.Media.AddRange(new MediaAsset { Id = photo, OwnerId = account.User!.Id, CreatedAt = DateTimeOffset.UtcNow },
                     new MediaAsset { Id = keepPhoto, OwnerId = member.User!.Id, CreatedAt = DateTimeOffset.UtcNow });
+                SeedErasureDomains(db, account.User!.Id, member.User!.Id, app.Clock.GetUtcNow());
                 await db.SaveChangesAsync();
             }
             await File.WriteAllTextAsync(Path.Combine(root, photo.ToString("N") + ".webp"), "erased");
@@ -125,6 +126,14 @@ public sealed class GroupsAndDeletionTests
                 Assert.Single(await db.GroupEntries.ToListAsync());
                 Assert.True(await db.MediaDeletions.AnyAsync(m => m.Id == photo));
                 Assert.True(await db.Media.AnyAsync(m => m.Id == keepPhoto));
+                Assert.Equal(member.User!.Id, Assert.Single(await db.Bikes.ToListAsync()).OwnerId);
+                Assert.Equal(member.User.Id, Assert.Single(await db.Rides.ToListAsync()).OwnerId);
+                Assert.Equal(member.User.Id, Assert.Single(await db.RideParticipants.ToListAsync()).UserId);
+                Assert.Equal(member.User.Id, Assert.Single(await db.LibraryRoutes.ToListAsync()).OwnerId);
+                Assert.Empty(await db.SavedRoutes.ToListAsync()); Assert.Empty(await db.RouteCollections.ToListAsync());
+                Assert.Empty(await db.RouteReviews.ToListAsync()); Assert.Empty(await db.RideChanges.ToListAsync());
+                Assert.Empty(await db.BikeComponents.ToListAsync()); Assert.Empty(await db.MaintenanceRecords.ToListAsync()); Assert.Empty(await db.MaintenanceReminders.ToListAsync());
+                var keptReply = Assert.Single(await db.Comments.ToListAsync()); Assert.Equal(member.User.Id, keptReply.AuthorId); Assert.Null(keptReply.ReplyToId);
             }
             using var scope = app.Services.CreateScope();
             await scope.ServiceProvider.GetRequiredService<MediaCleanup>().RunAsync(default);
@@ -173,4 +182,34 @@ public sealed class GroupsAndDeletionTests
         finally { Directory.Delete(root, true); }
     }
     private sealed record Code([property: System.Text.Json.Serialization.JsonPropertyName("code")] string Value);
+    private static void SeedErasureDomains(BikeHubDbContext db, Guid erased, Guid kept, DateTimeOffset now)
+    {
+        var removedBike = new Bike { Id = Guid.CreateVersion7(), OwnerId = erased, Name = "Private erasure bicycle" };
+        var keptBike = new Bike { Id = Guid.CreateVersion7(), OwnerId = kept, Name = "Preserved bicycle" };
+        var post = new CommunityPost { Id = Guid.CreateVersion7(), AuthorId = kept, BikeId = keptBike.Id, Title = "Preserved story", Category = "story", CreatedAt = now };
+        var parent = new CommunityComment { Id = Guid.CreateVersion7(), AuthorId = erased, PostId = post.Id, Text = "Erased parent", CreatedAt = now };
+        db.Bikes.AddRange(removedBike, keptBike); db.Posts.Add(post); db.Comments.AddRange(parent,
+            new CommunityComment { Id = Guid.CreateVersion7(), AuthorId = kept, PostId = post.Id, ReplyToId = parent.Id, Text = "Preserved reply", CreatedAt = now });
+        var component = new BikeComponent { Id = Guid.CreateVersion7(), BikeId = removedBike.Id, Kind = BikeComponentKind.Chain, Name = "Private chain", InstalledOn = DateOnly.FromDateTime(now.UtcDateTime), ServiceIntervalKm = 100, Revision = 1, CreatedAt = now, UpdatedAt = now };
+        db.BikeComponents.Add(component);
+        db.MaintenanceRecords.Add(new MaintenanceRecord { Id = Guid.CreateVersion7(), BikeId = removedBike.Id, ComponentId = component.Id, Kind = MaintenanceKind.Service, Title = "Private cost", CostRub = 1234, PerformedOn = component.InstalledOn, Revision = 1, CreatedAt = now, UpdatedAt = now });
+        db.MaintenanceReminders.Add(new MaintenanceReminder { Id = Guid.CreateVersion7(), ComponentId = component.Id, DueMileage = 100, CreatedAt = now });
+        var ride = new GroupRide { Id = Guid.CreateVersion7(), OwnerId = erased, Title = "Erased ride", StartsAt = now.AddDays(1), TimeZone = "UTC", Difficulty = RideDifficulty.Easy, Status = RideStatus.Scheduled, Revision = 1, CreatedAt = now, UpdatedAt = now };
+        var keptRide = new GroupRide { Id = Guid.CreateVersion7(), OwnerId = kept, Title = "Preserved ride", StartsAt = now.AddDays(1), TimeZone = "UTC", Difficulty = RideDifficulty.Easy, Status = RideStatus.Scheduled, Revision = 1, CreatedAt = now, UpdatedAt = now };
+        db.Rides.AddRange(ride, keptRide);
+        db.RideParticipants.AddRange(new RideParticipant { RideId = ride.Id, UserId = kept, Attendance = RideAttendance.Going, CreatedAt = now },
+            new RideParticipant { RideId = keptRide.Id, UserId = erased, Attendance = RideAttendance.Going, CreatedAt = now },
+            new RideParticipant { RideId = keptRide.Id, UserId = kept, Attendance = RideAttendance.Going, CreatedAt = now });
+        db.RideChanges.Add(new RideChange { Id = Guid.CreateVersion7(), RideId = ride.Id, Revision = 1, CreatedAt = now });
+        var json = RouteJson.Write(new MapRoute("Route", [[new(0, 0), new(0, 1)]], []))!;
+        var route = new LibraryRoute { Id = Guid.CreateVersion7(), OwnerId = erased, Title = "Erased route", Surface = RouteSurface.Mixed, RouteJson = json, Revision = 1, CreatedAt = now, UpdatedAt = now };
+        var keptRoute = new LibraryRoute { Id = Guid.CreateVersion7(), OwnerId = kept, Title = "Preserved route", Surface = RouteSurface.Mixed, RouteJson = json, Revision = 1, CreatedAt = now, UpdatedAt = now };
+        var collection = new BikeHub.Dal.Entities.RouteCollection { Id = Guid.CreateVersion7(), OwnerId = erased, Name = "Private collection", NormalizedName = "private collection", CreatedAt = now };
+        db.LibraryRoutes.AddRange(route, keptRoute); db.RouteCollections.Add(collection);
+        db.SavedRoutes.AddRange(new SavedRoute { RouteId = keptRoute.Id, UserId = erased, CollectionId = collection.Id, Note = "Private note", CreatedAt = now },
+            new SavedRoute { RouteId = route.Id, UserId = kept, CreatedAt = now });
+        db.RouteReviews.AddRange(new RouteReview { Id = Guid.CreateVersion7(), RouteId = keptRoute.Id, AuthorId = erased, Rating = 5, Text = "Erased review", RiddenOn = component.InstalledOn, CreatedAt = now, UpdatedAt = now },
+            new RouteReview { Id = Guid.CreateVersion7(), RouteId = route.Id, AuthorId = kept, Rating = 4, Text = "Review on erased route", RiddenOn = component.InstalledOn, CreatedAt = now, UpdatedAt = now });
+    }
+
 }

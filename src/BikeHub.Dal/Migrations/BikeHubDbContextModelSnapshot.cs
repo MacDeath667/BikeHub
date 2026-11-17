@@ -230,6 +230,78 @@ namespace BikeHub.Dal.Migrations
                     b.ToTable("auth_sessions", (string)null);
                 });
 
+            modelBuilder.Entity("BikeHub.Dal.Entities.BikeComponent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BikeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bike_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<decimal>("InstalledMileage")
+                        .HasColumnType("numeric")
+                        .HasColumnName("installed_mileage");
+
+                    b.Property<DateOnly>("InstalledOn")
+                        .HasColumnType("date")
+                        .HasColumnName("installed_on");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_archived");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("model");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("notes");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.Property<decimal?>("ServiceIntervalKm")
+                        .HasColumnType("numeric")
+                        .HasColumnName("service_interval_km");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_bike_components");
+
+                    b.HasIndex("BikeId", "IsArchived", "Id")
+                        .HasDatabaseName("ix_bike_components_bike");
+
+                    b.ToTable("bike_components", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_bike_components_values", "installed_mileage BETWEEN 0 AND 1000000 AND (service_interval_km IS NULL OR service_interval_km BETWEEN 1 AND 100000) AND kind BETWEEN 1 AND 9 AND revision > 0");
+                        });
+                });
+
             modelBuilder.Entity("BikeHub.Dal.Entities.CommunityComment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -969,6 +1041,112 @@ namespace BikeHub.Dal.Migrations
                         });
                 });
 
+            modelBuilder.Entity("BikeHub.Dal.Entities.MaintenanceRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BikeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bike_id");
+
+                    b.Property<Guid?>("ComponentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("component_id");
+
+                    b.Property<decimal?>("CostRub")
+                        .HasColumnType("numeric")
+                        .HasColumnName("cost_rub");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<decimal>("Mileage")
+                        .HasColumnType("numeric")
+                        .HasColumnName("mileage");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("notes");
+
+                    b.Property<DateOnly>("PerformedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("performed_on");
+
+                    b.Property<bool>("ResetsInterval")
+                        .HasColumnType("boolean")
+                        .HasColumnName("resets_interval");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_maintenance_records");
+
+                    b.HasIndex("ComponentId", "Mileage")
+                        .HasDatabaseName("ix_maintenance_records_reset")
+                        .HasFilter("resets_interval AND NOT is_deleted");
+
+                    b.HasIndex("BikeId", "PerformedOn", "Id")
+                        .HasDatabaseName("ix_maintenance_records_history");
+
+                    b.ToTable("maintenance_records", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_maintenance_records_values", "mileage BETWEEN 0 AND 1000000 AND (cost_rub IS NULL OR cost_rub BETWEEN 0 AND 10000000) AND kind BETWEEN 1 AND 6 AND revision > 0");
+                        });
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.MaintenanceReminder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ComponentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("component_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<decimal>("DueMileage")
+                        .HasColumnType("numeric")
+                        .HasColumnName("due_mileage");
+
+                    b.HasKey("Id")
+                        .HasName("pk_maintenance_reminders");
+
+                    b.HasIndex("ComponentId", "DueMileage")
+                        .IsUnique()
+                        .HasDatabaseName("ix_maintenance_reminders_cycle");
+
+                    b.ToTable("maintenance_reminders", (string)null);
+                });
+
             modelBuilder.Entity("BikeHub.Dal.Entities.MediaAsset", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1295,6 +1473,16 @@ namespace BikeHub.Dal.Migrations
                     b.Navigation("Account");
                 });
 
+            modelBuilder.Entity("BikeHub.Dal.Entities.BikeComponent", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Bike", null)
+                        .WithMany()
+                        .HasForeignKey("BikeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bike_component_bike");
+                });
+
             modelBuilder.Entity("BikeHub.Dal.Entities.CommunityComment", b =>
                 {
                     b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
@@ -1457,6 +1645,32 @@ namespace BikeHub.Dal.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_library_route_owner");
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.MaintenanceRecord", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Bike", null)
+                        .WithMany()
+                        .HasForeignKey("BikeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_maintenance_record_bike");
+
+                    b.HasOne("BikeHub.Dal.Entities.BikeComponent", null)
+                        .WithMany()
+                        .HasForeignKey("ComponentId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_maintenance_record_component");
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.MaintenanceReminder", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.BikeComponent", null)
+                        .WithMany()
+                        .HasForeignKey("ComponentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_maintenance_reminder_component");
                 });
 
             modelBuilder.Entity("BikeHub.Dal.Entities.MediaAsset", b =>

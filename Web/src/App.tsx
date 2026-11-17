@@ -40,6 +40,7 @@ import { Settings } from "./pages/Settings";
 import { Communities } from "./pages/Communities";
 import { Rides, RideDetail } from "./pages/Rides";
 import { RouteLibrary, LibraryRouteDetail } from "./pages/RouteLibrary";
+import { Maintenance } from "./pages/Maintenance";
 import { NotificationBell, Notifications } from "./pages/Notifications";
 import { clearLocalDrafts } from "./components/useDraft";
 import { SearchResults, searchKind } from "./pages/SearchResults";
@@ -284,6 +285,7 @@ export default function App() {
                   ride: "Покатушка",
                   routes: "Маршруты",
                   route: "Маршрут",
+                  maintenance: "Обслуживание",
                   community: "Сообщество",
                   "group-entry": "Обсуждение сообщества",
                   moderation: "Модерация",
@@ -407,6 +409,7 @@ export default function App() {
                   {section === "group-entry" && <GroupEntryDetail key={`${path}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} targetComment={new URLSearchParams(search).get("comment")} />}
                   {section === "rides" && <Rides key={`${new URLSearchParams(search).get("group") || "all"}-${me?.id || "guest"}`} me={me} groupId={new URLSearchParams(search).get("group")} />}
                   {section === "routes" && <RouteLibrary key={me?.id || "guest"} me={me} />}
+                  {section === "maintenance" && <Maintenance key={`${path}-${me?.id || "guest"}`} bikeId={path.split("/")[2]} me={me} />}
                   {section === "route" && <LibraryRouteDetail key={`${route}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} source={(["post", "entry", "ride"] as const).map(kind => ({ kind, id: new URLSearchParams(search).get(kind) || "" })).find(item => !!item.id)} />}
                   {section === "ride" && <RideDetail key={`${path}-${new URLSearchParams(search).get("group") || ""}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} groupId={new URLSearchParams(search).get("group")} />}
                   {section === "communities" && (
@@ -436,6 +439,7 @@ export default function App() {
                       "ride",
                       "routes",
                       "route",
+                      "maintenance",
                       "search",
                     ].includes(section) && (
                       <Empty

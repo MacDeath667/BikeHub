@@ -201,11 +201,7 @@ public sealed class RouteLibraryService(IDbContextFactory<BikeHubDbContext> cont
     {
         var actor = Actor; using var db = contexts.CreateDbContext(); using var transaction = db.Database.BeginTransaction();
         var route = Locked(db, id); var now = clock.GetUtcNow();
-        TimeZoneInfo zone;
-        try { zone = request.TimeZone is null ? TimeZoneInfo.Utc : TimeZoneInfo.FindSystemTimeZoneById(request.TimeZone); }
-        catch (TimeZoneNotFoundException) { throw new CommunityProblem(400, ReviewDateTitle); }
-        catch (InvalidTimeZoneException) { throw new CommunityProblem(400, ReviewDateTitle); }
-        if (request.RiddenOn > DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime) || request.RiddenOn < new DateOnly(1900, 1, 1)) { throw new CommunityProblem(400, ReviewDateTitle); }
+        CalendarDates.ValidatePast(request.RiddenOn, request.TimeZone, now, ReviewDateTitle);
         var review = db.RouteReviews.SingleOrDefault(r => r.RouteId == id && r.AuthorId == actor);
         if (review?.IsHidden == true) { throw new CommunityProblem(403, ReviewHiddenTitle); }
         if (review is null)

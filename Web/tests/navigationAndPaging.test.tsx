@@ -19,6 +19,7 @@ const { BikeDirectory, BikeDetail } = await import("../src/pages/Bikes");
 const { PostDetail } = await import("../src/pages/PostDetail");
 const { UserProfile } = await import("../src/pages/UserProfile");
 const { GroupEntryDetail } = await import("../src/pages/CommunityDetail");
+const { Maintenance } = await import("../src/pages/Maintenance");
 const { LibraryRouteDetail } = await import("../src/pages/RouteLibrary");
 const { RideDetail } = await import("../src/pages/Rides");
 const { Moderation } = await import("../src/pages/Moderation");
@@ -382,4 +383,28 @@ test("private route notes survive a failed save and can be retried without reloa
   await waitFor(() => assert.ok(!screen.queryByText("Сохранение временно недоступно")));
   assert.equal(note.value, "Заехать за водой до старта"); assert.equal(writes, 2);
   assert.equal((screen.getByLabelText("Подборка") as HTMLSelectElement).value, "collection");
+});
+
+
+test("maintenance is private and a failed history page leaves the bike and edited odometer intact", async () => {
+  let historyFails = true, historyReads = 0, requests = 0;
+  const overview = { bikeId: "bike", bikeName: bike.name, mileage: 100, activeComponents: 1, dueComponents: 1 };
+  const component = { id: "chain", bikeId: "bike", kind: 1, name: "Цепь с напоминанием", model: "Fixture", notes: "Личная заметка", installedMileage: 0, installedOn: "2026-11-01", serviceIntervalKm: 100, lastServiceMileage: 0, dueMileage: 100, currentMileage: 100, isArchived: false, revision: 1, isDue: true };
+  globalThis.fetch = async input => {
+    requests++; const path = new URL(String(input)).pathname;
+    if (path.endsWith("/components/options")) return json([{ id: component.id, name: component.name, isArchived: false }]);
+    if (path.endsWith("/components")) return json(page([component]));
+    if (path.endsWith("/records")) { historyReads++; return historyFails ? json({ title: "История временно недоступна" }, 503) : json(page([])); }
+    return json(overview);
+  };
+  const view = render(<Maintenance bikeId="bike" me={null} />);
+  assert.ok(screen.getByText(/История, заметки и расходы видны только владельцу/)); assert.equal(requests, 0);
+  view.rerender(<Maintenance bikeId="bike" me={user} />);
+  await waitFor(() => assert.ok(screen.getByText("История временно недоступна")));
+  assert.ok(screen.getByText(component.name));
+  const input = screen.getByLabelText("Текущий пробег, км") as HTMLInputElement;
+  fireEvent.change(input, { target: { value: "125" } });
+  historyFails = false; fireEvent.click(screen.getByText(/Попробовать снова/));
+  await waitFor(() => assert.ok(!screen.queryByText("История временно недоступна")));
+  assert.equal(input.value, "125"); assert.equal(historyReads, 2); assert.ok(screen.getByText(component.name));
 });

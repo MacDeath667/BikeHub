@@ -2794,3 +2794,7 @@ textarea {
 .ride-filters label { display: flex; align-items: center; gap: .5rem; }
 .ride-filters input[type="checkbox"] { width: auto; }
 .ride-card p { overflow-wrap: anywhere; }
+
+.maintenance-check { display: flex; gap: .5rem; align-items: center; margin-block: .75rem; }
+.maintenance-check input[type="checkbox"] { width: auto; }
+.maintenance-due { border-inline-start: 4px solid var(--green, #698e4d); }

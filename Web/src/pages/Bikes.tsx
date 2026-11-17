@@ -244,6 +244,7 @@ export function BikeDetail({
         </div>
       </section>
       <div className="section-heading">
+        {bike.ownerId === me?.id && <a className="text-button" href={`#/maintenance/${bike.id}`}>Компоненты и обслуживание</a>}
         <h2>
           Бортжурнал<span className="count">{total}</span>
         </h2>

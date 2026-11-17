@@ -208,7 +208,9 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     {
         using var db = contexts.CreateDbContext();
         using var transaction = db.Database.BeginTransaction();
-        var bike = db.Bikes.SingleOrDefault(b => b.Id == id && !b.IsDeleted) ?? throw new CommunityProblem(404, MissingTitle);
+        var actor = Actor().Id;
+        _ = db.Accounts.FromSqlInterpolated($"SELECT * FROM auth_accounts WHERE id = {actor} FOR KEY SHARE").Single();
+        var bike = db.Bikes.FromSqlInterpolated($"SELECT * FROM bikes WHERE id = {id} AND NOT is_deleted FOR UPDATE").SingleOrDefault() ?? throw new CommunityProblem(404, MissingTitle);
         Own(bike.OwnerId);
         if (bike.IsHidden)
         {
@@ -218,7 +220,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
         bike.Name = request.Name.Trim(); bike.Description = request.Description?.Trim() ?? string.Empty;
         bike.Brand = request.Brand.Trim(); bike.Category = (int)request.Category; bike.Year = request.Year;
         bike.Mileage = request.Mileage; bike.ImageId = images.Length > 0 ? images[0] : null; bike.ImageIds = images;
-        db.SaveChanges(); transaction.Commit();
+        db.SaveChanges(); MaintenanceQueries.RefreshReminders(db, id, clock.GetUtcNow()); transaction.Commit();
         return Bikes(db).SingleOrDefault(b => b.Id == id) ?? throw new CommunityProblem(409, HiddenTitle);
     }
 

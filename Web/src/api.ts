@@ -121,6 +121,16 @@ export interface LibraryRoute {
 }
 export interface RouteCollection { id: string; name: string; routesCount: number; }
 export interface RouteReview { id: string; author: User; rating: number; text: string; riddenOn: string; updatedAt: string; }
+export interface MaintenanceOverview { bikeId: string; bikeName: string; mileage: number; activeComponents: number; dueComponents: number; }
+export interface BikeComponent {
+  id: string; bikeId: string; kind: number; name: string; model: string; notes: string;
+  installedMileage: number; installedOn: string; serviceIntervalKm: number | null; lastServiceMileage: number;
+  dueMileage: number | null; currentMileage: number; isArchived: boolean; revision: number; isDue: boolean;
+}
+export interface MaintenanceRecord {
+  id: string; componentId: string | null; componentName: string | null; kind: number; title: string; notes: string;
+  performedOn: string; mileage: number; costRub: number | null; resetsInterval: boolean; revision: number;
+}
 export interface Community {
   ownerId?: string | null;
   id: string;

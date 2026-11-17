@@ -10,7 +10,7 @@ type Notification = {
 };
 const changedEvent = "bikehub:notifications-changed";
 const refresh = () => window.dispatchEvent(new Event(changedEvent));
-const descriptions: Record<number, string> = { 1: "прокомментировал вашу запись", 2: "ответил вам", 3: "подписался на вас", 4: "упомянул вас", 5: "изменил покатушку — проверьте время и место", 6: "отменил покатушку", 7: "оставил отзыв о вашем маршруте" };
+const descriptions: Record<number, string> = { 1: "прокомментировал вашу запись", 2: "ответил вам", 3: "подписался на вас", 4: "упомянул вас", 5: "изменил покатушку — проверьте время и место", 6: "отменил покатушку", 7: "оставил отзыв о вашем маршруте", 8: "Пора проверить обслуживание велосипеда" };
 function destination(item: Notification) {
   if (item.targetType === 4) { return item.actorNickname ? `#/u/${encodeURIComponent(item.actorNickname)}` : `#/user/${item.actorId}`; }
   if (item.targetType === 2) { return `#/post/${item.targetId}`; }
@@ -18,6 +18,7 @@ function destination(item: Notification) {
   if (item.targetType === 8) { return `#/group-entry/${item.containerId}?comment=${item.targetId}`; }
   if (item.targetType === 10) { return `#/ride/${item.containerId}`; }
   if (item.targetType === 12) { return `#/route/${item.containerId}`; }
+  if (item.targetType === 13) { return `#/maintenance/${item.containerId}`; }
   return `#/group-entry/${item.targetId}`;
 }
 
@@ -66,7 +67,7 @@ export function Notifications({ me }: { me: User | null }) {
       {data.total > 0 && <button className="text-button notification-read-all" disabled={busy} onClick={() => void read()}><CheckCheck size={17} />Прочитать все</button>}
       <div className="notification-list">{data.items.map(item => <button type="button" key={item.id} className={`notification-item${item.isRead ? "" : " unread"}`} disabled={busy} onClick={() => void read(item)}>
         <span className="notification-avatar">{item.avatarUrl ? <img src={item.avatarUrl} alt="" /> : item.actorName.slice(0, 1)}</span>
-        <span><strong>{item.actorName}</strong> {descriptions[item.kind] || "отправил уведомление"}{item.actorNickname && <small>@{item.actorNickname}</small>}<time dateTime={item.createdAt}>{relativeTime(item.createdAt)}</time></span>
+        <span>{item.kind !== 8 && <strong>{item.actorName} </strong>}{descriptions[item.kind] || "отправил уведомление"}{item.actorNickname && item.kind !== 8 && <small>@{item.actorNickname}</small>}<time dateTime={item.createdAt}>{relativeTime(item.createdAt)}</time></span>
         {!item.isRead && <span className="notification-unread" aria-label="Не прочитано" />}
       </button>)}</div>
       {!data.items.length && <Empty title="Пока тихо" description="Здесь появятся комментарии к вашим записям, ответы, подписки и упоминания." />}
