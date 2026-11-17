@@ -80,6 +80,36 @@ test("older-history failures keep current messages and retry the same cursor", a
   assert.equal(screen.getAllByText("Сообщение 9").length, 1);
 });
 
+test("message actions open separately and deletion keeps a tombstone without sending another message", async () => {
+  let deleted = 0;
+  globalThis.fetch = async (input, options) => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/auth/session") return json({ user, enabled: true, csrfToken: "test" });
+    if (path.endsWith("/messages/own")) { assert.equal(options?.method, "DELETE"); deleted++; return new Response(null, { status: 204 }); }
+    if (path.endsWith("/messages")) return json(page([{ ...message("own", 1), senderId: user.id, text: "Мой текст" }]));
+    return json(conversation);
+  };
+  render(<Conversation id="chat" me={user} />);
+  await screen.findByText("Мой текст");
+  fireEvent.click(screen.getByLabelText("Действия с вашим сообщением")); assert.equal(deleted, 0);
+  fireEvent.click(screen.getByRole("button", { name: "Удалить сообщение" }));
+  await screen.findByText("Сообщение удалено"); assert.equal(deleted, 1); assert.equal(screen.queryByText("Мой текст"), null);
+});
+
+test("inbox rows keep contact identity and unread state while request tabs use their own query", async () => {
+  const requested: string[] = [];
+  globalThis.fetch = async input => {
+    const url = new URL(String(input)); requested.push(url.search);
+    return json({ items: [{ ...conversation, unreadCount: 2 }], total: 1, pageNumber: 1, hasMore: false });
+  };
+  render(<Messages me={user} />);
+  await screen.findByText("Привет"); assert.ok(screen.getByText("@companion"));
+  assert.ok(screen.getByLabelText("Непрочитанных: 2"));
+  assert.equal(screen.getByRole("link", { name: /Собеседник/ }).getAttribute("href"), "#/message/chat");
+  fireEvent.click(screen.getByRole("button", { name: "Запросы" }));
+  await waitFor(() => assert.ok(requested.some(query => query.includes("requests=true"))));
+});
+
 test("message moderation requires a moderator and shows only the reported fragment", async () => {
   let requests = 0;
   globalThis.fetch = async input => {

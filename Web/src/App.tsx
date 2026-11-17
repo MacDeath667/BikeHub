@@ -353,7 +353,7 @@ export default function App() {
             <Loading />
           ) : (
             <>
-              <div className="content-grid">
+              <div className={`content-grid${section === "messages" || section === "message" ? " messaging-grid" : ""}`}>
                 <div className="primary-content">
                   {!me && ["saved", "garage"].includes(section) && (
                     <Empty title={section === "garage" ? "Ваш гараж начинается здесь" : "Сохраните свои истории"}
@@ -468,13 +468,13 @@ export default function App() {
                       />
                     )}
                 </div>
-                <RightRail
+                {section !== "messages" && section !== "message" && <RightRail
                   overview={overview}
                   communities={communities}
                   error={railError}
                   retry={() => setRailRevision(v => v + 1)}
                   onCreate={() => create("bike")}
-                />
+                />}
               </div>
               <footer className="page-footer">
                 <span>У каждого велосипеда своя история.</span>

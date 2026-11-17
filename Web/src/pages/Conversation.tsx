@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
+import { Archive, ArrowLeft, Clock3, MessageCircle, MoreHorizontal, Send, ShieldCheck, Trash2 } from "lucide-react";
 import { api, relativeTime, requestLogin } from "../api";
 import type { Conversation as ConversationData, DirectMessage, MessagePage, MessagePeer, User } from "../api";
 import { Empty, ErrorBox, Loading } from "../components/ui";
@@ -8,6 +9,18 @@ import { MentionTextarea } from "../components/MentionTextarea";
 import { mergeMessages, notifyMessagesChanged, prepareMessage } from "../components/messageState";
 import type { PendingMessage } from "../components/messageState";
 import { PeerAvatar, PeerName } from "./Messages";
+
+function MessageMenu({ label, children, bubble = false }: { label: string; children: ReactNode; bubble?: boolean }) {
+  return <details className={`message-options${bubble ? " bubble-options" : ""}`}
+    onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) { event.currentTarget.open = false; } }}
+    onKeyDown={event => { if (event.key === "Escape" && event.currentTarget.open) { event.preventDefault(); event.stopPropagation(); event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}>
+    <summary aria-label={label} title={label}><MoreHorizontal size={19} aria-hidden="true" /></summary>
+    <div className="message-options-panel" onClick={event => {
+      const button = (event.target as Element).closest("button");
+      if (button && !button.disabled) { const details = event.currentTarget.parentElement as HTMLDetailsElement; details.open = false; details.querySelector("summary")?.focus(); }
+    }}>{children}</div>
+  </details>;
+}
 
 export function Conversation({ id, me }: { id: string; me: User | null }) {
   return me ? <ConversationPage id={id} me={me} /> : <Empty title="Личная переписка" description="Войдите для просмотра своих сообщений." action={<button className="button primary" onClick={requestLogin}>Войти</button>} />;
@@ -90,28 +103,34 @@ function ConversationPage({ id, me }: { id: string; me: User }) {
     } catch (e) { if (alive.current) setActionError((e as Error).message); } finally { actionPending.current = false; if (alive.current) setActing(false); }
   }
   if (!conversation) return error ? <ErrorBox message={error} retry={() => setRetry(v => v + 1)} /> : <Loading />;
-  return <><a className="back-link" href="#/messages">← Все сообщения</a><div className="page-heading message-heading"><div className="content-tools"><PeerAvatar peer={conversation.peer} /><div><div className="eyebrow">ЛИЧНАЯ ПЕРЕПИСКА</div><h1><PeerName peer={conversation.peer} /></h1></div></div></div>
-    {conversation.status === 1 && <div className="profile-card" role="status">{conversation.requestedByMe ? "Запрос отправлен. Продолжить можно после согласия собеседника." : "Новый запрос на переписку. Примите его, чтобы ответить."}</div>}
-    {conversation.status === 3 && <p role="status">Запрос на переписку отклонён.</p>}
-    {conversation.blockedByMe ? <p role="status">Вы заблокировали сообщения этого пользователя.</p> : conversation.status === 2 && !conversation.canSend && <p role="status">Обмен сообщениями сейчас недоступен.</p>}
-    <div className="content-tools">{conversation.canAccept && <><button className="button primary" disabled={acting || sending} onClick={() => void action(() => api(`${base}/request`, { method: "PUT", body: JSON.stringify({ accept: true }) }))}>Принять запрос</button><button className="text-button" disabled={acting || sending} onClick={() => void action(() => api(`${base}/request`, { method: "PUT", body: JSON.stringify({ accept: false }) }), () => { window.location.hash = "/messages"; })}>Отклонить запрос</button></>}
-      {conversation.status === 1 && conversation.requestedByMe && <button className="text-button" disabled={acting || sending} onClick={() => { if (window.confirm("Отозвать запрос? Повторный запрос этому человеку отправить нельзя до его согласия.")) void action(() => api(`${base}/request`, { method: "DELETE" })); }}>Отозвать запрос</button>}
-      <button className="text-button" disabled={acting || sending} onClick={() => void action(() => api(`${base}/archive`, { method: "PUT", body: JSON.stringify({ archived: !conversation.isArchived }) }), () => { window.location.hash = "/messages"; })}>{conversation.isArchived ? "Вернуть из архива" : "В архив"}</button>
-      {conversation.peer.id && <button className="text-button" disabled={acting || sending} onClick={() => { if (window.confirm(conversation.blockedByMe ? "Снова разрешить сообщения?" : "Заблокировать сообщения в обе стороны? История сохранится.")) void action(() => api(`/messages/blocks/${conversation.peer.id}`, { method: conversation.blockedByMe ? "DELETE" : "PUT" })); }}>{conversation.blockedByMe ? "Разблокировать сообщения" : "Заблокировать сообщения"}</button>}
-    </div>
-    {syncError && <ErrorBox message={syncError} retry={() => void refresh.current()} />}{actionError && <ErrorBox message={actionError} />}{info && <p role="status">{info}</p>}
-    {hasEarlier && <button className="text-button" disabled={historyBusy} onClick={() => void older()}>{historyBusy ? "Загружаем…" : "Более ранние сообщения"}</button>}
+  return <section className="messaging-page conversation-page"><a className="back-link" href="#/messages"><ArrowLeft size={16} aria-hidden="true" />Все сообщения</a>
+    <header className="conversation-header"><div className="conversation-peer"><PeerAvatar peer={conversation.peer} /><div><div className="eyebrow">ЛИЧНАЯ ПЕРЕПИСКА</div><h1><PeerName peer={conversation.peer} /></h1></div></div>
+      <MessageMenu label="Действия с перепиской">
+        {conversation.status === 1 && conversation.requestedByMe && <button type="button" disabled={acting || sending} onClick={() => { if (window.confirm("Отозвать запрос? Повторный запрос этому человеку отправить нельзя до его согласия.")) void action(() => api(`${base}/request`, { method: "DELETE" })); }}>Отозвать запрос</button>}
+        <button type="button" disabled={acting || sending} onClick={() => void action(() => api(`${base}/archive`, { method: "PUT", body: JSON.stringify({ archived: !conversation.isArchived }) }), () => { window.location.hash = "/messages"; })}><Archive size={16} aria-hidden="true" />{conversation.isArchived ? "Вернуть из архива" : "В архив"}</button>
+        {conversation.peer.id && <button type="button" disabled={acting || sending} onClick={() => { if (window.confirm(conversation.blockedByMe ? "Снова разрешить сообщения?" : "Заблокировать сообщения в обе стороны? История сохранится.")) void action(() => api(`/messages/blocks/${conversation.peer.id}`, { method: conversation.blockedByMe ? "DELETE" : "PUT" })); }}><ShieldCheck size={16} aria-hidden="true" />{conversation.blockedByMe ? "Разблокировать сообщения" : "Заблокировать сообщения"}</button>}
+      </MessageMenu>
+    </header>
+    {conversation.status === 1 && <section className="conversation-status" role="status"><Clock3 size={22} aria-hidden="true" /><div><strong>{conversation.requestedByMe ? "Запрос отправлен" : "Запрос на переписку"}</strong><p>{conversation.requestedByMe ? "Продолжить можно после согласия собеседника." : "Примите запрос, чтобы ответить. Первое сообщение — ниже."}</p>
+      {conversation.canAccept && <div className="content-tools"><button className="button primary" disabled={acting || sending} onClick={() => void action(() => api(`${base}/request`, { method: "PUT", body: JSON.stringify({ accept: true }) }))}>Принять запрос</button><button className="button secondary" disabled={acting || sending} onClick={() => void action(() => api(`${base}/request`, { method: "PUT", body: JSON.stringify({ accept: false }) }), () => { window.location.hash = "/messages"; })}>Отклонить запрос</button></div>}
+    </div></section>}
+    {conversation.status === 3 && <div className="conversation-status" role="status"><ShieldCheck size={22} aria-hidden="true" /><p>Запрос на переписку отклонён.</p></div>}
+    {conversation.blockedByMe ? <div className="conversation-status" role="status"><ShieldCheck size={22} aria-hidden="true" /><p>Вы заблокировали сообщения этого пользователя.</p></div> : conversation.status === 2 && !conversation.canSend && <div className="conversation-status" role="status"><ShieldCheck size={22} aria-hidden="true" /><p>Обмен сообщениями сейчас недоступен.</p></div>}
+    {syncError && <ErrorBox message={syncError} retry={() => void refresh.current()} />}{actionError && <ErrorBox message={actionError} />}{info && <div className="conversation-status" role="status"><p>{info}</p></div>}
+    <div className="conversation-shell">
+    {hasEarlier && <div className="message-history"><button className="text-button" disabled={historyBusy} onClick={() => void older()}>{historyBusy ? "Загружаем…" : "Более ранние сообщения"}</button></div>}
     <div ref={list} className="message-log" role="log" aria-label="Сообщения переписки" aria-live="polite" onScroll={() => { if (list.current) { const bottom = list.current.scrollHeight - list.current.scrollTop - list.current.clientHeight < 80; setAtBottom(bottom); } }}>
-      {!messages.length && <p className="muted">В переписке пока нет доступных сообщений.</p>}
-      {messages.map(message => <article className={`direct-message ${message.senderId === me.id ? "outgoing" : "incoming"}`} key={message.id}>
-        <small>{message.senderId === me.id ? "Вы" : conversation.peer.name} · <time dateTime={message.createdAt}>{relativeTime(message.createdAt)}</time></small>
-        <p className="group-content">{message.isDeleted ? <em>Сообщение удалено</em> : message.isHidden ? <em>Сообщение скрыто модератором</em> : <MentionText text={message.text || ""} />}</p>
-        {!message.isDeleted && !message.isHidden && <div className="content-tools">{message.senderId === me.id ? <button className="text-button" disabled={acting || sending} onClick={() => { if (window.confirm("Удалить сообщение для участников переписки?")) void action(() => api(`${base}/messages/${message.id}`, { method: "DELETE" }), () => { setMessages(previous => previous.map(m => m.id === message.id ? { ...m, text: null, isDeleted: true } : m)); }); }}>Удалить сообщение</button> : <button className="text-button" disabled={acting || sending} onClick={() => { setReportId(message.id); setReason(""); }}>Пожаловаться на сообщение</button>}</div>}
+      {!messages.length && <div className="message-empty"><MessageCircle size={30} aria-hidden="true" /><p>В переписке пока нет доступных сообщений.</p></div>}
+      {messages.map(message => <article className={`direct-message ${message.senderId === me.id ? "outgoing" : "incoming"}${reportId === message.id ? " reporting" : ""}`} key={message.id}>
+        <p className="group-content message-text">{message.isDeleted ? <em>Сообщение удалено</em> : message.isHidden ? <em>Сообщение скрыто модератором</em> : <MentionText text={message.text || ""} />}</p>
+        <footer className="message-meta">{message.senderId === me.id ? "Вы" : conversation.peer.name}<span aria-hidden="true">·</span><time dateTime={message.createdAt}>{relativeTime(message.createdAt)}</time></footer>
+        {!message.isDeleted && !message.isHidden && <MessageMenu bubble label={message.senderId === me.id ? "Действия с вашим сообщением" : "Действия с сообщением собеседника"}>{message.senderId === me.id ? <button type="button" className="danger" disabled={acting || sending} onClick={() => { if (window.confirm("Удалить сообщение для участников переписки?")) void action(() => api(`${base}/messages/${message.id}`, { method: "DELETE" }), () => { setMessages(previous => previous.map(m => m.id === message.id ? { ...m, text: null, isDeleted: true } : m)); }); }}><Trash2 size={15} aria-hidden="true" />Удалить сообщение</button> : <button type="button" disabled={acting || sending} onClick={() => { setReportId(message.id); setReason(""); }}>Пожаловаться на сообщение</button>}</MessageMenu>}
         {reportId === message.id && <form className="group-editor" onSubmit={e => { e.preventDefault(); void action(() => api(`${base}/messages/${message.id}/reports`, { method: "POST", body: JSON.stringify({ reason }) }), () => { setReportId(null); setInfo("Жалоба отправлена. Модератор увидит только выбранное сообщение и причину."); }); }}><label>Причина жалобы<textarea required minLength={5} maxLength={2000} value={reason} disabled={acting || sending} onChange={e => setReason(e.target.value)} /></label><p className="form-hint">Модератору будет передана копия только этого сообщения.</p><div className="content-tools"><button className="button secondary" disabled={acting || sending}>Отправить жалобу</button><button type="button" className="text-button" disabled={acting || sending} onClick={() => setReportId(null)}>Отмена</button></div></form>}
       </article>)}
     </div>
     {!atBottom && <button className="button secondary message-jump" onClick={() => setAtBottom(true)}>К последним сообщениям</button>}
     {sendError && <ErrorBox message={sendError} />}
-    {conversation.canSend && <form className="profile-card group-editor message-compose" onSubmit={send}><label>Ваше сообщение<MentionTextarea required maxLength={4000} value={text} disabled={sending} onValueChange={setText} /></label><p className="form-hint">Упоминания здесь видят участники переписки; третьим лицам уведомления не отправляются.</p><button className="button primary" disabled={sending || !text.trim()}>{sending ? "Отправляем…" : "Отправить сообщение"}</button></form>}
-  </>;
+    {conversation.canSend && <form className="message-compose" onSubmit={send}><label><span className="sr-only">Ваше сообщение</span><MentionTextarea aria-label="Ваше сообщение" required maxLength={4000} value={text} disabled={sending} onValueChange={setText} placeholder="Написать сообщение…" /></label><div className="message-compose-footer"><p className="form-hint">Личная переписка. Упоминания не уведомляют третьих лиц.</p><button className="button primary" disabled={sending || !text.trim()}><Send size={16} aria-hidden="true" />{sending ? "Отправляем…" : "Отправить сообщение"}</button></div></form>}
+    </div>
+  </section>;
 }

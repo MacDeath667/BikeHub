@@ -105,7 +105,7 @@ export function RightRail({
           </div>
         ))}
       </section>
-      {overview && (
+      {!!overview?.tags.length && (
         <section className="rail-section tag-section">
           <h3>Сейчас обсуждают</h3>
           <div className="tags">
