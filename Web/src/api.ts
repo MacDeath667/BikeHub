@@ -1,3 +1,4 @@
+export interface CityOption { id: string; name: string; region: string; label: string; }
 export interface User {
   id: string;
   name: string;

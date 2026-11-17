@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CityInput } from "../components/CityInput";
 import { api, query, requestLogin, userHref } from "../api";
 import type { LibraryRoute, Page, RouteCollection, RouteData, RouteReview, User } from "../api";
 import { Avatar, Empty, ErrorBox, Loading } from "../components/ui";
@@ -31,7 +32,7 @@ export function RouteLibrary({ me }: { me: User | null }) {
   return <><div className="page-heading"><div className="eyebrow">ЕСТЬ КУДА ПОЕХАТЬ</div><h1>Маршруты</h1><p>GPX, проверенные дороги и личные подборки для будущих поездок.</p></div>
     <button className="button primary" onClick={() => { if (!me) requestLogin(); else window.location.hash = "/route/new"; }}>Добавить маршрут</button>
     <form className="profile-card group-editor" onSubmit={e => { e.preventDefault(); setFilters({ city: city.trim(), surface, minimum, maximum }); setPage(1); }}>
-      <label>Город маршрута<input maxLength={100} value={city} onChange={e => setCity(e.target.value)} /></label>
+      <label>Город маршрута<CityInput aria-label="Город маршрута" value={city} onValueChange={setCity} placeholder="Любой город" /></label>
       <label>Покрытие<select value={surface} onChange={e => setSurface(e.target.value)}><option value="">Любое</option>{Object.entries(surfaces).map(([key, value]) => <option key={key} value={key}>{value}</option>)}</select></label>
       <div className="route-coordinate-inputs"><label>Дистанция от, км<input type="number" min={0} max={100000} value={minimum} onChange={e => setMinimum(e.target.value)} /></label><label>Дистанция до, км<input type="number" min={0} max={100000} value={maximum} onChange={e => setMaximum(e.target.value)} /></label></div><button className="text-button">Найти маршруты</button>
     </form>
@@ -56,7 +57,7 @@ function LibraryEditor({ value, initialRoute, saved, close }: { value?: LibraryR
     saved(await api<LibraryRoute>(`/route-library${value ? `/${value.id}` : ""}`, { method: value ? "PUT" : "POST", body: JSON.stringify({ title, description, city, surface, route, revision: value?.revision || null }) }));
   } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}><fieldset className="draft-fieldset" disabled={busy}>
     <label>Название в библиотеке<input required minLength={3} maxLength={160} value={title} onChange={e => setTitle(e.target.value)} /></label><label>О маршруте<textarea required maxLength={10000} value={description} onChange={e => setDescription(e.target.value)} placeholder="Дорога, сезон, вода, сложные участки" /></label>
-    <label>Город<input required maxLength={100} value={city} onChange={e => setCity(e.target.value)} /></label><label>Основное покрытие<select value={surface} onChange={e => setSurface(Number(e.target.value) as LibraryRoute["surface"])}>{Object.entries(surfaces).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+    <label>Город<CityInput required value={city} onValueChange={setCity} placeholder="Начните вводить название" /></label><label>Основное покрытие<select value={surface} onChange={e => setSurface(Number(e.target.value) as LibraryRoute["surface"])}>{Object.entries(surfaces).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
     <RouteEditor value={route} onChange={setRoute} onBusy={setRouteBusy} disabled={busy} /><p className="form-hint">Дистанция считается по линиям маршрута. Отдельные метки не соединяются автоматически.</p>
     {error && <ErrorBox message={error} />}<div className="content-tools"><button className="button primary" disabled={busy || routeBusy}>Опубликовать маршрут</button><button type="button" className="text-button" disabled={busy || routeBusy} onClick={() => { if (window.confirm("Закрыть без сохранения изменений?")) close(); }}>Отмена</button></div>
   </fieldset></form></section>;

@@ -26,8 +26,10 @@ public sealed class SearchService(IDbContextFactory<BikeHubDbContext> contexts, 
         using var db = contexts.CreateDbContext();
         PostgresCommunityService.Search(query);
         var pattern = PostgresCommunityService.Search(query?.Trim().TrimStart('@'));
+        var cityPattern = PostgresCommunityService.Search(CitySelection.Filter(query));
         var ids = db.Accounts.Where(a => !a.IsBlocked && pattern != null &&
-            EF.Functions.ILike(a.DisplayName + " " + (a.Handle ?? string.Empty) + " " + a.City, pattern!, Constants.SearchEscapeCharacter)).Select(a => a.Id);
+            (EF.Functions.ILike(a.DisplayName + " " + (a.Handle ?? string.Empty) + " " + a.City, pattern!, Constants.SearchEscapeCharacter) ||
+             EF.Functions.ILike(a.City, cityPattern!, Constants.SearchEscapeCharacter))).Select(a => a.Id);
         return Page(community.Users(db).Where(u => ids.Contains(u.Id)).OrderBy(u => u.Handle).ThenBy(u => u.Id), page, size);
     }
 

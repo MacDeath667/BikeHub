@@ -2816,6 +2816,20 @@ textarea {
 .mention-suggestions > span[aria-selected="true"], .mention-suggestions > span:hover { background: var(--theme-soft, #f1f6ea); }
 .mention-suggestions small { font-size: 11px; color: var(--theme-muted, #64756b); }
 .mention-link { color: var(--theme-accent, #386e49); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+.city-field { display: block; position: relative; min-width: 0; }
+.city-field > input { display: block; width: 100%; }
+.directory-search > label { flex: 1; min-width: 0; }
+.city-suggestions { position: absolute; inset: calc(100% + 4px) 0 auto; z-index: 25; display: block; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--theme-surface, #fff); box-shadow: 0 8px 24px #14292326; font-size: 14px; font-weight: 400; line-height: 1.5; text-align: left; }
+.city-suggestions [role="listbox"] { display: block; max-height: min(280px, 40dvh); overflow-y: auto; overscroll-behavior: contain; }
+.city-suggestions [role="option"] { display: grid; gap: 2px; padding: 10px 12px; border-radius: 6px; cursor: pointer; color: var(--ink); overflow-wrap: anywhere; }
+.city-suggestions [role="option"]:hover, .city-suggestions [aria-selected="true"] { background: var(--theme-soft, #eef3e8); }
+.city-suggestions strong { font-size: 14px; font-weight: 500; }
+.city-suggestions small { font-size: 12px; color: var(--theme-muted, #64756b); }
+.city-hint { display: block; padding: 10px 12px; color: var(--theme-muted, #64756b); }
+.city-hint .text-button { font-size: 13px; }
+.city-attribution { display: block; padding: 8px 12px 4px; border-top: 1px solid var(--border); font-size: 11px; color: var(--theme-muted, #64756b); }
+.city-attribution a { text-decoration: underline; text-underline-offset: 2px; }
 .draft-fieldset { display: contents; border: 0; padding: 0; margin: 0; min-width: 0; }
 .draft-status { padding: 12px 14px; border: 1px solid var(--border); border-radius: 9px; background: var(--theme-soft, #f3f7ee); font-size: 12px; color: var(--theme-muted, #64756b); line-height: 1.7; }
 .draft-status p { margin: 0 0 5px; }

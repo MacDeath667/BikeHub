@@ -3,6 +3,7 @@ import { api } from "../api";
 import type { User } from "../api";
 import { PhotoUpload } from "./PhotoUpload";
 import { ErrorBox } from "./ui";
+import { CityInput } from "./CityInput";
 
 export function ProfileEditor({ user, close, saved }: { user: User; close: () => void; saved: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -10,6 +11,7 @@ export function ProfileEditor({ user, close, saved }: { user: User; close: () =>
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [city, setCity] = useState(user.city);
   useEffect(() => { ref.current?.showModal(); return () => ref.current?.close(); }, []);
   return <dialog className="create-dialog" ref={ref} onCancel={e => { e.preventDefault(); if (!saving && !uploading) close(); }} aria-labelledby="profile-editor-title">
     <h2 id="profile-editor-title">Редактирование профиля</h2>
@@ -22,7 +24,7 @@ export function ProfileEditor({ user, close, saved }: { user: User; close: () =>
     }}>
       <label>Имя<input name="name" defaultValue={user.name} minLength={2} maxLength={60} required /></label>
       <div className="profile-nickname"><strong>Ник: {user.handle ? `@${user.handle}` : "ещё не выбран"}</strong><p className="form-hint">Уникальный ник выбирается один раз и не меняется.</p></div>
-      <label>Город<input name="city" defaultValue={user.city} maxLength={100} /></label>
+      <label>Город<CityInput name="city" value={city} onValueChange={setCity} placeholder="Начните вводить название" /></label>
       <label>О себе<textarea name="bio" defaultValue={user.bio} maxLength={2000} /></label>
       <PhotoUpload avatar label="Аватарка профиля" disabled={saving} value={user.avatarUrl} onChange={setAvatarId} onBusy={setUploading} />
       {error && <ErrorBox message={error} />}

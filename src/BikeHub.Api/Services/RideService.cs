@@ -106,7 +106,7 @@ public sealed class RideService(IDbContextFactory<BikeHubDbContext> contexts, IC
         {
             query = query.Where(r => r.GroupId == groupId);
         }
-        if (PostgresCommunityService.Search(city) is { } pattern)
+        if (PostgresCommunityService.Search(CitySelection.Filter(city)) is { } pattern)
         {
             query = query.Where(r => EF.Functions.ILike(r.City, pattern, Constants.SearchEscapeCharacter));
         }
@@ -163,7 +163,8 @@ public sealed class RideService(IDbContextFactory<BikeHubDbContext> contexts, IC
             throw new CommunityProblem(409, CapacityTitle);
         }
         var route = RouteService.Save(request.Route);
-        var unchanged = ride.Title == request.Title.Trim() && ride.Description == request.Description.Trim() && ride.City == request.City.Trim() &&
+        var selectedCity = CitySelection.Normalize(request.City, existing: id.HasValue ? ride.City : null);
+        var unchanged = ride.Title == request.Title.Trim() && ride.Description == request.Description.Trim() && ride.City == selectedCity &&
             ride.MeetingName == request.MeetingName.Trim() && ride.MeetingLat == request.MeetingPoint?.Lat && ride.MeetingLng == request.MeetingPoint?.Lng &&
             ride.StartsAt == startsAt && ride.TimeZone == timeZone && ride.DistanceKm == request.DistanceKm &&
             ride.AverageSpeedKmh == request.AverageSpeedKmh && ride.Difficulty == request.Difficulty && ride.Capacity == request.Capacity &&
@@ -172,7 +173,7 @@ public sealed class RideService(IDbContextFactory<BikeHubDbContext> contexts, IC
         {
             transaction.Commit(); return Get(ride.Id);
         }
-        ride.Title = request.Title.Trim(); ride.Description = request.Description.Trim(); ride.City = request.City.Trim(); ride.MeetingName = request.MeetingName.Trim();
+        ride.Title = request.Title.Trim(); ride.Description = request.Description.Trim(); ride.City = selectedCity; ride.MeetingName = request.MeetingName.Trim();
         ride.MeetingLat = request.MeetingPoint?.Lat; ride.MeetingLng = request.MeetingPoint?.Lng;
         ride.StartsAt = startsAt; ride.TimeZone = timeZone;
         ride.DistanceKm = request.DistanceKm; ride.AverageSpeedKmh = request.AverageSpeedKmh; ride.Difficulty = request.Difficulty;

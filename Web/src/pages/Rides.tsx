@@ -6,6 +6,7 @@ import { PostRoute, RouteEditor } from "../components/PostRoute";
 import { MentionText } from "../components/MentionText";
 import { ReportButton } from "../components/ContentTools";
 import { rideDate, rideInstant, rideLocalTime } from "../components/rideTime";
+import { CityInput } from "../components/CityInput";
 
 const difficulties: Record<number, string> = { 1: "Легко", 2: "Средняя нагрузка", 3: "Сложно" };
 function RideSummary({ ride, detail = false }: { ride: Ride; detail?: boolean }) {
@@ -29,7 +30,7 @@ export function Rides({ me, groupId }: { me: User | null; groupId?: string | nul
   }, [filter, mine, past, page, groupId, retry]);
   return <><div className="page-heading"><div className="eyebrow">ВМЕСТЕ ИНТЕРЕСНЕЕ</div><h1>Покатушки</h1><p>Найдите компанию, договоритесь о темпе и встречайтесь на старте.</p></div>
     <div className="content-tools"><button className="button primary" onClick={() => { if (!me) requestLogin(); else window.location.hash = `/ride/new${groupId ? `?group=${groupId}` : ""}`; }}>Организовать покатушку</button>{groupId && <a className="text-button" href="#/rides">Все сообщества</a>}</div>
-    <form className="directory-search search-form" onSubmit={e => { e.preventDefault(); setFilter(city.trim()); setPage(1); }}><label>Город<input maxLength={100} value={city} onChange={e => setCity(e.target.value)} /></label><button className="text-button">Найти</button></form>
+    <form className="directory-search search-form" onSubmit={e => { e.preventDefault(); setFilter(city.trim()); setPage(1); }}><label>Город<CityInput value={city} onValueChange={setCity} placeholder="Любой город" /></label><button className="text-button">Найти</button></form>
     <div className="content-tools ride-filters"><label><input type="checkbox" checked={mine} onChange={e => { if (!me) { requestLogin(); return; } setMine(e.target.checked); setPage(1); }} />Мои покатушки</label><label><input type="checkbox" checked={past} onChange={e => { setPast(e.target.checked); setPage(1); }} />Прошедшие</label></div>
     {error && <ErrorBox message={error} retry={() => setRetry(v => v + 1)} />}
     {!data ? !error && <Loading /> : <>{data.items.map(ride => <RideSummary key={ride.id} ride={ride} />)}
@@ -53,7 +54,7 @@ function RideEditor({ ride, group, saved, close }: { ride?: Ride; group: { id: s
       <fieldset className="draft-fieldset" disabled={busy}>
         <label>Название<input required minLength={3} maxLength={160} value={title} onChange={e => setTitle(e.target.value)} /></label>
         <label>О поездке<textarea required maxLength={10000} value={description} onChange={e => setDescription(e.target.value)} placeholder="Что ждёт в пути, что взять с собой, где остановимся" /></label>
-        <label>Город<input required maxLength={100} value={city} onChange={e => setCity(e.target.value)} /></label>
+        <label>Город<CityInput required value={city} onValueChange={setCity} placeholder="Начните вводить название" /></label>
         <label>Дата и время встречи<input type="datetime-local" required value={starts} onChange={e => setStarts(e.target.value)} /></label>
         <label>Часовой пояс<input required maxLength={100} value={zone} onChange={e => setZone(e.target.value)} placeholder="Europe/Moscow" /></label><p className="form-hint">Время выше относится к этому часовому поясу, а не обязательно к поясу вашего устройства.</p>
         <label>Где встречаемся<input required maxLength={300} value={meetingName} onChange={e => setMeetingName(e.target.value)} placeholder="Точное место и ориентир" /></label>

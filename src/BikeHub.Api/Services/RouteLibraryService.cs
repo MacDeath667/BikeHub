@@ -103,7 +103,7 @@ public sealed class RouteLibraryService(IDbContextFactory<BikeHubDbContext> cont
                 throw new CommunityProblem(404, CollectionTitle);
             }
         }
-        if (PostgresCommunityService.Search(city) is { } pattern) { routes = routes.Where(r => EF.Functions.ILike(r.City, pattern, Constants.SearchEscapeCharacter)); }
+        if (PostgresCommunityService.Search(CitySelection.Filter(city)) is { } pattern) { routes = routes.Where(r => EF.Functions.ILike(r.City, pattern, Constants.SearchEscapeCharacter)); }
         if (surface.HasValue) { routes = routes.Where(r => r.Surface == surface.Value); }
         if (minimum.HasValue) { routes = routes.Where(r => r.DistanceKm >= minimum); }
         if (maximum.HasValue) { routes = routes.Where(r => r.DistanceKm <= maximum); }
@@ -123,7 +123,8 @@ public sealed class RouteLibraryService(IDbContextFactory<BikeHubDbContext> cont
         var json = RouteService.Save(request.Route) ?? throw new CommunityProblem(400, RouteRequiredTitle);
         var length = RouteService.DistanceKm(request.Route);
         if (length > MaximumDistanceKm) { throw new CommunityProblem(400, RouteRequiredTitle); }
-        route.Title = request.Title.Trim(); route.Description = request.Description.Trim(); route.City = request.City.Trim();
+        route.Title = request.Title.Trim(); route.Description = request.Description.Trim();
+        route.City = CitySelection.Normalize(request.City, existing: id.HasValue ? route.City : null);
         route.Surface = request.Surface; route.RouteJson = json; route.DistanceKm = length; route.Revision++; route.UpdatedAt = now;
         if (!id.HasValue) { db.LibraryRoutes.Add(route); }
         db.SaveChanges(); transaction.Commit(); return Get(route.Id);

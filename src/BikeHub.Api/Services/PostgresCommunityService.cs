@@ -444,7 +444,8 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             account.Handle = nickname;
         }
         account.DisplayName = RequiredText(request.Name);
-        account.City = request.City?.Trim() ?? string.Empty; account.Bio = request.Bio?.Trim() ?? string.Empty; account.AvatarId = request.AvatarId;
+        account.City = CitySelection.Normalize(request.City, optional: true, existing: account.City);
+        account.Bio = request.Bio?.Trim() ?? string.Empty; account.AvatarId = request.AvatarId;
         try { db.SaveChanges(); }
         catch (DbUpdateException error) when (error.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
