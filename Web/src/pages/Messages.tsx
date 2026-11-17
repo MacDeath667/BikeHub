@@ -5,7 +5,15 @@ import { Avatar, Empty, ErrorBox, Loading } from "../components/ui";
 import { MentionTextarea } from "../components/MentionTextarea";
 import { messagesChanged, notifyMessagesChanged, prepareMessage } from "../components/messageState";
 import type { PendingMessage } from "../components/messageState";
-import { Archive, ArrowUpRight, Inbox as InboxIcon, MessageCircle, ShieldCheck } from "lucide-react";
+import { Archive, Inbox as InboxIcon, MessageCircle, ShieldCheck } from "lucide-react";
+
+function conversationStatus(conversation: Conversation) {
+  if (conversation.blockedByMe) { return "Заблокирована"; }
+  if (!conversation.peer.available) { return "Недоступна"; }
+  if (conversation.status === 1) { return conversation.requestedByMe ? "Ожидает согласия" : "Новый запрос"; }
+  if (conversation.status === 3) { return "Запрос отклонён"; }
+  return conversation.canSend ? "Переписка" : "Недоступна";
+}
 
 export function PeerName({ peer }: { peer: MessagePeer }) {
   return peer.available && peer.handle ? <a className="message-peer-name" href={`#/u/${encodeURIComponent(peer.handle)}`}><strong>{peer.name}</strong><span>@{peer.handle}</span></a> : <strong className="message-peer-name">{peer.name}</strong>;
@@ -62,7 +70,11 @@ function Inbox() {
     <div className="content-tools message-tabs" role="group" aria-label="Раздел сообщений">{[{ id: "inbox", name: "Диалоги", icon: MessageCircle }, { id: "requests", name: "Запросы", icon: InboxIcon }, { id: "archive", name: "Архив", icon: Archive }, { id: "blocks", name: "Блокировки", icon: ShieldCheck }].map(item => <button className={`button ${tab === item.id ? "primary" : "secondary"}`} key={item.id} aria-pressed={tab === item.id} onClick={() => { setTab(item.id); setPage(1); }}><item.icon size={17} aria-hidden="true" />{item.name}</button>)}</div>
     {tab === "blocks" ? <BlockedContacts /> : <>{error && <ErrorBox message={error} retry={() => setRevision(v => v + 1)} />}{!data ? !error && <Loading /> : <>
       {!!data.items.length && <div className="conversation-list">{data.items.map(conversation => <a className={`conversation-card${conversation.unreadCount ? " unread" : ""}`} href={`#/message/${conversation.id}`} key={conversation.id}>
-        <PeerAvatar peer={conversation.peer} /><div className="conversation-card-body"><div className="conversation-card-title"><strong>{conversation.peer.name}</strong><time dateTime={conversation.updatedAt}>{relativeTime(conversation.updatedAt)}</time></div>{conversation.peer.handle && <small>@{conversation.peer.handle}</small>}<p>{conversation.lastText || "Сообщение недоступно"}</p>{conversation.status !== 2 && <span className="conversation-request-badge">{conversation.status === 1 ? conversation.requestedByMe ? "Ожидает согласия" : "Новый запрос" : "Запрос отклонён"}</span>}</div><span className="conversation-card-end">{conversation.unreadCount > 0 ? <span className="count" aria-label={`Непрочитанных: ${conversation.unreadCount}`}>{conversation.unreadCount}</span> : <ArrowUpRight size={18} aria-hidden="true" />}</span>
+        <PeerAvatar peer={conversation.peer} /><div className="conversation-card-body">
+          <div className="conversation-card-title"><strong>{conversation.peer.name}</strong>{conversation.peer.handle && <small>@{conversation.peer.handle}</small>}{conversation.unreadCount > 0 && <span className="count" aria-label={`Непрочитанных: ${conversation.unreadCount}`}>{conversation.unreadCount}</span>}</div>
+          <div className="conversation-card-preview"><p>{conversation.lastText || "Сообщение недоступно"}</p><span className="conversation-request-badge">{conversationStatus(conversation)}</span></div>
+          <time className="sr-only" dateTime={conversation.updatedAt}>{relativeTime(conversation.updatedAt)}</time>
+        </div>
       </a>)}</div>}
       {!data.items.length && <Empty title={tab === "requests" ? "Новых запросов нет" : tab === "archive" ? "Архив пуст" : "Здесь появятся ваши диалоги"} description="Переписка доступна только её участникам." />}
       {(page > 1 || data.hasMore) && <div className="content-tools"><button className="text-button" disabled={page === 1} onClick={() => setPage(v => v - 1)}>Назад</button><span>Страница {page}</span><button className="text-button" disabled={!data.hasMore} onClick={() => setPage(v => v + 1)}>Далее</button></div>}</>}</>}
