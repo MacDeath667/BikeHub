@@ -18,6 +18,9 @@ export function prepareMessage(previous: PendingMessage | null, text: string): P
 }
 export function mergeMessages(previous: DirectMessage[], ...pages: DirectMessage[][]) {
   const messages = new Map(previous.map(message => [message.id, message]));
-  for (const page of pages) for (const message of page) messages.set(message.id, message);
+  for (const page of pages) for (const message of page) {
+    // Deletion is irreversible: an older in-flight read must not restore cleared text.
+    messages.set(message.id, messages.get(message.id)?.isDeleted ? { ...message, isDeleted: true, text: null } : message);
+  }
   return [...messages.values()].sort((a, b) => a.sequence - b.sequence);
 }

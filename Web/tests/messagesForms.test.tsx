@@ -91,3 +91,26 @@ test("message moderation requires a moderator and shows only the reported fragme
   await waitFor(() => assert.ok(screen.getByText("Reported fragment"))); assert.equal(requests, 1);
   assert.ok(!screen.queryByText("Открыть переписку")); assert.ok(!screen.queryByText("Скрыть сообщение"));
 });
+
+test("refreshing after peer erasure drops cached peer text and keeps the reader's own messages", async () => {
+  const own = { ...message("own", 2), senderId: user.id, text: "Мой сохранённый текст" };
+  let erased = false;
+  const originalHidden = Object.getOwnPropertyDescriptor(document, "hidden");
+  Object.defineProperty(document, "hidden", { configurable: true, value: false });
+  globalThis.fetch = async (input, options) => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/auth/session") return json({ user, enabled: true, csrfToken: "test" });
+    if (path.endsWith("/read")) { assert.equal(options?.method, "PUT"); return new Response(null, { status: 204 }); }
+    if (path.endsWith("/messages")) return json(page(erased ? [own] : [message("peer-private", 1), own], false, 2));
+    return json(erased ? { ...conversation, peer: { id: null, name: "Удалённый аккаунт", handle: null, avatarUrl: null, available: false }, canSend: false, latestSequence: 2 } : { ...conversation, latestSequence: 2 });
+  };
+  try {
+    render(<Conversation id="chat" me={user} />);
+    await waitFor(() => assert.ok(screen.getByText("Сообщение 1")));
+    erased = true; fireEvent(window, new Event("focus"));
+    await waitFor(() => assert.ok(!screen.queryByText("Сообщение 1")));
+    assert.ok(screen.getByText("Мой сохранённый текст")); assert.ok(screen.getByText("Удалённый аккаунт")); assert.ok(!screen.queryByLabelText("Ваше сообщение"));
+  } finally {
+    if (originalHidden) Object.defineProperty(document, "hidden", originalHidden); else Reflect.deleteProperty(document, "hidden");
+  }
+});

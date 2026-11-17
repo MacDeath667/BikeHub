@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { api, relativeTime, requestLogin } from "../api";
-import type { Conversation as ConversationData, DirectMessage, MessagePage, User } from "../api";
+import type { Conversation as ConversationData, DirectMessage, MessagePage, MessagePeer, User } from "../api";
 import { Empty, ErrorBox, Loading } from "../components/ui";
 import { MentionText } from "../components/MentionText";
 import { MentionTextarea } from "../components/MentionTextarea";
@@ -21,12 +21,18 @@ function ConversationPage({ id, me }: { id: string; me: User }) {
   const pendingSend = useRef<PendingMessage | null>(null), submitting = useRef(false), actionPending = useRef(false), loadingHistory = useRef(false);
   const cursor = useRef(0), oldest = useRef(0), list = useRef<HTMLDivElement>(null), alive = useRef(true);
   const readSent = useRef(0), reading = useRef(false), refresh = useRef<() => Promise<void>>(async () => {});
+  const removedPeer = useRef<MessagePeer | null>(null);
+  function currentConversation(details: ConversationData): ConversationData {
+    if (!details.peer.id) removedPeer.current = details.peer;
+    return removedPeer.current ? { ...details, peer: removedPeer.current, canSend: false, canAccept: false } : details;
+  }
+  const visibleMessages = (items: DirectMessage[]) => removedPeer.current ? items.filter(message => message.senderId === me.id) : items;
   useEffect(() => {
     let active = true, initialized = false, pending = false; alive.current = true; setConversation(null); setMessages([]); setError(""); setSyncError(""); readSent.current = 0; cursor.current = 0; oldest.current = 0;
     const initialize = async () => {
       try {
         const [details, page] = await Promise.all([api<ConversationData>(base), api<MessagePage>(`${base}/messages?pageSize=50`)]);
-        if (active) { setConversation(details); setMessages(page.items); setHasEarlier(page.hasMoreBefore); cursor.current = page.latestSequence; oldest.current = page.items[0]?.sequence || 0; initialized = true; }
+        if (active) { setConversation(currentConversation(details)); setMessages(visibleMessages(page.items)); setHasEarlier(page.hasMoreBefore); cursor.current = page.latestSequence; oldest.current = page.items[0]?.sequence || 0; initialized = true; }
       } catch (e) { if (active) setError((e as Error).message); }
     };
     const poll = async () => {
@@ -35,7 +41,7 @@ function ConversationPage({ id, me }: { id: string; me: User }) {
         const [details, next, recent] = await Promise.all([api<ConversationData>(base), api<MessagePage>(`${base}/messages?afterSequence=${cursor.current}&pageSize=50`), api<MessagePage>(`${base}/messages?pageSize=50`)]);
         if (active) {
           cursor.current = Math.max(cursor.current, next.items.length ? next.items[next.items.length - 1].sequence : next.latestSequence);
-          setConversation(details); setMessages(previous => mergeMessages(previous, recent.items, next.items)); setSyncError("");
+          setConversation(currentConversation(details)); setMessages(previous => visibleMessages(mergeMessages(previous, recent.items, next.items))); setSyncError("");
           if (next.hasMoreAfter) window.setTimeout(() => void poll(), 100);
         }
       } catch (e) { if (active) setSyncError((e as Error).message); } finally { pending = false; }
@@ -60,7 +66,7 @@ function ConversationPage({ id, me }: { id: string; me: User }) {
     try {
       const page = await api<MessagePage>(`${base}/messages?beforeSequence=${oldest.current}&pageSize=50`);
       if (alive.current) {
-        setMessages(previous => mergeMessages(previous, page.items)); setHasEarlier(page.hasMoreBefore); if (page.items.length) oldest.current = page.items[0].sequence;
+        setMessages(previous => visibleMessages(mergeMessages(previous, page.items))); setHasEarlier(page.hasMoreBefore); if (page.items.length) oldest.current = page.items[0].sequence;
         window.setTimeout(() => { if (alive.current && list.current) list.current.scrollTop = top + list.current.scrollHeight - height; }, 0);
       }
     } catch (e) { if (alive.current) setActionError((e as Error).message); } finally { loadingHistory.current = false; if (alive.current) setHistoryBusy(false); }
@@ -80,7 +86,7 @@ function ConversationPage({ id, me }: { id: string; me: User }) {
   async function action(work: () => Promise<unknown>, done?: () => void) {
     if (actionPending.current) return; actionPending.current = true; setActing(true); setActionError(""); setInfo("");
     try {
-      await work(); if (!alive.current) return; notifyMessagesChanged(); if (done) done(); else { setConversation(await api<ConversationData>(base)); await refresh.current(); }
+      await work(); if (!alive.current) return; notifyMessagesChanged(); if (done) done(); else { setConversation(currentConversation(await api<ConversationData>(base))); await refresh.current(); }
     } catch (e) { if (alive.current) setActionError((e as Error).message); } finally { actionPending.current = false; if (alive.current) setActing(false); }
   }
   if (!conversation) return error ? <ErrorBox message={error} retry={() => setRetry(v => v + 1)} /> : <Loading />;

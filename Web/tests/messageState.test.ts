@@ -14,4 +14,6 @@ test("overlapping histories merge in sequence order and current deletion replace
   const first = message("first", 1), second = message("second", 2), third = message("third", 3);
   const result = mergeMessages([third, second], [first, second], [{ ...second, text: null, isDeleted: true }]);
   assert.deepEqual(result.map(m => m.sequence), [1, 2, 3]); assert.equal(result[1].text, null); assert.equal(result[1].isDeleted, true);
+  const staleRead = mergeMessages(result, [second]);
+  assert.equal(staleRead[1].text, null); assert.equal(staleRead[1].isDeleted, true);
 });
