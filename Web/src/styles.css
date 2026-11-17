@@ -2966,6 +2966,7 @@ textarea {
 .conversation-status p { font-size: var(--text-sm); line-height: 1.6; color: var(--text-secondary); }
 .conversation-status strong + p { margin-top: 4px; }
 .conversation-status .content-tools { gap: 10px; margin: 14px 0 0; }
+.content-tools.conversation-request-actions { gap: 10px; margin: 0; }
 .conversation-shell { min-width: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--theme-surface, #fff); }
 .message-history { display: flex; justify-content: center; padding: 8px 16px; border-bottom: 1px solid var(--border); }
 .message-log { display: flex; flex-direction: column; gap: 14px; height: min(48dvh, 440px); min-height: 240px; padding: 22px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; border-radius: 16px; background: var(--page-background); }

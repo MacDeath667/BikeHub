@@ -37,6 +37,21 @@ test("private screens do not fetch without sign-in and pending requests do not s
   await waitFor(() => assert.ok(screen.getByLabelText("Ваше сообщение"))); assert.ok(screen.getByText("Сообщение 1"));
 });
 
+test("a recipient can reconsider a declined request when the API allows accepting it", async () => {
+  let accepted = false;
+  globalThis.fetch = async (input, options) => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/auth/session") return json({ user, enabled: true, csrfToken: "test" });
+    if (path.endsWith("/messages")) return json(page([message("1", 1)]));
+    if (path.endsWith("/request")) { assert.equal(JSON.parse(String(options?.body)).accept, true); accepted = true; return json(conversation); }
+    return json(accepted ? conversation : { ...conversation, status: 3, requestedByMe: false, canSend: false, canAccept: true });
+  };
+  render(<Conversation id="chat" me={user} />);
+  await screen.findByText("Запрос на переписку отклонён.");
+  fireEvent.click(screen.getByRole("button", { name: "Принять запрос" }));
+  await screen.findByLabelText("Ваше сообщение"); assert.equal(accepted, true);
+});
+
 test("a failed send retains the text and idempotency key and a retry shows one outgoing message", async () => {
   let fail = true; const submissions: { text: string; clientMessageId: string }[] = [];
   globalThis.fetch = async (input, options) => {
