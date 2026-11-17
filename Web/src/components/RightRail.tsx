@@ -45,9 +45,7 @@ export function RightRail({
           просто велосипед
         </h2>
         <p>
-          Сохраните каждый апгрейд,
-          <br />
-          километр и маленькую победу.
+          Сохраните каждый апгрейд, километр и маленькую победу.
         </p>
         <button className="button dark" onClick={onCreate}>
           <Plus size={17} /> Добавить велосипед

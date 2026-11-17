@@ -3,10 +3,17 @@ import { Monitor, Moon, Sun } from "lucide-react";
 
 type Theme = "system" | "light" | "dark";
 const storageKey = "bikehub.theme";
+const themes = [
+  { value: "light", label: "Светлая тема", icon: Sun },
+  { value: "dark", label: "Тёмная тема", icon: Moon },
+  { value: "system", label: "Как на устройстве", icon: Monitor },
+] as const;
 function readTheme(): Theme {
   try {
     const value = localStorage.getItem(storageKey);
-    if (value === "light" || value === "dark") return value;
+    if (value === "light" || value === "dark") {
+      return value;
+    }
   } catch { /* System preference still works when storage is unavailable. */ }
   return "system";
 }
@@ -26,25 +33,33 @@ export function ThemePicker() {
   }, [theme]);
   useEffect(() => {
     const sync = (event: StorageEvent) => {
-      if (event.key === storageKey || event.key === null) setTheme(readTheme());
+      if (event.key === storageKey || event.key === null) {
+        setTheme(readTheme());
+      }
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
   }, []);
-  const Icon = theme === "system" ? Monitor : theme === "dark" ? Moon : Sun;
-  return <label className="theme-picker" title="Цветовая тема">
-    <Icon size={18} aria-hidden="true" />
-    <select aria-label="Цветовая тема" value={theme} onChange={event => {
-      const next = event.target.value as Theme;
-      try {
-        if (next === "system") localStorage.removeItem(storageKey);
-        else localStorage.setItem(storageKey, next);
-      } catch { /* Keep the selection for this tab without persistent storage. */ }
-      setTheme(next);
-    }}>
-      <option value="system">Как на устройстве</option>
-      <option value="light">Светлая</option>
-      <option value="dark">Тёмная</option>
-    </select>
-  </label>;
+  const choose = (next: Theme) => {
+    try {
+      if (next === "system") {
+        localStorage.removeItem(storageKey);
+      } else {
+        localStorage.setItem(storageKey, next);
+      }
+    } catch { /* Keep the selection for this tab without persistent storage. */ }
+    setTheme(next);
+  };
+  return <div className="theme-picker" role="group" aria-label="Цветовая тема">
+    {themes.map(({ value, label, icon: Icon }) => <button
+      key={value}
+      type="button"
+      aria-label={label}
+      title={label}
+      aria-pressed={theme === value}
+      onClick={() => choose(value)}
+    >
+      <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
+    </button>)}
+  </div>;
 }
