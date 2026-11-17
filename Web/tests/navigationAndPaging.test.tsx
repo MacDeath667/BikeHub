@@ -19,6 +19,7 @@ const { BikeDirectory, BikeDetail } = await import("../src/pages/Bikes");
 const { PostDetail } = await import("../src/pages/PostDetail");
 const { UserProfile } = await import("../src/pages/UserProfile");
 const { GroupEntryDetail } = await import("../src/pages/CommunityDetail");
+const { RideDetail } = await import("../src/pages/Rides");
 const { Moderation } = await import("../src/pages/Moderation");
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 const user = { id: "owner", name: "Велосипедист", handle: "rider", city: "Казань", initials: "В", color: "green", bio: "", followers: 0, isFollowing: false, bikesCount: 1, postsCount: 2 };
@@ -304,4 +305,53 @@ test("replying selects context, sends its ID, and can open a comment outside the
   await waitFor(() => assert.ok(!screen.queryByLabelText("Отменить ответ на комментарий")));
   assert.equal(screen.getAllByText(reply.text).length, 1);
   assert.equal(screen.getAllByLabelText(`К комментарию ${user.name}`).at(-1)?.getAttribute("href"), "#/post/1?comment=parent");
+});
+
+
+const groupRide = { id: "ride", organizer: user, groupId: null, groupName: null, title: "Поездка по городу", description: "Встречаемся и едем", city: "Казань", meetingName: "Вход в парк", meetingPoint: null, startsAt: "2027-05-01T07:00:00Z", timeZone: "Europe/Moscow", distanceKm: 35, averageSpeedKmh: 20, difficulty: 1 as const, capacity: 2, status: 1 as const, revision: 1, going: 2, maybe: 0, attendance: null, hasRoute: false, route: null };
+
+test("a full ride preserves its detail and allows maybe without retrying the failed mutation", async () => {
+  const member = { ...user, id: "member" }; let puts = 0, rosterReads = 0;
+  globalThis.fetch = async (input, options) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/api/auth/session") return json({ user: member, enabled: true, csrfToken: "test" });
+    if (url.pathname.endsWith("/attendance")) {
+      puts++; const body = JSON.parse(String(options?.body));
+      return body.attendance === 1 ? json({ title: "Свободных мест больше нет" }, 409) : json({ ...groupRide, attendance: 2, maybe: 1 });
+    }
+    if (url.pathname.endsWith("/participants")) { rosterReads++; assert.equal(url.searchParams.get("pageSize"), "20"); return json(page([{ user, attendance: 1 }])); }
+    return json(groupRide);
+  };
+  render(<RideDetail id="ride" me={member} />);
+  await waitFor(() => assert.ok(screen.getByRole("heading", { name: groupRide.title, level: 1 })));
+  fireEvent.click(screen.getByText("Еду"));
+  await waitFor(() => assert.ok(screen.getByText("Свободных мест больше нет")));
+  assert.equal(screen.getByText("Еду").getAttribute("aria-pressed"), "false"); assert.equal(puts, 1);
+  fireEvent.click(screen.getByText("Возможно"));
+  await waitFor(() => assert.equal(screen.getByText("Возможно").getAttribute("aria-pressed"), "true"));
+  assert.equal(puts, 2); assert.ok(!screen.queryByText("Свободных мест больше нет"));
+  fireEvent.click(screen.getByText(/Участники: 2 едут/));
+  await waitFor(() => assert.ok(screen.getByText(`${user.name} @${user.handle}`))); assert.equal(rosterReads, 1);
+});
+
+test("new rides submit the chosen meeting zone as a UTC instant and enforce signed-in creation", async () => {
+  let submitted: Record<string, unknown> | undefined;
+  globalThis.fetch = async (input, options) => {
+    if (new URL(String(input)).pathname === "/api/auth/session") return json({ user, enabled: true, csrfToken: "test" });
+    submitted = JSON.parse(String(options?.body)); return json({ ...groupRide, ...submitted });
+  };
+  const view = render(<RideDetail id="new" me={null} />);
+  assert.ok(screen.getByText("Войдите, чтобы пригласить участников.")); assert.ok(!screen.queryByLabelText("Название"));
+  view.rerender(<RideDetail id="new" me={user} />);
+  fireEvent.change(screen.getByLabelText("Название"), { target: { value: "Утренний круг" } });
+  fireEvent.change(screen.getByLabelText("О поездке"), { target: { value: "Ровный темп, без гонки" } });
+  fireEvent.change(screen.getByLabelText("Город"), { target: { value: "Казань" } });
+  fireEvent.change(screen.getByLabelText("Дата и время встречи"), { target: { value: "2027-05-01T10:00" } });
+  fireEvent.change(screen.getByLabelText("Часовой пояс"), { target: { value: "Europe/Moscow" } });
+  fireEvent.change(screen.getByLabelText("Где встречаемся"), { target: { value: "Вход в парк" } });
+  fireEvent.change(screen.getByLabelText("Дистанция, км"), { target: { value: "35" } });
+  fireEvent.submit(screen.getByRole("button", { name: "Опубликовать покатушку" }).closest("form")!);
+  await waitFor(() => assert.equal(submitted?.startsAt, "2027-05-01T07:00:00.000Z"));
+  assert.equal(submitted?.timeZone, "Europe/Moscow"); assert.equal(submitted?.capacity, null); assert.equal(submitted?.groupId, null);
+  await waitFor(() => assert.equal(window.location.hash, "#/ride/ride"));
 });

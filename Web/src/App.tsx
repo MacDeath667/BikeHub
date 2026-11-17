@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   Bike as BikeIcon,
   Bookmark,
+  CalendarDays,
   Check,
   ChevronDown,
   ChevronRight,
@@ -36,6 +37,7 @@ import { Moderation } from "./pages/Moderation";
 import { CommunityDetail, GroupEntryDetail } from "./pages/CommunityDetail";
 import { Settings } from "./pages/Settings";
 import { Communities } from "./pages/Communities";
+import { Rides, RideDetail } from "./pages/Rides";
 import { NotificationBell, Notifications } from "./pages/Notifications";
 import { clearLocalDrafts } from "./components/useDraft";
 import { SearchResults, searchKind } from "./pages/SearchResults";
@@ -170,6 +172,7 @@ export default function App() {
       text: "Сообщества",
       active: ["communities", "community", "group-entry"].includes(section),
     },
+    { path: "/rides", icon: CalendarDays, text: "Покатушки", active: section === "rides" || section === "ride" },
     {
       path: "/saved",
       icon: Bookmark,
@@ -274,6 +277,8 @@ export default function App() {
                   bikes: "Велосипеды",
                   bike: "Бортжурнал",
                   communities: "Сообщества",
+                  rides: "Покатушки",
+                  ride: "Покатушка",
                   community: "Сообщество",
                   "group-entry": "Обсуждение сообщества",
                   moderation: "Модерация",
@@ -395,6 +400,8 @@ export default function App() {
                   {section === "notifications" && <Notifications key={me?.id || "guest"} me={me} />}
                   {section === "community" && <CommunityDetail key={`${path}-${searchQuery}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} reload={reload} search={searchQuery} />}
                   {section === "group-entry" && <GroupEntryDetail key={`${path}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} targetComment={new URLSearchParams(search).get("comment")} />}
+                  {section === "rides" && <Rides key={`${new URLSearchParams(search).get("group") || "all"}-${me?.id || "guest"}`} me={me} groupId={new URLSearchParams(search).get("group")} />}
+                  {section === "ride" && <RideDetail key={`${path}-${new URLSearchParams(search).get("group") || ""}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} groupId={new URLSearchParams(search).get("group")} />}
                   {section === "communities" && (
                     <Communities
                       version={version}
@@ -418,6 +425,8 @@ export default function App() {
                       "moderation",
                       "settings",
                       "notifications",
+                      "rides",
+                      "ride",
                       "search",
                     ].includes(section) && (
                       <Empty

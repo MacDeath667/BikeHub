@@ -22,6 +22,7 @@ if (!migrationsOnly)
     builder.Services.AddScoped<MediaStore>();
     builder.Services.AddScoped<GroupService>();
     builder.Services.AddScoped<ActivityFeedService>();
+    builder.Services.AddScoped<RideService>();
     builder.Services.AddScoped<NicknameService>();
     builder.Services.AddScoped<NotificationService>();
     builder.Services.AddScoped<DraftService>();

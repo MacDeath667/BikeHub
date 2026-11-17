@@ -35,13 +35,16 @@ public sealed class AccountDeletionService(IDbContextFactory<BikeHubDbContext> c
         var bikes = db.Bikes.Where(b => b.OwnerId == id).Select(b => b.Id);
         var posts = db.Posts.Where(p => p.AuthorId == id || bikes.Contains(p.BikeId)).Select(p => p.Id);
         var entries = db.GroupEntries.Where(e => e.AuthorId == id).Select(e => e.Id);
-        var removed = await bikes.Concat(posts).Concat(entries).Concat(db.Comments.Where(c => c.AuthorId == id || posts.Contains(c.PostId)).Select(c => c.Id))
+        var rides = db.Rides.Where(r => r.OwnerId == id).Select(r => r.Id);
+        var removed = await bikes.Concat(posts).Concat(rides).Concat(db.RideChanges.Where(c => rides.Contains(c.RideId)).Select(c => c.Id)).Concat(entries).Concat(db.Comments.Where(c => c.AuthorId == id || posts.Contains(c.PostId)).Select(c => c.Id))
             .Concat(db.GroupReplies.Where(r => r.AuthorId == id || entries.Contains(r.EntryId)).Select(r => r.Id)).ToArrayAsync(ct);
         await db.Reports.Where(r => r.ReporterId == id || r.TargetId == id || removed.Contains(r.TargetId)).ExecuteDeleteAsync(ct);
         await db.Reports.Where(r => r.ResolvedBy == id).ExecuteUpdateAsync(u => u.SetProperty(r => r.ResolvedBy, (Guid?)null), ct);
         await db.Relations.Where(r => r.UserId == id || r.TargetId == id || removed.Contains(r.TargetId)).ExecuteDeleteAsync(ct);
         await db.Notifications.Where(n => n.RecipientId == id || n.ActorId == id || n.TargetId == id || removed.Contains(n.TargetId)).ExecuteDeleteAsync(ct);
         await db.Drafts.Where(d => d.OwnerId == id).ExecuteDeleteAsync(ct);
+        await db.RideParticipants.Where(p => p.UserId == id).ExecuteDeleteAsync(ct);
+        await db.Rides.Where(r => r.OwnerId == id).ExecuteDeleteAsync(ct);
         await db.Comments.Where(c => c.AuthorId == id || posts.Contains(c.PostId)).ExecuteDeleteAsync(ct);
         await db.Posts.Where(p => p.AuthorId == id || bikes.Contains(p.BikeId)).ExecuteDeleteAsync(ct);
         await db.Bikes.Where(b => b.OwnerId == id).ExecuteDeleteAsync(ct);

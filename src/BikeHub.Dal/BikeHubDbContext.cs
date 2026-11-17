@@ -7,6 +7,9 @@ namespace BikeHub.Dal;
 
 public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options) : DbContext(options)
 {
+    public DbSet<GroupRide> Rides => Set<GroupRide>();
+    public DbSet<RideParticipant> RideParticipants => Set<RideParticipant>();
+    public DbSet<RideChange> RideChanges => Set<RideChange>();
     public DbSet<ContentDraft> Drafts => Set<ContentDraft>();
     public DbSet<CommunityNotification> Notifications => Set<CommunityNotification>();
     public DbSet<MediaDeletion> MediaDeletions => Set<MediaDeletion>();
@@ -78,6 +81,7 @@ public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options)
         sessions.HasIndex(x => x.ExpiresAt).HasDatabaseName("ix_auth_sessions_expires");
 
         CommunityModel.Configure(modelBuilder);
+        RideModel.Configure(modelBuilder);
 
         foreach (var entity in modelBuilder.Model.GetEntityTypes())
         {

@@ -565,6 +565,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             ReportTarget.Group => db.Communities.Any(g => g.Id == request.TargetId && !g.IsDeleted && !g.IsHidden),
             ReportTarget.GroupEntry => db.GroupEntries.Any(e => e.Id == request.TargetId && !e.IsDeleted && !e.IsHidden && db.Communities.Any(g => g.Id == e.GroupId && !g.IsDeleted && !g.IsHidden)),
             ReportTarget.GroupReply => db.GroupReplies.Any(r => r.Id == request.TargetId && !r.IsDeleted && !r.IsHidden && db.GroupEntries.Any(e => e.Id == r.EntryId && !e.IsDeleted && !e.IsHidden && db.Communities.Any(g => g.Id == e.GroupId && !g.IsDeleted && !g.IsHidden))),
+            ReportTarget.Ride => RideService.Visible(db).Any(r => r.Id == request.TargetId),
             ReportTarget.Site => request.TargetId == Guid.Empty,
             _ => false
         };
@@ -631,6 +632,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             ReportTarget.Group => db.Communities.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
             ReportTarget.GroupEntry => db.GroupEntries.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
             ReportTarget.GroupReply => db.GroupReplies.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
+            ReportTarget.Ride => db.Rides.Where(x => x.Id == id && !x.IsDeleted).ExecuteUpdate(u => u.SetProperty(x => x.IsHidden, hidden)),
             _ => throw new CommunityProblem(400, MaterialTypeTitle)
         };
         if (count == 0)

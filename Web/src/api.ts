@@ -107,6 +107,13 @@ export interface Comment {
 export type FeedItem =
   | { id: string; kind: 1; createdAt: string; post: Post; groupEntry: null }
   | { id: string; kind: 2; createdAt: string; post: null; groupEntry: GroupEntry };
+export interface Ride {
+  id: string; organizer: User; groupId: string | null; groupName: string | null;
+  title: string; description: string; city: string; meetingName: string; meetingPoint: GeoPoint | null;
+  startsAt: string; timeZone: string; distanceKm: number; averageSpeedKmh: number | null;
+  difficulty: 1 | 2 | 3; capacity: number | null; status: 1 | 2; revision: number;
+  going: number; maybe: number; attendance: 1 | 2 | null; hasRoute: boolean; route: RouteData | null;
+}
 export interface Community {
   ownerId?: string | null;
   id: string;

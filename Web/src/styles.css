@@ -2790,3 +2790,7 @@ textarea {
 .reply-selection { display: flex; justify-content: space-between; gap: 1rem; padding: .75rem; margin-block: .5rem; border: 1px solid var(--border, #a0b4a2); border-radius: .6rem; overflow-wrap: anywhere; }
 .reply-selection p { margin: .25rem 0; }
 .comment-target { outline: 2px solid var(--green, #587c61); outline-offset: 3px; scroll-margin-block: 6rem; }
+
+.ride-filters label { display: flex; align-items: center; gap: .5rem; }
+.ride-filters input[type="checkbox"] { width: auto; }
+.ride-card p { overflow-wrap: anywhere; }

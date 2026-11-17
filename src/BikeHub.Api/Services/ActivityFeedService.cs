@@ -25,7 +25,7 @@ public sealed class ActivityFeedService(IDbContextFactory<BikeHubDbContext> cont
     {
         page = Math.Clamp(page, 1, 1000000);
         size = Math.Clamp(size, 1, 50);
-        if (configuration["Community:Store"] == "Memory" || tab == Constants.FeedTabs.Saved)
+        if (configuration["Community:Store"] == Constants.AuthenticationStores.Memory || tab == Constants.FeedTabs.Saved)
         {
             var result = legacy.GetFeed(tab, category, query, page, size);
             return new(result.Items.Select(FeedItemDto.FromPost).ToArray(), result.Total, result.PageNumber, result.PageSize);

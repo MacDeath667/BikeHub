@@ -1,6 +1,6 @@
 namespace BikeHub.Dal.Entities;
 
-public enum NotificationKind { Comment = 1, Reply = 2, Follow = 3, Mention = 4 }
+public enum NotificationKind { Comment = 1, Reply = 2, Follow = 3, Mention = 4, RideChanged = 5, RideCancelled = 6 }
 
 public sealed class CommunityNotification
 {

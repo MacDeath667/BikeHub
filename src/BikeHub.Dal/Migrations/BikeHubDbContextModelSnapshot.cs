@@ -765,6 +765,131 @@ namespace BikeHub.Dal.Migrations
                     b.ToTable("group_replies", (string)null);
                 });
 
+            modelBuilder.Entity("BikeHub.Dal.Entities.GroupRide", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal?>("AverageSpeedKmh")
+                        .HasColumnType("numeric")
+                        .HasColumnName("average_speed_kmh");
+
+                    b.Property<int?>("Capacity")
+                        .HasColumnType("integer")
+                        .HasColumnName("capacity");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("city");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("character varying(10000)")
+                        .HasColumnName("description");
+
+                    b.Property<int>("Difficulty")
+                        .HasColumnType("integer")
+                        .HasColumnName("difficulty");
+
+                    b.Property<decimal>("DistanceKm")
+                        .HasColumnType("numeric")
+                        .HasColumnName("distance_km");
+
+                    b.Property<Guid?>("GroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("group_id");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_hidden");
+
+                    b.Property<double?>("MeetingLat")
+                        .HasColumnType("double precision")
+                        .HasColumnName("meeting_lat");
+
+                    b.Property<double?>("MeetingLng")
+                        .HasColumnType("double precision")
+                        .HasColumnName("meeting_lng");
+
+                    b.Property<string>("MeetingName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("meeting_name");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.Property<string>("RouteJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("route_json");
+
+                    b.Property<DateTimeOffset>("StartsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("starts_at");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TimeZone")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("time_zone");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rides");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("StartsAt", "Id")
+                        .HasDatabaseName("ix_rides_upcoming");
+
+                    b.HasIndex("GroupId", "StartsAt", "Id")
+                        .HasDatabaseName("ix_rides_group");
+
+                    b.ToTable("rides", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_rides_capacity", "capacity IS NULL OR capacity BETWEEN 1 AND 10000");
+
+                            t.HasCheckConstraint("ck_rides_distance", "distance_km BETWEEN 0 AND 10000");
+
+                            t.HasCheckConstraint("ck_rides_meeting", "(meeting_lat IS NULL AND meeting_lng IS NULL) OR (meeting_lat IS NOT NULL AND meeting_lng IS NOT NULL AND meeting_lat BETWEEN -90 AND 90 AND meeting_lng BETWEEN -180 AND 180)");
+
+                            t.HasCheckConstraint("ck_rides_speed", "average_speed_kmh IS NULL OR average_speed_kmh BETWEEN 1 AND 100");
+
+                            t.HasCheckConstraint("ck_rides_status", "status IN (1, 2) AND difficulty IN (1, 2, 3) AND revision > 0");
+                        });
+                });
+
             modelBuilder.Entity("BikeHub.Dal.Entities.MediaAsset", b =>
                 {
                     b.Property<Guid>("Id")
@@ -866,6 +991,64 @@ namespace BikeHub.Dal.Migrations
                         .HasFilter("NOT resolved");
 
                     b.ToTable("moderation_reports", (string)null);
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.RideChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.Property<Guid>("RideId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ride_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ride_changes");
+
+                    b.HasIndex("RideId", "Revision")
+                        .IsUnique()
+                        .HasDatabaseName("ix_ride_changes_revision");
+
+                    b.ToTable("ride_changes", (string)null);
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.RideParticipant", b =>
+                {
+                    b.Property<Guid>("RideId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ride_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<int>("Attendance")
+                        .HasColumnType("integer")
+                        .HasColumnName("attendance");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.HasKey("RideId", "UserId")
+                        .HasName("pk_ride_participants");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_ride_participants_user");
+
+                    b.ToTable("ride_participants", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_ride_attendance", "attendance IN (1, 2)");
+                        });
                 });
 
             modelBuilder.Entity("BikeHub.Dal.Bike", b =>
@@ -1036,6 +1219,22 @@ namespace BikeHub.Dal.Migrations
                         .HasConstraintName("fk_reply_reply_to");
                 });
 
+            modelBuilder.Entity("BikeHub.Dal.Entities.GroupRide", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.CommunityGroup", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_ride_group");
+
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_ride_owner");
+                });
+
             modelBuilder.Entity("BikeHub.Dal.Entities.MediaAsset", b =>
                 {
                     b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
@@ -1054,6 +1253,33 @@ namespace BikeHub.Dal.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_report_reporter");
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.RideChange", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.GroupRide", null)
+                        .WithMany()
+                        .HasForeignKey("RideId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_ride_change_ride");
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.RideParticipant", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.GroupRide", null)
+                        .WithMany()
+                        .HasForeignKey("RideId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_ride_participant_ride");
+
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_ride_participant_user");
                 });
 #pragma warning restore 612, 618
         }

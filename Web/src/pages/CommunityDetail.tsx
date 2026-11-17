@@ -82,6 +82,7 @@ export function CommunityDetail({ id, me, reload, search = "" }: { id: string; m
       {(group.ownerId === me?.id || me?.isModerator) && <button className="text-button" onClick={() => setEditing(!editing)}>Настройки</button>}
       {me && <ReportButton type={6} id={id} notify={setError} />}</div>
     {editing && me && (group.ownerId === me.id || me.isModerator) && <GroupEditor key={me.id} group={group} close={() => setEditing(false)} saved={() => { setEditing(false); refresh(); }} />}
+    <div className="content-tools"><a className="text-button" href={`#/rides?group=${id}`}>Покатушки сообщества</a>{group.isJoined && me && <a className="text-button" href={`#/ride/new?group=${id}`}>Организовать покатушку</a>}</div>
     <div className="content-tools group-tabs">{[1, 2].map(k => <button key={k} disabled={creating} className={`button ${kind === k ? "primary" : "secondary"}`} onClick={() => { setKind(k); setPage(1); setCreating(false); }}>{k === 1 ? "Посты" : "Обсуждения"}</button>)}
       {group.isJoined && !creating && <button className="text-button" onClick={() => setCreating(true)}>{kind === 1 ? "Написать пост" : "Начать обсуждение"}</button>}</div>
     <form className="directory-search search-form" role="search" onSubmit={event => { event.preventDefault(); window.location.hash = `/community/${id}?q=${encodeURIComponent(searchInput.trim())}`; }}>
