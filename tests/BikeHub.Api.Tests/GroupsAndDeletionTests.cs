@@ -134,6 +134,12 @@ public sealed class GroupsAndDeletionTests
                 Assert.Empty(await db.RouteReviews.ToListAsync()); Assert.Empty(await db.RideChanges.ToListAsync());
                 Assert.Empty(await db.BikeComponents.ToListAsync()); Assert.Empty(await db.MaintenanceRecords.ToListAsync()); Assert.Empty(await db.MaintenanceReminders.ToListAsync());
                 var keptReply = Assert.Single(await db.Comments.ToListAsync()); Assert.Equal(member.User.Id, keptReply.AuthorId); Assert.Null(keptReply.ReplyToId);
+                Assert.Empty(await db.PrivateMessageReports.ToListAsync()); Assert.Empty(await db.MessageBlocks.ToListAsync());
+                var keptMessage = Assert.Single(await db.PrivateMessages.ToListAsync()); Assert.Equal(member.User.Id, keptMessage.SenderId); Assert.Equal("Preserved own message", keptMessage.Text);
+                var remainingConversation = Assert.Single(await db.PrivateConversations.ToListAsync());
+                Assert.True(remainingConversation.FirstUserId == null || remainingConversation.SecondUserId == null);
+                var privateView = (await other.GetFromJsonAsync<ConversationDto>($"/api/messages/conversations/{remainingConversation.Id}"))!;
+                Assert.Null(privateView.Peer.Id); Assert.False(privateView.CanSend);
             }
             using var scope = app.Services.CreateScope();
             await scope.ServiceProvider.GetRequiredService<MediaCleanup>().RunAsync(default);
@@ -210,6 +216,13 @@ public sealed class GroupsAndDeletionTests
             new SavedRoute { RouteId = route.Id, UserId = kept, CreatedAt = now });
         db.RouteReviews.AddRange(new RouteReview { Id = Guid.CreateVersion7(), RouteId = keptRoute.Id, AuthorId = erased, Rating = 5, Text = "Erased review", RiddenOn = component.InstalledOn, CreatedAt = now, UpdatedAt = now },
             new RouteReview { Id = Guid.CreateVersion7(), RouteId = route.Id, AuthorId = kept, Rating = 4, Text = "Review on erased route", RiddenOn = component.InstalledOn, CreatedAt = now, UpdatedAt = now });
+        var pair = new[] { erased, kept }.Order().ToArray();
+        var conversation = new PrivateConversation { Id = Guid.CreateVersion7(), FirstUserId = pair[0], SecondUserId = pair[1], RequestedById = erased, Status = ConversationStatus.Accepted, LatestSequence = 2, CreatedAt = now, UpdatedAt = now };
+        var erasedMessage = new PrivateMessage { Id = Guid.CreateVersion7(), ConversationId = conversation.Id, SenderId = erased, Sequence = 1, ClientMessageId = Guid.NewGuid(), Text = "Erased private text", RequestHash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("Erased private text")), CreatedAt = now };
+        db.PrivateConversations.Add(conversation); db.PrivateMessages.AddRange(erasedMessage,
+            new PrivateMessage { Id = Guid.CreateVersion7(), ConversationId = conversation.Id, SenderId = kept, Sequence = 2, ClientMessageId = Guid.NewGuid(), Text = "Preserved own message", RequestHash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("Preserved own message")), CreatedAt = now });
+        db.MessageBlocks.Add(new MessageBlock { UserId = kept, BlockedUserId = erased, CreatedAt = now });
+        db.PrivateMessageReports.Add(new PrivateMessageReport { Id = Guid.CreateVersion7(), ReporterId = kept, ReportedUserId = erased, ConversationId = conversation.Id, MessageId = erasedMessage.Id, MessageText = erasedMessage.Text, Reason = "Private erasure report", CreatedAt = now });
     }
 
 }

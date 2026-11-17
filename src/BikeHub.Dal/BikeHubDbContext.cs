@@ -17,6 +17,10 @@ public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options)
     public DbSet<BikeComponent> BikeComponents => Set<BikeComponent>();
     public DbSet<MaintenanceRecord> MaintenanceRecords => Set<MaintenanceRecord>();
     public DbSet<MaintenanceReminder> MaintenanceReminders => Set<MaintenanceReminder>();
+    public DbSet<PrivateConversation> PrivateConversations => Set<PrivateConversation>();
+    public DbSet<PrivateMessage> PrivateMessages => Set<PrivateMessage>();
+    public DbSet<MessageBlock> MessageBlocks => Set<MessageBlock>();
+    public DbSet<PrivateMessageReport> PrivateMessageReports => Set<PrivateMessageReport>();
     public DbSet<ContentDraft> Drafts => Set<ContentDraft>();
     public DbSet<CommunityNotification> Notifications => Set<CommunityNotification>();
     public DbSet<MediaDeletion> MediaDeletions => Set<MediaDeletion>();
@@ -91,6 +95,7 @@ public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options)
         RideModel.Configure(modelBuilder);
         RouteLibraryModel.Configure(modelBuilder);
         MaintenanceModel.Configure(modelBuilder);
+        MessageModel.Configure(modelBuilder);
 
         foreach (var entity in modelBuilder.Model.GetEntityTypes())
         {

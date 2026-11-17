@@ -28,6 +28,8 @@ public sealed class NotificationService(IDbContextFactory<BikeHubDbContext> cont
         var rides = RideService.Visible(db);
         var routes = RouteLibraryService.Visible(db);
         var reviews = RouteLibraryService.VisibleReviews(db);
+        var conversations = MessageService.Own(db, actor).Where(c => c.Status != ConversationStatus.Declined && !(c.FirstUserId == actor ? c.FirstArchived : c.SecondArchived) &&
+            !db.MessageBlocks.Any(b => b.UserId == actor && (b.BlockedUserId == c.FirstUserId || b.BlockedUserId == c.SecondUserId) || b.BlockedUserId == actor && (b.UserId == c.FirstUserId || b.UserId == c.SecondUserId)));
         var components = MaintenanceQueries.Components(db).Where(c => c.OwnerId == actor && !c.BikeDeleted && !c.IsArchived && c.DueMileage.HasValue && c.CurrentMileage >= c.DueMileage);
         return db.Notifications.AsNoTracking().Where(n => n.RecipientId == actor && users.Any(a => a.Id == n.ActorId) && (
             n.TargetType == ReportTarget.User && users.Any(a => a.Id == n.TargetId) ||
@@ -39,7 +41,8 @@ public sealed class NotificationService(IDbContextFactory<BikeHubDbContext> cont
                 && entries.Any(e => e.Id == r.EntryId) && users.Any(a => a.Id == r.AuthorId)) ||
             n.TargetType == ReportTarget.RideChange && db.RideChanges.Any(c => c.Id == n.TargetId && rides.Any(r => r.Id == c.RideId)) ||
             n.TargetType == ReportTarget.RouteReview && reviews.Any(r => r.Id == n.TargetId && routes.Any(route => route.Id == r.RouteId)) ||
-            n.TargetType == ReportTarget.MaintenanceReminder && db.MaintenanceReminders.Any(m => m.Id == n.TargetId && components.Any(c => c.Id == m.ComponentId && c.DueMileage == m.DueMileage))));
+            n.TargetType == ReportTarget.MaintenanceReminder && db.MaintenanceReminders.Any(m => m.Id == n.TargetId && components.Any(c => c.Id == m.ComponentId && c.DueMileage == m.DueMileage)) ||
+            n.TargetType == ReportTarget.PrivateMessage && db.PrivateMessages.Any(m => m.Id == n.TargetId && !m.IsDeleted && !m.IsHidden && conversations.Any(c => c.Id == m.ConversationId))));
     }
 
     public Page<NotificationDto> List(int page, int pageSize)

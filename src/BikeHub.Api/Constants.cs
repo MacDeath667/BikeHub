@@ -21,6 +21,20 @@ internal static class Constants
     public const int BrowserBindingByteLength = 32;
     public const int BrowserBindingLength = BrowserBindingByteLength * 2;
 
+    public static class Messages
+    {
+        public const int MaximumTextLength = 4000;
+        public const int MaximumPendingRequests = 20;
+        public const int MaximumRequestsPerDay = 20;
+        public const int MaximumMessagesPerMinute = 60;
+        public const int MaximumBlocks = 500;
+        public const int MaximumReportsPerDay = 20;
+        public const string MissingTitle = "Переписка недоступна.";
+        public const string SignInTitle = "Войдите в аккаунт.";
+        public const string UnavailableTitle = "Обмен сообщениями с этим пользователем недоступен.";
+        public const string DeletedAccountName = "Удалённый аккаунт";
+    }
+
     public static class AuthenticationStores
     {
         public const string Memory = "Memory";

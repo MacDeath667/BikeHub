@@ -25,6 +25,8 @@ if (!migrationsOnly)
     builder.Services.AddScoped<RideService>();
     builder.Services.AddScoped<RouteLibraryService>();
     builder.Services.AddScoped<MaintenanceService>();
+    builder.Services.AddScoped<MessageService>();
+    builder.Services.AddScoped<MessageModerationService>();
     builder.Services.AddScoped<NicknameService>();
     builder.Services.AddScoped<NotificationService>();
     builder.Services.AddScoped<DraftService>();

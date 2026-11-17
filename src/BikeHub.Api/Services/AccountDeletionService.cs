@@ -44,6 +44,8 @@ public sealed class AccountDeletionService(IDbContextFactory<BikeHubDbContext> c
         await db.Relations.Where(r => r.UserId == id || r.TargetId == id || removed.Contains(r.TargetId)).ExecuteDeleteAsync(ct);
         await db.Notifications.Where(n => n.RecipientId == id || n.ActorId == id || n.TargetId == id || removed.Contains(n.TargetId)).ExecuteDeleteAsync(ct);
         await db.Drafts.Where(d => d.OwnerId == id).ExecuteDeleteAsync(ct);
+        await db.PrivateMessageReports.Where(r => r.ReporterId == id || r.ReportedUserId == id).ExecuteDeleteAsync(ct);
+        await db.PrivateMessages.Where(m => m.SenderId == id).ExecuteDeleteAsync(ct);
         await db.RouteReviews.Where(r => r.AuthorId == id).ExecuteDeleteAsync(ct);
         await db.SavedRoutes.Where(r => r.UserId == id).ExecuteDeleteAsync(ct);
         await db.RouteCollections.Where(c => c.OwnerId == id).ExecuteDeleteAsync(ct);
@@ -68,6 +70,7 @@ public sealed class AccountDeletionService(IDbContextFactory<BikeHubDbContext> c
         await db.SaveChangesAsync(ct);
         await db.Sessions.Where(s => s.AccountId == id).ExecuteDeleteAsync(ct);
         await db.Accounts.Where(a => a.Id == id).ExecuteDeleteAsync(ct);
+        await db.PrivateConversations.Where(c => c.FirstUserId == null && c.SecondUserId == null).ExecuteDeleteAsync(ct);
         await transaction.CommitAsync(ct);
     }
 }

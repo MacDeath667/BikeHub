@@ -1198,6 +1198,32 @@ namespace BikeHub.Dal.Migrations
                     b.ToTable("media_deletions", (string)null);
                 });
 
+            modelBuilder.Entity("BikeHub.Dal.Entities.MessageBlock", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("BlockedUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("blocked_user_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.HasKey("UserId", "BlockedUserId")
+                        .HasName("pk_message_blocks");
+
+                    b.HasIndex("BlockedUserId")
+                        .HasDatabaseName("ix_message_blocks_target");
+
+                    b.ToTable("message_blocks", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_message_block_users", "user_id <> blocked_user_id");
+                        });
+                });
+
             modelBuilder.Entity("BikeHub.Dal.Entities.ModerationReport", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1248,6 +1274,222 @@ namespace BikeHub.Dal.Migrations
                         .HasFilter("NOT resolved");
 
                     b.ToTable("moderation_reports", (string)null);
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.PrivateConversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("FirstArchived")
+                        .HasColumnType("boolean")
+                        .HasColumnName("first_archived");
+
+                    b.Property<long>("FirstReadSequence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("first_read_sequence");
+
+                    b.Property<Guid?>("FirstUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("first_user_id");
+
+                    b.Property<long>("LatestSequence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("latest_sequence");
+
+                    b.Property<Guid?>("RequestedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by_id");
+
+                    b.Property<bool>("SecondArchived")
+                        .HasColumnType("boolean")
+                        .HasColumnName("second_archived");
+
+                    b.Property<long>("SecondReadSequence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("second_read_sequence");
+
+                    b.Property<Guid?>("SecondUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("second_user_id");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_private_conversations");
+
+                    b.HasIndex("FirstUserId", "SecondUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_private_conversations_pair");
+
+                    b.HasIndex("RequestedById", "CreatedAt")
+                        .HasDatabaseName("ix_private_conversations_requests");
+
+                    b.HasIndex("FirstUserId", "UpdatedAt", "Id")
+                        .HasDatabaseName("ix_private_conversations_first");
+
+                    b.HasIndex("SecondUserId", "UpdatedAt", "Id")
+                        .HasDatabaseName("ix_private_conversations_second");
+
+                    b.ToTable("private_conversations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_private_conversation_users", "first_user_id IS NULL OR second_user_id IS NULL OR first_user_id <> second_user_id");
+
+                            t.HasCheckConstraint("ck_private_conversation_values", "status IN (1, 2, 3) AND latest_sequence >= 0 AND first_read_sequence BETWEEN 0 AND latest_sequence AND second_read_sequence BETWEEN 0 AND latest_sequence");
+                        });
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.PrivateMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClientMessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_message_id");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("conversation_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_hidden");
+
+                    b.Property<byte[]>("RequestHash")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("request_hash");
+
+                    b.Property<Guid?>("SenderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sender_id");
+
+                    b.Property<long>("Sequence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("sequence");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("text");
+
+                    b.HasKey("Id")
+                        .HasName("pk_private_messages");
+
+                    b.HasIndex("ConversationId", "Sequence")
+                        .IsUnique()
+                        .HasDatabaseName("ix_private_messages_sequence");
+
+                    b.HasIndex("SenderId", "ClientMessageId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_private_messages_idempotency");
+
+                    b.HasIndex("SenderId", "CreatedAt")
+                        .HasDatabaseName("ix_private_messages_rate");
+
+                    b.ToTable("private_messages", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_private_message_values", "sequence > 0 AND octet_length(request_hash) = 32");
+                        });
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.PrivateMessageReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("conversation_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("MessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("message_id");
+
+                    b.Property<string>("MessageText")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("message_text");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("reason");
+
+                    b.Property<Guid?>("ReportedUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reported_user_id");
+
+                    b.Property<Guid>("ReporterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reporter_id");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("resolution");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<Guid?>("ResolvedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resolved_by_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_private_message_reports");
+
+                    b.HasIndex("ConversationId")
+                        .HasDatabaseName("ix_private_message_reports_conversation");
+
+                    b.HasIndex("MessageId")
+                        .HasDatabaseName("ix_private_message_reports_message");
+
+                    b.HasIndex("ReportedUserId")
+                        .HasDatabaseName("ix_private_message_reports_target");
+
+                    b.HasIndex("ResolvedById")
+                        .HasDatabaseName("ix_private_message_reports_moderator");
+
+                    b.HasIndex("ReporterId", "MessageId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_private_message_reports_open")
+                        .HasFilter("resolved_at IS NULL");
+
+                    b.HasIndex("ResolvedAt", "CreatedAt", "Id")
+                        .HasDatabaseName("ix_private_message_reports_queue");
+
+                    b.ToTable("private_message_reports", (string)null);
                 });
 
             modelBuilder.Entity("BikeHub.Dal.Entities.RideChange", b =>
@@ -1683,6 +1925,23 @@ namespace BikeHub.Dal.Migrations
                         .HasConstraintName("fk_media_owner");
                 });
 
+            modelBuilder.Entity("BikeHub.Dal.Entities.MessageBlock", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("BlockedUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_message_block_target");
+
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_message_block_user");
+                });
+
             modelBuilder.Entity("BikeHub.Dal.Entities.ModerationReport", b =>
                 {
                     b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
@@ -1691,6 +1950,78 @@ namespace BikeHub.Dal.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_report_reporter");
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.PrivateConversation", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("FirstUserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_private_conversation_first");
+
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedById")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_private_conversation_requester");
+
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SecondUserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_private_conversation_second");
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.PrivateMessage", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.PrivateConversation", null)
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_private_message_conversation");
+
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_private_message_sender");
+                });
+
+            modelBuilder.Entity("BikeHub.Dal.Entities.PrivateMessageReport", b =>
+                {
+                    b.HasOne("BikeHub.Dal.Entities.PrivateConversation", null)
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_private_message_report_conversation");
+
+                    b.HasOne("BikeHub.Dal.Entities.PrivateMessage", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_private_message_report_message");
+
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ReportedUserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_private_message_report_target");
+
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ReporterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_private_message_report_reporter");
+
+                    b.HasOne("BikeHub.Dal.Entities.AuthAccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ResolvedById")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_private_message_report_moderator");
                 });
 
             modelBuilder.Entity("BikeHub.Dal.Entities.RideChange", b =>

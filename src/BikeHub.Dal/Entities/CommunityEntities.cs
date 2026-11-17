@@ -1,7 +1,7 @@
 namespace BikeHub.Dal.Entities;
 
 public enum RelationKind { Like = 1, Bookmark = 2, Follow = 3, Membership = 4 }
-public enum ReportTarget { Bike = 1, Post = 2, Comment = 3, User = 4, Site = 5, Group = 6, GroupEntry = 7, GroupReply = 8, Ride = 9, RideChange = 10, LibraryRoute = 11, RouteReview = 12, MaintenanceReminder = 13 }
+public enum ReportTarget { Bike = 1, Post = 2, Comment = 3, User = 4, Site = 5, Group = 6, GroupEntry = 7, GroupReply = 8, Ride = 9, RideChange = 10, LibraryRoute = 11, RouteReview = 12, MaintenanceReminder = 13, PrivateMessage = 14 }
 
 public sealed class CommunityPost
 {
