@@ -29,24 +29,96 @@ beforeEach(() => {
 afterEach(cleanup);
 const email = () => fireEvent.change(screen.getByLabelText("Ваша почта"), { target: { value: "rider@example.test" } });
 
-test("login sends only the email, announces a failed delivery and resends the same challenge", async () => {
-  const mutations: { path: string; body: unknown }[] = []; let polls = 0;
+test("a definitive delivery failure can request a fresh challenge instead of replaying the saved failure", async () => {
+  const mutations: { path: string; body: unknown }[] = []; const polls: string[] = [];
   globalThis.fetch = async (input, init) => {
     const path = new URL(String(input)).pathname;
     if (path === "/api/auth/session") return json(session);
-    if (path.endsWith("/delivery")) { polls++; return json({ status: "failed" }); }
-    mutations.push({ path, body: JSON.parse(init!.body as string) }); return json(challenge());
+    if (path.endsWith("/delivery")) { polls.push(path); return json({ status: path.includes("/fresh/") ? "sent" : "failed" }); }
+    mutations.push({ path, body: JSON.parse(init!.body as string) }); return json({ ...challenge(), challengeId: mutations.length === 1 ? "challenge" : "fresh" });
   };
   render(<AuthModal session={session} close={() => {}} onSuccess={() => {}} />);
   email(); fireEvent.click(screen.getByText("Получить код"));
   await waitFor(() => assert.ok(screen.getByText(/не смог отправить письмо/)));
-  assert.equal(polls, 1); assert.deepEqual(mutations[0], { path: "/api/auth/login/email/challenges", body: { email: "rider@example.test" } });
+  assert.equal(polls.length, 1); assert.deepEqual(mutations[0], { path: "/api/auth/login/email/challenges", body: { email: "rider@example.test" } });
   assert.ok(!screen.queryByLabelText("Ник")); assert.ok(!screen.queryByText("Как к вам обращаться"));
   fireEvent.change(screen.getByLabelText("Код из письма"), { target: { value: "123456" } });
-  fireEvent.click(screen.getByText("Повторить запрос"));
-  await waitFor(() => assert.equal(mutations.length, 2));
-  assert.deepEqual(mutations[1], { path: "/api/auth/email/challenges/challenge/resend", body: {} });
-  assert.equal((screen.getByLabelText("Код из письма") as HTMLInputElement).value, "123456");
+  fireEvent.click(screen.getByText("Запросить новый код"));
+  await screen.findByText(/Почтовый сервис отправил письмо/);
+  assert.deepEqual(mutations[1], { path: "/api/auth/login/email/challenges", body: { email: "rider@example.test" } });
+  assert.ok(polls.includes("/api/auth/email/challenges/fresh/delivery"));
+  assert.equal((screen.getByLabelText("Код из письма") as HTMLInputElement).value, "");
+});
+
+for (const status of ["sent", "pending", "unknown", "unavailable"]) {
+  test(`delivery status ${status} keeps the same code and message identity on HTTP retry`, async () => {
+    const mutations: { path: string; body: unknown }[] = [];
+    globalThis.fetch = async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === "/api/auth/session") return json(session);
+      if (path.endsWith("/delivery")) return json({ status });
+      mutations.push({ path, body: JSON.parse(init!.body as string) }); return json(challenge());
+    };
+    render(<AuthModal session={session} close={() => {}} onSuccess={() => {}} />);
+    email(); fireEvent.click(screen.getByText("Получить код"));
+    await screen.findByLabelText("Код из письма");
+    fireEvent.change(screen.getByLabelText("Код из письма"), { target: { value: "123456" } });
+    fireEvent.click(screen.getByText("Повторить запрос"));
+    await waitFor(() => assert.equal(mutations.length, 2));
+    assert.deepEqual(mutations[1], { path: "/api/auth/email/challenges/challenge/resend", body: {} });
+    assert.equal((screen.getByLabelText("Код из письма") as HTMLInputElement).value, "123456");
+  });
+}
+
+test("a failed delivery still observes the resend cooldown before requesting a new code", async () => {
+  let creates = 0;
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/auth/session") return json(session);
+    if (path.endsWith("/delivery")) return json({ status: "failed" });
+    creates++; return json({ ...challenge(), resendAt: new Date(Date.now() + 60000).toISOString() });
+  };
+  render(<AuthModal session={session} close={() => {}} onSuccess={() => {}} />);
+  email(); fireEvent.click(screen.getByText("Получить код"));
+  const retry = await screen.findByRole("button", { name: /Новый код через/ });
+  assert.equal((retry as HTMLButtonElement).disabled, true); fireEvent.click(retry); assert.equal(creates, 1);
+});
+
+test("registration recovery retains the chosen nickname and display name for the fresh challenge", async () => {
+  const mutations: { path: string; body: unknown }[] = [];
+  globalThis.fetch = async (input, init) => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/auth/session") return json(session);
+    if (path.endsWith("/delivery")) return json({ status: path.includes("/fresh/") ? "sent" : "failed" });
+    mutations.push({ path, body: JSON.parse(init!.body as string) });
+    return json({ ...challenge(), challengeId: mutations.length === 1 ? "challenge" : "fresh" });
+  };
+  render(<AuthModal session={session} close={() => {}} onSuccess={() => {}} />);
+  fireEvent.click(screen.getByText("Нет аккаунта? Зарегистрироваться")); email();
+  fireEvent.change(screen.getByLabelText("Ник"), { target: { value: "Gravel_Rider" } });
+  fireEvent.change(screen.getByLabelText(/Как к вам обращаться/), { target: { value: "Роман" } });
+  fireEvent.click(screen.getByText("Получить код"));
+  fireEvent.click(await screen.findByText("Запросить новый код"));
+  await screen.findByText(/Почтовый сервис отправил письмо/);
+  const expected = { path: "/api/auth/registration/email/challenges", body: { email: "rider@example.test", name: "Роман", nickname: "gravel_rider" } };
+  assert.deepEqual(mutations, [expected, expected]);
+});
+
+test("a failed fresh request keeps the previous challenge and exposes the error with a cooldown", async () => {
+  let creates = 0;
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/auth/session") return json(session);
+    if (path.endsWith("/delivery")) return json({ status: "failed" });
+    creates++; return creates === 1 ? json(challenge()) : json({ title: "Сервис временно недоступен" }, 503);
+  };
+  render(<AuthModal session={session} close={() => {}} onSuccess={() => {}} />);
+  email(); fireEvent.click(screen.getByText("Получить код"));
+  fireEvent.click(await screen.findByText("Запросить новый код"));
+  await screen.findByRole("alert");
+  assert.ok(screen.getByLabelText("Код из письма"));
+  assert.equal((screen.getByRole("button", { name: /Новый код через/ }) as HTMLButtonElement).disabled, true);
+  assert.equal(creates, 2);
 });
 
 test("registration and login are separate flows and a send failure leaves the email form open", async () => {

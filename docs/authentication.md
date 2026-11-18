@@ -18,6 +18,8 @@ npm --prefix Web run dev
 
 Основной API хранит параметры входа в `Authentication`. `Authentication:EmailProvider=Development` включает локальную тестовую почту, `MailService` — первичная отправка через Kafka (`Kafka:BootstrapServers`, `Kafka:Topic`) и HTTP fallback после минуты (`MailService:BaseUrl`, `MailService:ApiKey`). Повтор использует тот же код и `messageId`; срок и число попыток ввода не сбрасываются.
 
+При окончательном статусе `failed` форма предлагает «Запросить новый код»: после минутного ограничения создаётся новый challenge для выбранного входа или регистрации. Прежний терминальный отказ не переотправляется. Для `pending`, `sent`, `unknown` и `unavailable` обычный повтор сохраняет прежний код и `messageId`.
+
 У `BikeHub.Mail` транспорт выбирается через `Mail:Provider=Smtp/GmailApi`. Секции `Smtp` и `GmailApi` находятся на верхнем уровне конфигурации **почтового сервиса**. Для user-secrets применяются ключи `Smtp:Username`, `Smtp:Password`, `GmailApi:RefreshToken`; для окружения — `Smtp__Username`, `Smtp__Password`, `GmailApi__RefreshToken`.
 
 При переносе прежних локальных настроек запишите SMTP/Gmail-значения в user-secrets `src/BikeHub.Mail`. Старый `Authentication:EmailProvider=Smtp/GmailApi` в user-secrets API удалите или замените на `MailService` с адресом и API-ключом сервиса. На NAS существующий `bikehub-auth` сохраняется, токены заново выдавать не нужно. Ansible подключает почтовые ключи только к `bikehub-mail`, OTP-ключ — к API. Запуск сервисов и асинхронная доставка описаны [отдельно](mail-service.md).

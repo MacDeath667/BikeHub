@@ -56,18 +56,19 @@ export function AuthModal({ session, close, onSuccess }: {
     return () => { active = false; clearTimeout(timer); };
   }, [challenge]);
 
-  async function send(event?: FormEvent) {
+  async function send(event?: FormEvent, fresh = false) {
     event?.preventDefault();
     if (busy) return;
     setBusy(true);
     setError("");
+    const resend = fresh ? null : challenge;
     try {
-      const next = await api<Challenge>(challenge ? `/auth/email/challenges/${challenge.challengeId}/resend` :
+      const next = await api<Challenge>(resend ? `/auth/email/challenges/${resend.challengeId}/resend` :
         registering ? "/auth/registration/email/challenges" : "/auth/login/email/challenges", {
-        method: "POST", body: JSON.stringify(challenge ? {} : registering ? { email: email.trim(), name: name.trim() || null, nickname: nickname.trim().toLowerCase() } : { email: email.trim() }),
+        method: "POST", body: JSON.stringify(resend ? {} : registering ? { email: email.trim(), name: name.trim() || null, nickname: nickname.trim().toLowerCase() } : { email: email.trim() }),
       });
       setChallenge(next);
-      if (!challenge) { setCode(""); setDevCode(""); }
+      if (!resend) { setCode(""); setDevCode(""); }
       setDelivery("pending");
       setNow(Date.now());
     } catch (error) {
@@ -142,8 +143,8 @@ export function AuthModal({ session, close, onSuccess }: {
           <button type="button" disabled={busy} onClick={() => { setChallenge(null); setError(""); setDevCode(""); }}><ArrowLeft size={14} /> {registering ? "Изменить почту или ник" : "Другая почта"}</button>
           <button type="button" disabled={busy || (remaining > 0 && deliveryStatus !== "expired")} onClick={() => {
             if (deliveryStatus === "expired") { setChallenge(null); setError(""); setCode(""); setDevCode(""); }
-            else void send();
-          }}>{deliveryStatus === "expired" ? "Запросить новый код" : remaining ? `Ещё раз через ${remaining} с` : "Повторить запрос"}</button>
+            else void send(undefined, deliveryStatus === "failed");
+          }}>{deliveryStatus === "expired" ? "Запросить новый код" : deliveryStatus === "failed" ? remaining ? `Новый код через ${remaining} с` : "Запросить новый код" : remaining ? `Ещё раз через ${remaining} с` : "Повторить запрос"}</button>
         </div>
       </form>}
       <div className="auth-secondary">
@@ -153,7 +154,7 @@ export function AuthModal({ session, close, onSuccess }: {
       </div>
       {challenge && <p className={deliveryStatus === "failed" || deliveryStatus === "expired" ? "auth-error" : "auth-footnote"} role="status">
         {deliveryStatus === "sent" ? "Почтовый сервис отправил письмо. Если его нет, проверьте папку «Спам». Повтор не создаст дубликат." :
-          deliveryStatus === "failed" ? "Почтовый сервис не смог отправить письмо. Попробуйте позже." :
+          deliveryStatus === "failed" ? "Почтовый сервис не смог отправить письмо. Запросите новый код." :
           deliveryStatus === "expired" ? "Срок действия кода истёк. Вернитесь к форме и запросите новый код." :
           deliveryStatus === "unknown" ? "Результат отправки неизвестен. Если письмо пришло, код можно использовать." :
           deliveryStatus === "unavailable" ? "Статус доставки временно недоступен. Через минуту можно повторить запрос." :
