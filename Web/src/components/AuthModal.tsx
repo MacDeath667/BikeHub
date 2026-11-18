@@ -73,7 +73,11 @@ export function AuthModal({ session, close, onSuccess }: {
       setNow(Date.now());
     } catch (error) {
       setError((error as Error).message);
-      if (challenge) setChallenge({ ...challenge, resendAt: new Date(Date.now() + 60000).toISOString() });
+      if (fresh) {
+        setChallenge(null); setCode(""); setDevCode(""); setDelivery("pending");
+      } else if (challenge) {
+        setChallenge({ ...challenge, resendAt: new Date(Date.now() + 60000).toISOString() });
+      }
     }
     finally { setBusy(false); }
   }

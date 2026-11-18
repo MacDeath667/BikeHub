@@ -104,7 +104,7 @@ test("registration recovery retains the chosen nickname and display name for the
   assert.deepEqual(mutations, [expected, expected]);
 });
 
-test("a failed fresh request keeps the previous challenge and exposes the error with a cooldown", async () => {
+test("a failed fresh request returns to the retained email without trapping the user in the old failed challenge", async () => {
   let creates = 0;
   globalThis.fetch = async input => {
     const path = new URL(String(input)).pathname;
@@ -116,8 +116,8 @@ test("a failed fresh request keeps the previous challenge and exposes the error 
   email(); fireEvent.click(screen.getByText("Получить код"));
   fireEvent.click(await screen.findByText("Запросить новый код"));
   await screen.findByRole("alert");
-  assert.ok(screen.getByLabelText("Код из письма"));
-  assert.equal((screen.getByRole("button", { name: /Новый код через/ }) as HTMLButtonElement).disabled, true);
+  assert.equal((screen.getByLabelText("Ваша почта") as HTMLInputElement).value, "rider@example.test");
+  assert.equal(screen.queryByLabelText("Код из письма"), null);
   assert.equal(creates, 2);
 });
 
