@@ -78,9 +78,14 @@ public sealed class NicknameTests
         await using (var db = await database.CreateDbContextAsync())
         {
             await db.GetService<IMigrator>().MigrateAsync("20261111041945_PostRoutes");
-            db.Accounts.AddRange(new AuthAccountEntity { Id = id, Email = "legacy-nick@example.test", DisplayName = "Legacy", Handle = id.ToString("N"), EmailConfirmedAt = DateTimeOffset.UtcNow },
-                new AuthAccountEntity { Id = custom, Email = "custom-nick@example.test", DisplayName = "Custom", Handle = "custom_nick", EmailConfirmedAt = DateTimeOffset.UtcNow });
-            await db.SaveChangesAsync(); await db.Database.MigrateAsync();
+            // The current model contains columns that this legacy schema does not have yet.
+            var now = DateTimeOffset.UtcNow;
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO auth_accounts (id, email, display_name, handle, email_confirmed_at, created_at) VALUES
+                    ({id}, 'legacy-nick@example.test', 'Legacy', {id.ToString("N")}, {now}, {now}),
+                    ({custom}, 'custom-nick@example.test', 'Custom', 'custom_nick', {now}, {now});
+                """);
+            await db.Database.MigrateAsync();
             Assert.Null((await db.Accounts.AsNoTracking().SingleAsync(a => a.Id == id)).Handle);
             Assert.Equal("custom_nick", (await db.Accounts.AsNoTracking().SingleAsync(a => a.Id == custom)).Handle);
         }
