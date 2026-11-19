@@ -1,7 +1,7 @@
 import { ProfileEditor } from "../components/ProfileEditor";
 import { ReportButton } from "../components/ContentTools";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bike as BikeIcon, Check, Pencil, Plus, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Check, Pencil, Plus, ShieldCheck } from "lucide-react";
 import { api, number, requestLogin } from "../api";
 import type { Bike, Page, User } from "../api";
 import { Avatar, Empty, ErrorBox, Loading } from "../components/ui";
@@ -81,17 +81,13 @@ export function UserProfile({
         {me.id === user.id && me.isModerator && <a className="button secondary" href="#/moderation"><ShieldCheck size={16} aria-hidden="true" />Модерация</a>}
       </div>}
       <section className="profile-card">
-        <div className="profile-cover">
-          <span>ЧЕЛОВЕК. ВЕЛОСИПЕД. ДОРОГА.</span>
-          <BikeIcon size={170} strokeWidth={0.7} />
-        </div>
         <div className="profile-body">
           <Avatar user={user} />
           <div className="profile-title">
             <div>
               <h1>{user.name}</h1>
               <span className="muted">
-                {user.handle && <>@{user.handle} <span>·</span> </>}{user.city}
+                {user.handle && <>@{user.handle}{user.city && <span>·</span>}</>}{user.city}
               </span>
             </div>
             {user.id !== me?.id && (
@@ -109,13 +105,13 @@ export function UserProfile({
           <p>{user.bio}</p>
           <div className="profile-stats">
             <span>
-              <strong>{user.bikesCount}</strong> велосипеда
+              Велосипеды: <strong>{user.bikesCount}</strong>
             </span>
             <span>
-              <strong>{user.postsCount}</strong> записей
+              Записи: <strong>{user.postsCount}</strong>
             </span>
             <span>
-              <strong>{number(user.followers)}</strong> подписчиков
+              Подписчики: <strong>{number(user.followers)}</strong>
             </span>
           </div>
         </div>
@@ -134,8 +130,7 @@ export function UserProfile({
       {loading && !bikes.length && <Loading />}
       {!bikes.length && !loading && !error && (
         <Empty
-          title="Гараж пока пуст"
-          description="Первый велосипед ещё впереди."
+          title="Гараж пуст"
         />
       )}
       {more && !error && <button className="load-more" disabled={loading} onClick={() => { if (!pending.current) { pending.current = true; setPage(p => p + 1); } }}>Ещё велосипеды</button>}

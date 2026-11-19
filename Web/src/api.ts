@@ -263,7 +263,7 @@ export async function api<T>(
     if (timedOut && !options.signal?.aborted) {
       throw new Error(["GET", "HEAD", "OPTIONS"].includes(method)
         ? "BikeHub не ответил вовремя. Проверьте подключение и попробуйте загрузить данные ещё раз."
-        : "Ответ BikeHub не получен вовремя. Действие могло выполниться — проверьте результат перед повтором.");
+        : "Ответ BikeHub не получен вовремя. Действие могло выполниться. Проверьте результат перед повтором.");
     }
     throw error;
   } finally {

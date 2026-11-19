@@ -136,3 +136,25 @@ test("switching away from the author unmounts an open private post editor", asyn
   assert.equal(screen.queryByLabelText("Заголовок"), null);
   await new Promise(resolve => setTimeout(resolve, 2200)); assert.equal(writes.length, 0);
 });
+
+for (const type of ["post", "bike"] as const) {
+  for (const editing of [false, true]) {
+    test(`${editing ? "editing" : "creating"} a ${type} keeps text when a selection ends outside and closes only explicitly`, async () => {
+      let closed = 0, confirmations = 0;
+      window.confirm = () => { confirmations++; return true; };
+      render(<CreateModal type={type} me={user} initialPost={editing && type === "post" ? post : undefined}
+        initialBike={editing && type === "bike" ? bike : undefined} close={() => { closed++; }} onSuccess={() => {}} />);
+      const field = await screen.findByLabelText(type === "post" ? "Ваша история" : "Немного о нём") as HTMLTextAreaElement;
+      fireEvent.change(field, { target: { value: "Правка, которую нельзя потерять" } });
+      const dialog = screen.getByRole("dialog") as HTMLDialogElement;
+      dialog.getBoundingClientRect = () => ({ left: 10, top: 10, right: 510, bottom: 610 }) as DOMRect;
+      fireEvent.pointerDown(field, { clientX: 30, clientY: 40 });
+      fireEvent.pointerUp(dialog, { clientX: 600, clientY: 700 });
+      fireEvent.click(dialog, { clientX: 600, clientY: 700 });
+      fireEvent.click(dialog, { clientX: 0, clientY: 0 });
+      assert.equal(closed, 0); assert.equal(confirmations, 0); assert.equal(dialog.open, true);
+      assert.equal(field.value, "Правка, которую нельзя потерять");
+      fireEvent.click(screen.getByLabelText("Закрыть")); assert.equal(closed, 1);
+    });
+  }
+}

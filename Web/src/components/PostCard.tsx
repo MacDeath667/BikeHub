@@ -5,10 +5,7 @@ import { useState } from "react";
 import {
   Bookmark,
   Heart,
-  MapPin,
   MessageCircle,
-  Sparkles,
-  Wrench,
 } from "lucide-react";
 import { api, categories, number, postCategories, relativeTime } from "../api";
 import type { Post } from "../api";
@@ -108,22 +105,12 @@ export function PostCard({
           </div>
         </div>
         <span className={`post-kind ${post.category}`}>
-          {post.category === "maintenance" ? (
-            <Wrench size={12} />
-          ) : post.category === "upgrade" ? (
-            <Sparkles size={12} />
-          ) : null}
           {postCategories[post.category]}
         </span>
       </div>
       {!post.photos?.length && post.hasRoute ? <RouteCover previewUrl={`/posts/${post.id}/route-preview`} href={`#/post/${post.id}`} /> : <a className="post-image" href={`#/post/${post.id}`}>
         <img src={post.photos?.[0]?.imageUrl || post.imageUrl} alt={post.bike.name} loading="lazy" />
         <span className="image-category">{categories[post.bike.category]}</span>
-        {post.category === "ride" && (
-          <span className="image-caption">
-            <MapPin size={13} /> Истории за пределами города
-          </span>
-        )}
       </a>}
       <div className="post-content">
         <a href={`#/post/${post.id}`}>

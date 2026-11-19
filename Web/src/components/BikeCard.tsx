@@ -21,7 +21,7 @@ export function BikeCard({ bike }: { bike: Bike }) {
         <a href={`#/bike/${bike.id}`}>
           <h2>{bike.name}</h2>
         </a>
-        <p>{number(bike.mileage)} км своей истории</p>
+        <p>{number(bike.mileage)} км пробега</p>
         <a className="bike-owner" href={userHref(bike.owner)}>
           <Avatar user={bike.owner} small />
           {bike.owner.name}

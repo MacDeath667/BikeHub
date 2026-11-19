@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowDown,
-  ArrowUpRight,
   Bike as BikeIcon,
   Plus,
   Settings2,
@@ -86,50 +85,17 @@ export function Feed({
     <>
       {!saved && !search ? (
         <section className="feed-intro">
-          <div className="eyebrow">
-            <span className="online-dot" /> СООБЩЕСТВО УВЛЕЧЁННЫХ
-          </div>
-          <h1>
-            Два колеса.
-            <br />
-            Тысячи историй<span>.</span>
-          </h1>
-          <p>
-            Велосипеды, люди и всё, что между ними.
-            <br />
-            Делитесь опытом и вдохновляйтесь дорогой.
-          </p>
-          <div className="intro-bottom">
-            <span>
-              Найдите свою компанию.{" "}
-              <a href="#/communities">
-                Найдите и вы <ArrowUpRight size={13} />
-              </a>
-            </span>
-          </div>
-          <div className="intro-art" aria-hidden="true">
-            <div className="art-ring ring-one" />
-            <div className="art-ring ring-two" />
-            <BikeIcon size={174} strokeWidth={0.8} />
-            <span className="art-star">✳</span>
-            <span className="art-caption">ЖИЗНЬ В ДВИЖЕНИИ / BIKEHUB</span>
-          </div>
+          <h1>Лента</h1>
         </section>
       ) : (
         <div className="page-heading">
-          <div className="eyebrow">ВАШ BIKEHUB</div>
-          <h1>{saved ? "Хочется сохранить" : `Поиск: ${search}`}</h1>
-          <p>
-            {saved
-              ? "Истории и полезный опыт, к которым стоит вернуться."
-              : "Ищем в историях, велосипедах, именах и тегах."}
-          </p>
+          <h1>{saved ? "Закладки" : `Поиск: ${search}`}</h1>
         </div>
       )}
       {!saved && !search && (
         <button className="compose-prompt" onClick={onCreate}>
           {me ? <Avatar user={me} small /> : <BikeIcon size={24} />}
-          <span>Какая история у вашего велосипеда?</span>
+          <span>Написать запись</span>
           <span className="compose-plus">
             <Plus size={18} />
           </span>
@@ -158,7 +124,6 @@ export function Feed({
                 }}
               >
                 {t.label}
-                {t.id === "all" && <span className="tab-dot" />}
               </button>
             ))
           )}
@@ -196,15 +161,15 @@ export function Feed({
             <Empty
               title={
                 saved
-                  ? "Здесь будут ваши находки"
+                  ? "Нет сохранённых записей"
                   : tab === "following"
-                    ? "В подписках пока тихо"
+                    ? "Нет записей в подписках"
                     : "Пока ничего не нашлось"
               }
               description={
                 saved
                   ? "Нажмите на закладку под записью, чтобы сохранить её здесь."
-                  : tab === "following" ? "Подпишитесь на авторов или вступите в сообщества — их записи появятся здесь."
+                  : tab === "following" ? "Подпишитесь на авторов или вступите в сообщества. Их записи появятся здесь."
                   : "Попробуйте другой тип велосипеда, поиск или загляните в общую ленту."
               }
             />

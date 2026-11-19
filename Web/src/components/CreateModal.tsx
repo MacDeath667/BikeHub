@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { ArrowUpRight, Bike as BikeIcon, MessageCircle, X } from "lucide-react";
+import { X } from "lucide-react";
 import { api, categories, postCategories } from "../api";
 import type { Bike, Page, Photo, Post, User } from "../api";
 import { RouteEditor } from "./PostRoute";
@@ -103,27 +103,12 @@ export function CreateModal({
         e.preventDefault();
         if (!saving && !uploading && !routeBusy && !draft.actionBusy) closeSafely();
       }}
-      onClick={(e) => {
-        if (e.target !== dialogRef.current || saving || uploading || routeBusy || draft.actionBusy) return;
-        const bounds = e.currentTarget.getBoundingClientRect();
-        if (
-          e.clientX < bounds.left ||
-          e.clientX > bounds.right ||
-          e.clientY < bounds.top ||
-          e.clientY > bounds.bottom
-        )
-          closeSafely();
-      }}
       aria-labelledby="dialog-title"
     >
       <div className="dialog-header">
-        <span className="dialog-icon">
-          {type === "post" ? (
-            <MessageCircle size={24} />
-          ) : (
-            <BikeIcon size={26} />
-          )}
-        </span>
+        <h2 id="dialog-title">
+          {initial ? type === "post" ? "Редактировать запись" : "Редактировать велосипед" : type === "post" ? "Новая запись" : "Новый велосипед"}
+        </h2>
         <button
           type="button"
           className="icon-button"
@@ -134,15 +119,6 @@ export function CreateModal({
           <X size={22} />
         </button>
       </div>
-      <div className="eyebrow">ЕЩЁ ОДНА ХОРОШАЯ ИСТОРИЯ</div>
-      <h2 id="dialog-title">
-        {initial ? "Редактирование" : type === "post" ? "Поделитесь своим опытом" : "Пополнение в гараже"}
-      </h2>
-      <p className="dialog-description">
-        {type === "post"
-          ? "Поездка, полезное открытие или важное обновление — всё начинается с записи."
-          : "Расскажите о велосипеде, который делает ваши дни интереснее."}
-      </p>
       {loading || !draft.ready ? (
         <Loading />
       ) : type === "post" && !bikes.length && error ? (
@@ -185,7 +161,6 @@ export function CreateModal({
                   value={draft.value.title}
                   onChange={e => draft.setValue(value => ({ ...value, title: e.target.value }))}
                   name="title"
-                  placeholder="С чего началась ваша история?"
                   minLength={3}
                   maxLength={160}
                   required
@@ -204,7 +179,7 @@ export function CreateModal({
               <PostEditor value={content} onChange={setContent} photos={photos} onPhotosChange={setPhotos} onBusy={setUploading} disabled={saving || draft.actionBusy} minLength={10} />
               <RouteEditor value={route} onChange={setRoute} disabled={saving || uploading || draft.actionBusy} onBusy={setRouteBusy} />
               <span className="form-hint">
-                Без своих фотографий запись возьмёт обложку велосипеда.
+                Без фотографий обложкой станет карта маршрута или фотография велосипеда.
               </span>
             </>
           ) : (
@@ -271,15 +246,11 @@ export function CreateModal({
                 Немного о нём
                 <textarea
                   name="description"
-                  placeholder="Почему именно он? Что уже поменяли и куда собираетесь?"
                   rows={4}
                   maxLength={2000}
                   defaultValue={initialBike?.description || ""}
                 />
               </label>
-              <span className="form-hint">
-                Расскажите о велосипеде и добавьте фотографии ниже.
-              </span>
             </>
           )}
           {error && <ErrorBox message={error} />}
@@ -298,7 +269,6 @@ export function CreateModal({
                 : initial ? "Сохранить" : type === "post"
                   ? "Опубликовать запись"
                   : "Добавить велосипед"}
-              <ArrowUpRight size={17} />
             </button>
           </div>
           </fieldset>

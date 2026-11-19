@@ -27,13 +27,13 @@ export function SearchResults({ search, kind, page, version, notify }: { search:
   }, [search, kind, page, version, retry]);
   function update(post: Post) { setData(previous => previous && { ...previous, items: previous.items.map(item => item.id === post.id ? post : item) }); }
   return <>
-    <div className="page-heading"><div className="eyebrow">ПОИСК ПО BIKEHUB</div><h1>Найдите своих.</h1><p>Истории, люди и разговоры о велосипедах.</p></div>
+    <div className="page-heading"><h1>Поиск</h1></div>
     <form className="directory-search search-form" role="search" onSubmit={e => { e.preventDefault(); window.location.hash = searchHref(input.trim(), kind).slice(1); }}>
       <Search size={18} aria-hidden="true" /><input aria-label="Поисковый запрос" value={input} maxLength={200} onChange={e => setInput(e.target.value)} placeholder="Например, гравий или @ник" />
       <button type="submit" className="text-button">Найти</button>
     </form>
     <nav className="search-tabs" aria-label="Тип результатов">{Object.entries(tabs).map(([key, label]) => <a className={`button ${kind === key ? "primary" : "secondary"}`} aria-current={kind === key ? "page" : undefined} href={searchHref(search, key as SearchKind)} key={key}>{label}</a>)}</nav>
-    {!search.trim() ? <Empty title="С чего начнём?" description="Введите имя, ник, тему записи или название сообщества." /> : error ? <ErrorBox message={error} retry={() => setRetry(v => v + 1)} /> : !data ? <Loading /> : <>
+    {!search.trim() ? <Empty title="Введите запрос" description="Можно искать по имени, нику, теме записи или названию сообщества." /> : error ? <ErrorBox message={error} retry={() => setRetry(v => v + 1)} /> : !data ? <Loading /> : <>
       <p className="search-summary" role="status">По запросу «{search}»: {data.total} · {tabs[kind].toLocaleLowerCase("ru-RU")}</p>
       {!data.items.length ? <Empty title="Ничего не нашлось" description={page > 1 ? "На этой странице нет результатов. Вернитесь к началу поиска." : "Попробуйте другое слово или переключите тип результатов."} /> : <div className="search-results">
         {kind === "posts" && (data.items as Post[]).map(post => <PostCard key={post.id} post={post} update={update} notify={notify} />)}

@@ -141,19 +141,21 @@ test("registration and login are separate flows and a send failure leaves the em
   assert.ok(screen.getByRole("heading", { name: "Вход в BikeHub" })); assert.ok(!screen.queryByLabelText("Ник"));
 });
 
-test("clicking dialog padding keeps the form and closing is blocked during an authentication request", async () => {
+test("the email form ignores backdrop clicks and explicit closing is blocked during authentication", async () => {
   let closed = 0, release: (response: Response) => void = () => {};
   globalThis.fetch = async input => new URL(String(input)).pathname === "/api/auth/session" ? json(session) : new Promise(resolve => { release = resolve; });
   render(<AuthModal session={session} close={() => { closed++; }} onSuccess={() => {}} />);
   const dialog = screen.getByRole("dialog");
   dialog.getBoundingClientRect = () => ({ left: 10, top: 10, right: 510, bottom: 610 }) as DOMRect;
-  fireEvent.click(dialog, { clientX: 40, clientY: 40 }); assert.equal(closed, 0);
+  fireEvent.click(dialog, { clientX: 40, clientY: 40 });
+  fireEvent.click(dialog, { clientX: 0, clientY: 0 }); assert.equal(closed, 0);
   email(); fireEvent.click(screen.getByText("Получить код"));
   await waitFor(() => assert.equal((screen.getByLabelText("Закрыть окно входа") as HTMLButtonElement).disabled, true));
   fireEvent.click(dialog, { clientX: 0, clientY: 0 }); fireEvent(dialog, new Event("cancel", { cancelable: true })); assert.equal(closed, 0);
   await act(async () => { release(json({ title: "Сервис временно недоступен" }, 503)); });
   await waitFor(() => assert.ok(screen.getByRole("alert")));
-  fireEvent.click(dialog, { clientX: 0, clientY: 0 }); assert.equal(closed, 1);
+  fireEvent.click(dialog, { clientX: 0, clientY: 0 }); assert.equal(closed, 0);
+  fireEvent.click(screen.getByLabelText("Закрыть окно входа")); assert.equal(closed, 1);
 });
 
 test("an expired code cannot be submitted and a fresh request returns to the email form", async () => {

@@ -29,7 +29,7 @@ export function RouteLibrary({ me }: { me: User | null }) {
   useEffect(() => { let active = true; setData(null); setError(""); api<Page<LibraryRoute>>(`/route-library?${query({ ...filters, mine: String(mine), saved: String(saved), collectionId: collection || undefined, page, pageSize: 12 })}`).then(d => { if (active) setData(d); }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [filters, mine, saved, collection, page, retry, collectionsRevision]);
   useEffect(() => { let active = true; setCollectionsError(""); if (me) api<RouteCollection[]>("/route-collections").then(c => { if (active) setCollections(c); }).catch(e => { if (active) setCollectionsError(e.message); }); return () => { active = false; }; }, [me?.id, collectionsRevision]);
   const select = (id: string) => { setCollection(id); setSaved(!!id); setPage(1); };
-  return <><div className="page-heading"><div className="eyebrow">ЕСТЬ КУДА ПОЕХАТЬ</div><h1>Маршруты</h1><p>GPX, проверенные дороги и личные подборки для будущих поездок.</p></div>
+  return <><div className="page-heading"><h1>Маршруты</h1></div>
     <button className="button primary" onClick={() => { if (!me) requestLogin(); else window.location.hash = "/route/new"; }}>Добавить маршрут</button>
     <form className="profile-card group-editor" onSubmit={e => { e.preventDefault(); setFilters({ city: city.trim(), surface, minimum, maximum }); setPage(1); }}>
       <label>Город маршрута<CityInput aria-label="Город маршрута" value={city} onValueChange={setCity} placeholder="Любой город" /></label>

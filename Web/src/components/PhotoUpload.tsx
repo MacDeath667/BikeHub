@@ -21,7 +21,7 @@ export function PhotoUpload({ value, onChange, onBusy, label = "Фотограф
       <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || disabled || !!candidate} onChange={async event => {
         const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (!file) return;
         setError("");
-        if (file.size > 10 * 1024 * 1024) { setError("Максимальный размер — 10 МБ."); return; }
+        if (file.size > 10 * 1024 * 1024) { setError("Файл больше 10 МБ."); return; }
         if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) { setError("Выберите фотографию JPEG, PNG или WebP."); return; }
         onBusy(true);
         if (avatar) { setCandidate(file); return; }

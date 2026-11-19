@@ -53,9 +53,7 @@ export function Communities({
   return (
     <>
       <div className="page-heading">
-        <div className="eyebrow">НА ОДНОЙ ВОЛНЕ</div>
-        <h1>Свои найдутся.</h1>
-        <p>Общий ритм, любимые маршруты и разговоры без финиша.</p>
+        <h1>Сообщества</h1>
       </div>
       <button className="button primary" onClick={() => { if (!me) { requestLogin(); return; } setCreating(!creating); }}>Создать сообщество</button>
       {creating && <GroupEditor close={() => setCreating(false)} saved={g => { reload(); window.location.hash = `/community/${g.id}`; }} />}
@@ -63,7 +61,7 @@ export function Communities({
         <Search size={18} />
         <input
           aria-label="Поиск сообществ"
-          placeholder="Найдите сообщество по душе"
+          placeholder="Название сообщества"
           value={input}
           maxLength={200}
           onChange={(e) => setInput(e.target.value)}
@@ -83,7 +81,7 @@ export function Communities({
               <p>{c.description}</p>
               <div className="community-bottom">
                 <button type="button" className="community-members-button" onClick={() => setMembersOf(c)} aria-label={`Участники сообщества ${c.name}: ${number(c.members)}`}>
-                  <Users size={15} />{number(c.members)} участников
+                  <Users size={15} />Участники: {number(c.members)}
                 </button>
                 <button
                   disabled={busy !== null}

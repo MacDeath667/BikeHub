@@ -4,10 +4,7 @@ import { CommunityAvatar } from "./CommunityAvatar";
 import {
   ArrowRight,
   ArrowUpRight,
-  Bike as BikeIcon,
   ChevronRight,
-  Plus,
-  Sparkles,
 } from "lucide-react";
 import { categories, number } from "../api";
 import type { Community, Overview } from "../api";
@@ -31,24 +28,9 @@ export function RightRail({
     <aside className="right-rail">
       {error && <ErrorBox message={error} retry={retry} />}
       {membersOf && <CommunityMembers community={membersOf} close={() => setMembersOf(null)} />}
-      <section className="garage-promo">
-        <div className="eyebrow">
-          <span /> ВАША ИСТОРИЯ НАЧИНАЕТСЯ ЗДЕСЬ
-        </div>
-        <div className="garage-illustration">
-          <BikeIcon size={100} strokeWidth={1} />
-          <div className="illustration-orbit" />
-        </div>
-        <h2>
-          Больше, чем
-          <br />
-          просто велосипед
-        </h2>
-        <p>
-          Сохраните каждый апгрейд, километр и маленькую победу.
-        </p>
+      <section className="garage-promo" aria-label="Гараж">
         <button className="button dark" onClick={onCreate}>
-          <Plus size={17} /> Добавить велосипед
+          Добавить велосипед
         </button>
         <a href="#/garage">
           Перейти в мой гараж <ArrowRight size={14} />
@@ -58,9 +40,6 @@ export function RightRail({
         <section className="rail-section featured">
           <div className="rail-title">
             <h3>Новый в гараже</h3>
-            <span className="tiny-badge">
-              <Sparkles size={12} />
-            </span>
           </div>
           <a
             href={`#/bike/${overview.featuredBike.id}`}
@@ -70,7 +49,6 @@ export function RightRail({
               src={overview.featuredBike.imageUrl}
               alt={overview.featuredBike.name}
             />
-            <span>ВЕЛОСИПЕД УЧАСТНИКА</span>
           </a>
           <a
             className="featured-name"
@@ -89,7 +67,7 @@ export function RightRail({
       )}
       <section className="rail-section">
         <div className="rail-title">
-          <h3>Найдите своих</h3>
+          <h3>Сообщества</h3>
           <a href="#/communities" aria-label="Все сообщества">
             <ArrowUpRight size={17} />
           </a>
@@ -99,7 +77,7 @@ export function RightRail({
             <a href={`#/community/${c.id}`} aria-label={`Открыть сообщество ${c.name}`}><CommunityAvatar community={c} /></a>
             <span>
               <a href={`#/community/${c.id}`}><strong>{c.name}</strong></a>
-              <button type="button" className="community-members-button" onClick={() => setMembersOf(c)} aria-label={`Участники сообщества ${c.name}: ${number(c.members)}`}>{number(c.members)} участников</button>
+              <button type="button" className="community-members-button" onClick={() => setMembersOf(c)} aria-label={`Участники сообщества ${c.name}: ${number(c.members)}`}>Участники: {number(c.members)}</button>
             </span>
             <a className="mini-community-arrow" href={`#/community/${c.id}`} aria-label={`Открыть сообщество ${c.name}`}><ChevronRight size={15} /></a>
           </div>
@@ -107,7 +85,7 @@ export function RightRail({
       </section>
       {!!overview?.tags.length && (
         <section className="rail-section tag-section">
-          <h3>Сейчас обсуждают</h3>
+          <h3>Темы записей</h3>
           <div className="tags">
             {overview.tags.map((tag) => (
               <a key={tag} href={`#/?q=${encodeURIComponent(tag)}`}>
@@ -117,12 +95,6 @@ export function RightRail({
           </div>
         </section>
       )}
-      <div className="rail-note">
-        <span className="online-dot" />
-        Место, где понимают
-        <br />
-        <span>любовь к двум колёсам.</span>
-      </div>
     </aside>
   );
 }

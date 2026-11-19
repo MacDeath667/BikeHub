@@ -162,7 +162,7 @@ test("mobile navigation traps focus, closes on Escape or navigation and restores
   document.body.style.overflow = "scroll";
   try {
     render(<App />);
-    await waitFor(() => assert.ok(screen.getByRole("heading", { name: /Два колеса/ })));
+    await waitFor(() => assert.ok(screen.getByRole("heading", { name: "Лента", exact: true })));
     const trigger = screen.getByLabelText("Открыть меню"), sidebar = document.getElementById("main-sidebar")!;
     assert.ok(sidebar.hasAttribute("inert")); assert.equal(trigger.getAttribute("aria-controls"), sidebar.id);
     trigger.focus(); fireEvent.click(trigger);
@@ -233,7 +233,7 @@ test("moderation load errors stop the spinner and can retry without losing the r
   globalThis.fetch = async () => fail ? json({ title: "Жалобы временно недоступны" }, 503) : json(page([{ id: "report", targetId: "post", targetType: 2, reason: "Проверить материал", createdAt: "2026-11-16T12:00:00Z" }]));
   render(<Moderation me={{ ...user, isModerator: true }} />);
   await waitFor(() => assert.ok(screen.getByText("Жалобы временно недоступны")));
-  assert.ok(!screen.queryByText("Загружаем истории…")); assert.equal((screen.getByText("Далее") as HTMLButtonElement).disabled, true);
+  assert.ok(!screen.queryByText("Загружаем…")); assert.equal((screen.getByText("Далее") as HTMLButtonElement).disabled, true);
   fireEvent.change(screen.getByLabelText("Результат проверки"), { target: { value: "Проверяю обращение" } });
   fail = false; fireEvent.click(screen.getByText(/Попробовать снова/));
   await waitFor(() => assert.ok(screen.getByText("Проверить материал")));

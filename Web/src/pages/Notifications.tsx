@@ -10,7 +10,7 @@ type Notification = {
 };
 const changedEvent = "bikehub:notifications-changed";
 const refresh = () => window.dispatchEvent(new Event(changedEvent));
-const descriptions: Record<number, string> = { 1: "прокомментировал вашу запись", 2: "ответил вам", 3: "подписался на вас", 4: "упомянул вас", 5: "изменил покатушку — проверьте время и место", 6: "отменил покатушку", 7: "оставил отзыв о вашем маршруте", 8: "Пора проверить обслуживание велосипеда", 9: "отправил личное сообщение", 10: "отправил запрос на переписку" };
+const descriptions: Record<number, string> = { 1: "прокомментировал вашу запись", 2: "ответил вам", 3: "подписался на вас", 4: "упомянул вас", 5: "изменил покатушку. Проверьте время и место", 6: "отменил покатушку", 7: "оставил отзыв о вашем маршруте", 8: "Пора проверить обслуживание велосипеда", 9: "отправил личное сообщение", 10: "отправил запрос на переписку" };
 function destination(item: Notification) {
   if (item.targetType === 4) { return item.actorNickname ? `#/u/${encodeURIComponent(item.actorNickname)}` : `#/user/${item.actorId}`; }
   if (item.targetType === 2) { return `#/post/${item.targetId}`; }
@@ -62,7 +62,7 @@ export function Notifications({ me }: { me: User | null }) {
     finally { setBusy(false); }
   }
   if (!me) { return <Empty title="Ваши уведомления" description="Войдите, чтобы видеть ответы и упоминания." action={<button className="button primary" onClick={requestLogin}>Войти</button>} />; }
-  return <><div className="page-heading"><div className="eyebrow">НА СВЯЗИ С СООБЩЕСТВОМ</div><h1>Уведомления</h1><p>Ответы, подписки и упоминания — всё здесь.</p></div>
+  return <><div className="page-heading"><h1>Уведомления</h1></div>
     {error && <ErrorBox message={error} retry={() => setRevision(value => value + 1)} />}
     {!data ? !error && <Loading /> : <>
       {data.total > 0 && <button className="text-button notification-read-all" disabled={busy} onClick={() => void read()}><CheckCheck size={17} />Прочитать все</button>}

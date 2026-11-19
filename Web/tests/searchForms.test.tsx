@@ -59,7 +59,7 @@ test("request errors can be retried and an empty later page has a path back to t
 test("blank search makes no request and unrecognised result kinds fall back to posts", async () => {
   let calls = 0; globalThis.fetch = async () => { calls++; return json(page([])); };
   render(<SearchResults {...props} search="  " />);
-  assert.ok(screen.getByText("С чего начнём?")); assert.equal(calls, 0);
+  assert.ok(screen.getByText("Введите запрос")); assert.equal(calls, 0);
   for (const kind of [null, "", "constructor", "__proto__", "unknown"]) { assert.equal(searchKind(kind), "posts"); }
   assert.equal(searchKind("communities"), "communities");
 });
@@ -76,7 +76,7 @@ test("a failed discussion tab stops loading and can retry without showing old re
   await waitFor(() => assert.ok(screen.getByText("Здесь ещё нет постов")));
   fireEvent.click(screen.getByText("Обсуждения"));
   await waitFor(() => assert.ok(screen.getByText("Обсуждения пока недоступны")));
-  assert.equal(screen.queryByText("Загружаем истории…"), null);
+  assert.equal(screen.queryByText("Загружаем…"), null);
   fail = false; fireEvent.click(screen.getByText(/Попробовать снова/));
   await waitFor(() => assert.ok(screen.getByText("Восстановленное обсуждение")));
   assert.equal(screen.queryByText("Обсуждения пока недоступны"), null);

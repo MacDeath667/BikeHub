@@ -144,7 +144,7 @@ export function PostDetail({
       </article>
       <section className="comments-section" id="comments">
         <h2>
-          Обсудим?<span className="count">{post.commentsCount}</span>
+          Комментарии<span className="count">{post.commentsCount}</span>
         </h2>
         {me && <ReplySelection comment={replyTo} cancel={() => setReplyTo(null)} />}
         {me ? <form ref={form} className="comment-form" onSubmit={submit}>

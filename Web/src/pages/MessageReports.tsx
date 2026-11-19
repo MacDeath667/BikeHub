@@ -16,7 +16,7 @@ export function MessageReports({ me }: { me: User | null }) {
     try { await api(path, { method, body: JSON.stringify(body) }); setRevision(v => v + 1); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
-  return <><a className="back-link" href="#/moderation">← Модерация публичных материалов</a><div className="page-heading"><div className="eyebrow">ОБРАЩЕНИЯ УЧАСТНИКОВ</div><h1>Жалобы на личные сообщения</h1><p>Здесь только выбранные заявителями сообщения. Остальная переписка недоступна.</p></div>
+  return <><a className="back-link" href="#/moderation">← Модерация публичных материалов</a><div className="page-heading"><h1>Жалобы на личные сообщения</h1><p>Здесь только выбранные заявителями сообщения. Остальная переписка недоступна.</p></div>
     <label>Результат рассмотрения<textarea maxLength={2000} value={resolution} disabled={busy} onChange={e => setResolution(e.target.value)} /></label>
     {error && <ErrorBox message={error} retry={() => setRevision(v => v + 1)} />}{!data ? !error && <Loading /> : <>
       {data.items.map(report => <section className="profile-card" key={report.id}><p>Заявитель: <PeerName peer={report.reporter} /></p><p>Отправитель: <PeerName peer={report.reportedUser} /></p>

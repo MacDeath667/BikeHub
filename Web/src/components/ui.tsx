@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ArrowRight, Bike as BikeIcon } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import type { User } from "../api";
 
 export function Avatar({
@@ -24,14 +24,13 @@ export function Empty({
   action,
 }: {
   title: string;
-  description: string;
+  description?: string;
   action?: ReactNode;
 }) {
   return (
     <div className="empty">
-      <BikeIcon size={38} strokeWidth={1.4} />
       <h3>{title}</h3>
-      <p>{description}</p>
+      {description && <p>{description}</p>}
       {action}
     </div>
   );
@@ -40,7 +39,7 @@ export function Loading() {
   return (
     <div className="loading" role="status">
       <span className="spinner" />
-      Загружаем истории…
+      Загружаем…
     </div>
   );
 }

@@ -2,12 +2,10 @@ import { userHref } from "./api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
-  ArrowUpRight,
   Bike as BikeIcon,
   Bookmark,
   CalendarDays,
   Check,
-  ChevronDown,
   ChevronRight,
   Compass,
   House,
@@ -16,7 +14,6 @@ import {
   MessageCircle,
   LogOut,
   MailCheck,
-  Mountain,
   Search,
   Settings as SettingsIcon,
   Users,
@@ -202,13 +199,12 @@ export default function App() {
       <aside id="main-sidebar" ref={sidebar} className={`sidebar ${mobileOpen ? "open" : ""}`} inert={mobile && !mobileOpen}
         role={mobile && mobileOpen ? "dialog" : undefined} aria-modal={mobile && mobileOpen ? true : undefined} aria-label="Меню BikeHub" tabIndex={-1}>
         <button type="button" className="icon-button mobile-menu-close" aria-label="Закрыть меню" onClick={closeMobile}><X size={22} /></button>
-        <a className="brand" href="#/" aria-label="BikeHub — на главную">
+        <a className="brand" href="#/" aria-label="На главную BikeHub">
           <span className="brand-mark">
             <img src="./brand/bikehub-mark-light.svg?v=3" width="36" height="36" alt="" />
           </span>
           bikehub<span className="brand-dot">.</span>
         </a>
-        <div className="sidebar-label">МЕСТО ДЛЯ СВОИХ</div>
         <nav className="main-nav" aria-label="Основная навигация">
           {nav.map((item) => (
             <a
@@ -225,7 +221,6 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-divider" />
-        <div className="sidebar-label garage-label">МОЁ ПРОСТРАНСТВО</div>
         <a
           href="#/garage"
           className={`garage-link ${section === "garage" ? "active" : ""}`}
@@ -244,27 +239,7 @@ export default function App() {
           </a>
         )}
         {me && <a href="#/settings" className={`garage-link ${section === "settings" ? "active" : ""}`}><SettingsIcon size={19} />Настройки<ChevronRight size={16} /></a>}
-        <div className="sidebar-invite">
-          <span className="invite-icon">
-            <Mountain size={25} strokeWidth={1.3} />
-          </span>
-          <h3>
-            Дорога интереснее
-            <br />в хорошей компании
-          </h3>
-          <p>
-            Найдите тех, кто разделяет
-            <br />
-            ваш ритм.
-          </p>
-          <a href="#/communities">
-            Найти сообщество <ArrowUpRight size={16} />
-          </a>
-        </div>
-        <div className="sidebar-bottom">
-          <span className="online-dot" /> Крутим педали вместе{" "}
-          <span>© 2026 BikeHub</span>
-        </div>
+        <div className="sidebar-bottom">© 2026 BikeHub</div>
       </aside>
 
       <div className="workspace" inert={mobile && mobileOpen}>
@@ -280,7 +255,6 @@ export default function App() {
             <Menu size={22} />
           </button>
           <div className="topbar-breadcrumb">
-            Сообщество <ChevronRight size={14} />
             <span>
               {(
                 {
@@ -324,10 +298,7 @@ export default function App() {
           <div className="topbar-right">
             {me && <NotificationBell key={me.id} userId={me.id} />}
             <ThemePicker />
-            <span className="demo-label">
-              <span />
-              Бета
-            </span>
+            <span className="demo-label">Бета</span>
             {me && (
               <>
               <a
@@ -338,7 +309,6 @@ export default function App() {
                 <Avatar user={me} small />
                 <span>{me.name.split(" ")[0]}</span>
                 {authSession?.emailConfirmed && <MailCheck size={15} aria-label="Почта подтверждена" />}
-                <ChevronDown size={14} />
               </a>
               <button className="icon-button" aria-label="Выйти из аккаунта" title="Выйти" onClick={logout}><LogOut size={18} /></button>
               </>
@@ -476,12 +446,6 @@ export default function App() {
                   onCreate={() => create("bike")}
                 />}
               </div>
-              <footer className="page-footer">
-                <span>У каждого велосипеда своя история.</span>
-                <span>
-                  Сделано для тех, кто едет <BikeIcon size={15} />
-                </span>
-              </footer>
             </>
           )}
         </main>
@@ -491,7 +455,7 @@ export default function App() {
         close={() => { setAuthOpen(false); setAfterAuth(null); }}
         onSuccess={(session) => {
           setAuthSession(session); setMe(session.user); setAuthOpen(false);
-          setModal(afterAuth); setAfterAuth(null); reload(); notify("Почта подтверждена. Добро пожаловать!");
+          setModal(afterAuth); setAfterAuth(null); reload(); notify("Вход выполнен");
         }} />}
       {modal && me && me.handle && (
         <CreateModal
@@ -506,7 +470,7 @@ export default function App() {
             navigate(type === "post" ? `/post/${id}` : `/bike/${id}`);
             notify(
               type === "post"
-                ? "Запись опубликована. История продолжается!"
+                ? "Запись опубликована"
                 : "Велосипед добавлен в ваш гараж",
             );
           }}

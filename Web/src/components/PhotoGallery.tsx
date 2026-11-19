@@ -17,7 +17,7 @@ export function PhotoGallery({ photos, fallback, title, className = "" }: {
   }, [expanded]);
   return <div className={`photo-gallery ${className}`}>
     <button type="button" className="gallery-main" onClick={() => setExpanded(true)} aria-label={`Открыть фото: ${title}`}>
-      <img src={items[current].imageUrl} alt={`${title} — фото ${current + 1}`} />
+      <img src={items[current].imageUrl} alt={`${title}, фото ${current + 1}`} />
       <span className="gallery-expand"><Expand size={16} />{items.length > 1 && `${current + 1} / ${items.length}`}</span>
     </button>
     {items.length > 1 && <div className="gallery-thumbnails" aria-label="Выбор фотографии">
@@ -30,7 +30,7 @@ export function PhotoGallery({ photos, fallback, title, className = "" }: {
       onClick={event => { if (event.target === event.currentTarget) setExpanded(false); }}
       onKeyDown={event => { if (event.key === "ArrowLeft") { event.preventDefault(); move(-1); } if (event.key === "ArrowRight") { event.preventDefault(); move(1); } }}>
       <button type="button" className="lightbox-close" onClick={() => setExpanded(false)} aria-label="Закрыть фотографию"><X /></button>
-      <img src={items[current].imageUrl} alt={`${title} — фото ${current + 1}`} />
+      <img src={items[current].imageUrl} alt={`${title}, фото ${current + 1}`} />
       <div className="lightbox-controls">
         <button type="button" disabled={items.length < 2} onClick={() => move(-1)} aria-label="Предыдущее фото"><ChevronLeft /></button>
         <span>{current + 1} / {items.length}</span>

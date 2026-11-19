@@ -47,7 +47,7 @@ function StartConversation({ userId }: { userId: string }) {
     if (active) { if (value.conversationId) window.location.hash = `/message/${value.conversationId}`; else setTarget(value); }
   }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [userId, retry]);
   if (!target) return error ? <ErrorBox message={error} retry={() => setRetry(v => v + 1)} /> : <Loading />;
-  return <section className="messaging-page"><a className="back-link" href="#/messages">← Сообщения</a><div className="page-heading"><div className="eyebrow">ЗАПРОС НА ПЕРЕПИСКУ</div><h1>Написать участнику</h1><div className="message-recipient"><PeerAvatar peer={target.peer} /><PeerName peer={target.peer} /></div><p>Отправьте одно сообщение с причиной обращения. Продолжить можно после согласия собеседника.</p></div>
+  return <section className="messaging-page"><a className="back-link" href="#/messages">← Сообщения</a><div className="page-heading"><h1>Написать участнику</h1><div className="message-recipient"><PeerAvatar peer={target.peer} /><PeerName peer={target.peer} /></div><p>Отправьте одно сообщение с причиной обращения. Продолжить можно после согласия собеседника.</p></div>
     {error && <ErrorBox message={error} />}{existing && <a className="button secondary" href={`#/message/${existing}`}>Открыть существующую переписку</a>}
     {target.canRequest ? <form className="profile-card group-editor" onSubmit={async e => { e.preventDefault(); if (submitting.current || !text.trim() || existing) return; submitting.current = true; setBusy(true); setError(""); const body = prepareMessage(pending.current, text); pending.current = body;
       try { const conversation = await api<Conversation>("/messages/conversations", { method: "POST", body: JSON.stringify({ userId, ...body }) }); pending.current = null; notifyMessagesChanged(); window.location.hash = `/message/${conversation.id}`; }
@@ -66,7 +66,7 @@ function Inbox() {
     void load(); const timer = window.setInterval(() => { if (!document.hidden) void load(); }, 30000); const focus = () => { if (!document.hidden) void load(); }; window.addEventListener("focus", focus);
     return () => { active = false; window.clearInterval(timer); window.removeEventListener("focus", focus); };
   }, [tab, page, revision]);
-  return <section className="messaging-page"><div className="page-heading"><div className="eyebrow">НА СВЯЗИ</div><h1>Личные сообщения</h1><p>Диалоги, новые знакомства и ваши велосипедные планы.</p></div>
+  return <section className="messaging-page"><div className="page-heading"><h1>Личные сообщения</h1></div>
     <div className="content-tools message-tabs" role="group" aria-label="Раздел сообщений">{[{ id: "inbox", name: "Диалоги", icon: MessageCircle }, { id: "requests", name: "Запросы", icon: InboxIcon }, { id: "archive", name: "Архив", icon: Archive }, { id: "blocks", name: "Блокировки", icon: ShieldCheck }].map(item => <button className={`button ${tab === item.id ? "primary" : "secondary"}`} key={item.id} aria-pressed={tab === item.id} onClick={() => { setTab(item.id); setPage(1); }}><item.icon size={17} aria-hidden="true" />{item.name}</button>)}</div>
     {tab === "blocks" ? <BlockedContacts /> : <>{error && <ErrorBox message={error} retry={() => setRevision(v => v + 1)} />}{!data ? !error && <Loading /> : <>
       {!!data.items.length && <div className="conversation-list">{data.items.map(conversation => <a className={`conversation-card${conversation.unreadCount ? " unread" : ""}`} href={`#/message/${conversation.id}`} key={conversation.id}>

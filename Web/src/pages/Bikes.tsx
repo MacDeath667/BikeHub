@@ -75,15 +75,7 @@ export function BikeDirectory({
   return (
     <>
       <div className="page-heading">
-        <div className="eyebrow">
-          {garage ? "ЛИЧНАЯ КОЛЛЕКЦИЯ" : "КАЖДЫЙ СО СВОИМ ХАРАКТЕРОМ"}
-        </div>
-        <h1>{garage ? "Мой гараж" : "Дело в велосипеде."}</h1>
-        <p>
-          {garage
-            ? "Ваши велосипеды, километры и история каждого изменения."
-            : "Знакомьтесь с велосипедами и теми, кто на них ездит."}
-        </p>
+        <h1>{garage ? "Мой гараж" : "Велосипеды"}</h1>
         <button className="button primary heading-action" onClick={onCreate}>
           <Plus size={17} />
           Добавить велосипед
@@ -120,8 +112,8 @@ export function BikeDirectory({
         <Empty
           title={
             garage
-              ? "Освободите место для первой истории"
-              : "Такой велосипед ещё не приехал"
+              ? "Гараж пуст"
+              : "Велосипеды не найдены"
           }
           description={
             garage

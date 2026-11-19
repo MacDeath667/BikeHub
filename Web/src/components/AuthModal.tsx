@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { ArrowLeft, ArrowRight, Check, Mail, X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { api } from "../api";
 import type { AuthSession } from "../api";
 
@@ -107,22 +107,13 @@ export function AuthModal({ session, close, onSuccess }: {
   }
 
   return <dialog ref={dialog} className="auth-dialog" aria-labelledby="auth-title"
-    onCancel={(event) => { event.preventDefault(); if (!busy) close(); }}
-    onClick={(event) => {
-      if (busy || event.target !== event.currentTarget) return;
-      const bounds = event.currentTarget.getBoundingClientRect();
-      if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) close();
-    }}>
+    onCancel={(event) => { event.preventDefault(); if (!busy) close(); }}>
     <button className="icon-button auth-close" aria-label="Закрыть окно входа" disabled={busy} onClick={close}><X size={20} /></button>
-    <div className="auth-symbol"><Mail size={28} strokeWidth={1.5} /></div>
-    <div className="eyebrow">ВАШЕ МЕСТО В BIKEHUB</div>
     <h2 id="auth-title">{challenge ? "Проверьте почту" : registering ? "Регистрация в BikeHub" : "Вход в BikeHub"}</h2>
-    {!session?.enabled ? <p className="auth-description">Вход временно недоступен. Попробуйте позже — истории и велосипеды доступны без регистрации.</p> : <>
+    {!session?.enabled ? <p className="auth-description">Вход временно недоступен. Попробуйте позже.</p> : <>
       <p className="auth-description">{challenge
-        ? <>Введите код из письма на <strong>{email}</strong>. Он подтвердит вашу почту и откроет аккаунт.</>
-        : registering
-          ? "Создайте аккаунт по почте. Отправим код для подтверждения — пароль не нужен."
-          : "Укажите почту вашего аккаунта. Отправим одноразовый код для входа — пароль не нужен."}</p>
+        ? <>Код для <strong>{email}</strong>.</>
+        : "Отправим код на почту. Пароль не нужен."}</p>
       {!challenge ? <form className="auth-form" onSubmit={send}>
         <label htmlFor="auth-email">Ваша почта</label>
         <input id="auth-email" type="email" autoComplete="email" placeholder="you@example.com" required maxLength={254}
@@ -130,19 +121,18 @@ export function AuthModal({ session, close, onSuccess }: {
         {registering && <>
         <label htmlFor="auth-nickname">Ник</label>
         <input id="auth-nickname" required minLength={3} maxLength={32} pattern="[a-zA-Z0-9_]{3,32}" autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="Например, gravel_rider" value={nickname} disabled={busy} onChange={event => setNickname(event.target.value)} />
-        <p className="auth-name-hint">Уникальный @ник: латинские буквы, цифры и подчёркивание. Выбирается один раз; по нему вас смогут упоминать.</p>
+        <p className="auth-name-hint">Уникальный ник: от 3 до 32 латинских букв, цифр или подчёркиваний. Ник нельзя изменить.</p>
         <label htmlFor="auth-name">Как к вам обращаться <span>необязательно</span></label>
-        <input id="auth-name" aria-describedby="auth-name-hint" autoComplete="nickname" placeholder="Имя для профиля" minLength={2} maxLength={60}
+        <input id="auth-name" autoComplete="nickname" minLength={2} maxLength={60}
           value={name} disabled={busy} onChange={(event) => setName(event.target.value)} />
-        <p id="auth-name-hint" className="auth-name-hint">Укажите имя для нового профиля. Уже зарегистрированы? Перейдите ко входу.</p>
         </>}
-        <button className="button primary" disabled={busy}>{busy ? "Отправляем…" : "Получить код"}<ArrowRight size={17} /></button>
+        <button className="button primary" disabled={busy}>{busy ? "Отправляем…" : "Получить код"}</button>
       </form> : <form className="auth-form" onSubmit={verify}>
         <label htmlFor="auth-code">Код из письма</label>
         <input ref={codeInput} id="auth-code" className="auth-code" inputMode="numeric" autoComplete="one-time-code"
           pattern="[0-9]{6}" maxLength={6} required placeholder="000000" value={code} disabled={busy}
           onChange={(event) => setCode(event.target.value.replace(/[^0-9]/g, ""))} />
-        <button className="button primary" disabled={busy || code.length !== 6 || deliveryStatus === "expired"}>{busy ? "Проверяем…" : registering ? "Подтвердить и зарегистрироваться" : "Войти"}<Check size={17} /></button>
+        <button className="button primary" disabled={busy || code.length !== 6 || deliveryStatus === "expired"}>{busy ? "Проверяем…" : registering ? "Подтвердить и зарегистрироваться" : "Войти"}</button>
         <div className="auth-secondary">
           <button type="button" disabled={busy} onClick={() => { setChallenge(null); setError(""); setDevCode(""); }}><ArrowLeft size={14} /> {registering ? "Изменить почту или ник" : "Другая почта"}</button>
           <button type="button" disabled={busy || (remaining > 0 && deliveryStatus !== "expired")} onClick={() => {
@@ -157,7 +147,7 @@ export function AuthModal({ session, close, onSuccess }: {
         </button>
       </div>
       {challenge && <p className={deliveryStatus === "failed" || deliveryStatus === "expired" ? "auth-error" : "auth-footnote"} role="status">
-        {deliveryStatus === "sent" ? "Почтовый сервис отправил письмо. Если его нет, проверьте папку «Спам». Повтор не создаст дубликат." :
+        {deliveryStatus === "sent" ? "Почтовый сервис отправил письмо. Если его нет, проверьте папку «Спам»." :
           deliveryStatus === "failed" ? "Почтовый сервис не смог отправить письмо. Запросите новый код." :
           deliveryStatus === "expired" ? "Срок действия кода истёк. Вернитесь к форме и запросите новый код." :
           deliveryStatus === "unknown" ? "Результат отправки неизвестен. Если письмо пришло, код можно использовать." :

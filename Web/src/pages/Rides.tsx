@@ -28,7 +28,7 @@ export function Rides({ me, groupId }: { me: User | null; groupId?: string | nul
       .then(result => { if (active) setData(result); }).catch(e => { if (active) setError(e.message); });
     return () => { active = false; };
   }, [filter, mine, past, page, groupId, retry]);
-  return <><div className="page-heading"><div className="eyebrow">ВМЕСТЕ ИНТЕРЕСНЕЕ</div><h1>Покатушки</h1><p>Найдите компанию, договоритесь о темпе и встречайтесь на старте.</p></div>
+  return <><div className="page-heading"><h1>Покатушки</h1></div>
     <div className="content-tools"><button className="button primary" onClick={() => { if (!me) requestLogin(); else window.location.hash = `/ride/new${groupId ? `?group=${groupId}` : ""}`; }}>Организовать покатушку</button>{groupId && <a className="text-button" href="#/rides">Все сообщества</a>}</div>
     <form className="directory-search search-form" onSubmit={e => { e.preventDefault(); setFilter(city.trim()); setPage(1); }}><label>Город<CityInput value={city} onValueChange={setCity} placeholder="Любой город" /></label><button className="text-button">Найти</button></form>
     <div className="content-tools ride-filters"><label><input type="checkbox" checked={mine} onChange={e => { if (!me) { requestLogin(); return; } setMine(e.target.checked); setPage(1); }} />Мои покатушки</label><label><input type="checkbox" checked={past} onChange={e => { setPast(e.target.checked); setPage(1); }} />Прошедшие</label></div>

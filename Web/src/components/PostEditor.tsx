@@ -54,12 +54,11 @@ export function PostEditor({ value, onChange, photos, onPhotosChange, onBusy, di
       <button type="button" className="post-preview-toggle" aria-expanded={preview} aria-controls={`${id}-preview`} onClick={() => setPreview(value => !value)}><Eye size={17} /><span>Предпросмотр</span></button>
     </div>
     {picking && <div className="post-image-picker" id={`${id}-photos`}>
-      <p>Выберите фото — оно появится в позиции курсора.</p>
+      <p>Фото появится в позиции курсора.</p>
       <div className="post-image-options">{photos.filter(photo => !used.has(photo.id.toLowerCase())).map((photo, index) => <button type="button" key={photo.id} disabled={disabled} onClick={() => insert(photo)} aria-label={`Вставить фотографию ${index + 1}`}><img src={photo.imageUrl} alt="" /></button>)}</div>
       <button type="button" className="text-button" onClick={() => { attachments.current?.scrollIntoView({ behavior: "smooth", block: "center" }); attachments.current?.querySelector<HTMLButtonElement>(".photo-dropzone")?.focus(); }}>Загрузить фотографии ↓</button>
     </div>}
     <MentionTextarea textareaRef={textarea} id={id} name="content" required minLength={minLength} maxLength={maximumPostLength} rows={9} value={value} disabled={disabled}
-      placeholder="Поделитесь деталями. Выделите текст и выберите форматирование."
       onSelect={rememberSelection} onBlur={rememberSelection} onValueChange={text => { onChange(text); setError(""); }}
       onKeyDown={event => {
         if ((event.ctrlKey || event.metaKey) && !event.altKey) {
@@ -67,7 +66,7 @@ export function PostEditor({ value, onChange, photos, onPhotosChange, onBusy, di
           if (marker) { event.preventDefault(); rememberSelection(); format(marker); }
         }
       }} />
-    <div className="post-editor-hint"><span>Выделите текст для форматирования. Фото в тексте не повторяются в галерее.</span><span>{value.length} / {maximumPostLength}</span></div>
+    <div className="post-editor-hint"><span>Фото в тексте не повторяются в галерее.</span><span>{value.length} / {maximumPostLength}</span></div>
     {error && <p role="alert" className="auth-error">{error}</p>}
     {preview && <section id={`${id}-preview`} className="post-editor-preview" aria-label="Предпросмотр записи"><strong>Предпросмотр</strong>{value.trim() ? <PostText content={value} photos={photos} /> : <p className="muted">Здесь появится ваша история.</p>}</section>}
     <div ref={attachments}><PhotoCollection photos={photos} onChange={changePhotos} onBusy={onBusy} disabled={disabled} onInsert={insert} inlineIds={used} /></div>
