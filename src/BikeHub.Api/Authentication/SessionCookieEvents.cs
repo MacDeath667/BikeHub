@@ -30,6 +30,20 @@ public sealed class SessionCookieEvents(IAuthenticationStore store, TimeProvider
             else
             {
                 context.HttpContext.Items[typeof(AuthSession)] = session;
+                if (!Enum.IsDefined(session.Account.Role))
+                {
+                    context.RejectPrincipal();
+                    context.HttpContext.Items.Remove(typeof(AuthSession));
+                    return;
+                }
+                if (context.Principal?.Identity is ClaimsIdentity identity)
+                {
+                    foreach (var claim in identity.FindAll(ClaimTypes.Role).ToArray())
+                    {
+                        identity.RemoveClaim(claim);
+                    }
+                    identity.AddClaim(new Claim(ClaimTypes.Role, session.Account.Role.ToString()));
+                }
             }
         }
         catch (DbException error)

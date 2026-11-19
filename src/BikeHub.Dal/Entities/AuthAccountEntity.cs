@@ -7,6 +7,7 @@ public sealed class AuthAccountEntity
     public string Bio { get; set; } = string.Empty;
     public Guid? AvatarId { get; set; }
     public bool IsBlocked { get; set; }
+    public AccountRole Role { get; set; }
     public Guid Id { get; set; }
     public string Email { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;

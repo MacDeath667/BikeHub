@@ -14,7 +14,7 @@ export function Settings({ me, maskedEmail, account }: { me: User | null; masked
   return <>
     <a className="back-link" href="#/settings"><ArrowLeft size={16} />Настройки</a>
     <div className="page-heading"><h1>Аккаунт</h1></div>
-    <section className="profile-card settings-account"><h2>Данные аккаунта</h2><dl><dt>Ник</dt><dd>{me.handle ? `@${me.handle}` : "Ещё не выбран"}</dd><dt>Почта</dt><dd>{maskedEmail || "Подтверждена"}</dd></dl>
+    <section className="profile-card settings-account"><h2>Данные аккаунта</h2><dl><dt>Ник</dt><dd>{me.handle ? `@${me.handle}` : "Ещё не выбран"}</dd><dt>Почта</dt><dd>{maskedEmail || "Подтверждена"}</dd><dt>Роль</dt><dd>{me.isAdmin ? "Администратор" : me.isModerator ? "Модератор" : "Участник"}</dd></dl>
       <a className="text-button" href={userHref(me)}>Открыть профиль</a>
     </section>
     <section className="profile-card settings-account-management"><h2>Управление аккаунтом</h2><p className="form-hint">Удаление аккаунта и связанных с ним данных.</p><AccountDeletion key={me.id} userId={me.id} /></section>

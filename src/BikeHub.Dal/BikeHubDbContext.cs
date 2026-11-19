@@ -51,11 +51,13 @@ public sealed class BikeHubDbContext(DbContextOptions<BikeHubDbContext> options)
         {
             table.HasCheckConstraint("auth_accounts_email_check", "length(email) <= 254");
             table.HasCheckConstraint("auth_accounts_display_name_check", "length(display_name) BETWEEN 1 AND 60");
+            table.HasCheckConstraint("auth_accounts_role_check", "role IN (0, 1, 2)");
         });
         accounts.HasKey(x => x.Id).HasName("auth_accounts_pkey");
         accounts.Property(x => x.Id).ValueGeneratedNever();
         accounts.HasAlternateKey(x => x.Email).HasName("auth_accounts_email_key");
         accounts.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+        accounts.Property(x => x.Role).HasDefaultValue(AccountRole.Member);
         accounts.Property(x => x.PhoneNumber).HasColumnName("phone_e164");
         accounts.HasIndex(x => x.PhoneNumber).IsUnique().HasDatabaseName("ix_auth_accounts_phone")
             .HasFilter("phone_e164 IS NOT NULL");

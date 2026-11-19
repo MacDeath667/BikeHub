@@ -13,6 +13,7 @@ export interface User {
   postsCount: number;
   avatarUrl?: string | null;
   isModerator?: boolean;
+  isAdmin?: boolean;
 }
 export interface AuthSession {
   user: User | null;

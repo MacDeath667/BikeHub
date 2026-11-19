@@ -2,6 +2,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
 using BikeHub.Dal;
+using BikeHub.Dal.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace BikeHub.Api.Authentication;
@@ -134,8 +135,12 @@ public static class AuthenticationExtensions
             options.EventsType = typeof(SessionCookieEvents);
         });
         builder.Services.AddAuthorization(options =>
+        {
             options.DefaultPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder(Constants.AuthenticationScheme)
-                .RequireAuthenticatedUser().RequireClaim(Constants.Claims.EmailVerified, Constants.Claims.VerifiedValue).Build());
+                .RequireAuthenticatedUser().RequireClaim(Constants.Claims.EmailVerified, Constants.Claims.VerifiedValue).Build();
+            options.AddPolicy(Constants.AdminPolicy, new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder(options.DefaultPolicy)
+                .RequireRole(nameof(AccountRole.Admin)).Build());
+        });
         builder.Services.AddAntiforgery(options =>
         {
             options.HeaderName = CsrfHeaderName;

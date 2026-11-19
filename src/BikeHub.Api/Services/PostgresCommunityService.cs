@@ -19,7 +19,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     private const string OwnBikeTitle = "Выберите велосипед из своего гаража.";
     private const string RequiredTitle = "Заполните обязательное поле.";
     private const string MaterialTypeTitle = "Укажите тип материала.";
-    private const string ProtectedModeratorTitle = "Нельзя заблокировать модератора.";
+    private const string ProtectedStaffTitle = "Нельзя заблокировать администратора или модератора.";
     private const string InvalidPhotosTitle = "Выберите до 10 разных фотографий.";
     private const string MissingTitle = "Материал не найден.";
     private const string OwnContentTitle = "Изменять можно только свои материалы.";
@@ -31,7 +31,8 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     private readonly string[] moderators = (configuration.GetSection("Moderation:ModeratorEmails").Get<string[]>() ?? [])
         .Select(x => x.Trim().ToLowerInvariant()).ToArray();
     private Guid? Viewer => current.Id;
-    public bool IsModerator => current.Account is { } account && moderators.Contains(account.Email);
+    public bool IsModerator => current.Account is { IsBlocked: false } account &&
+        (account.Role is AccountRole.Moderator or AccountRole.Admin || moderators.Contains(account.Email));
     private AuthAccount Actor() => current.Account ?? throw new CommunityProblem(401, SignInTitle);
 
     internal IQueryable<UserDto> Users(BikeHubDbContext db) => db.Accounts.AsNoTracking().Where(a => !a.IsBlocked)
@@ -49,7 +50,8 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
             BikesCount = db.Bikes.Count(b => b.OwnerId == a.Id && !b.IsDeleted && !b.IsHidden),
             PostsCount = db.Posts.Count(p => p.AuthorId == a.Id && !p.IsDeleted && !p.IsHidden && db.Bikes.Any(b => b.Id == p.BikeId && !b.IsDeleted && !b.IsHidden)),
             AvatarUrl = a.AvatarId.HasValue ? Constants.MediaPathPrefix + a.AvatarId.Value.ToString() : null,
-            IsModerator = moderators.Contains(a.Email)
+            IsModerator = a.Role == AccountRole.Moderator || a.Role == AccountRole.Admin || moderators.Contains(a.Email),
+            IsAdmin = a.Role == AccountRole.Admin
         });
 
     private IQueryable<BikeDto> Bikes(BikeHubDbContext db) =>
@@ -651,12 +653,13 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     {
         RequireModerator();
         using var db = contexts.CreateDbContext();
-        var account = db.Accounts.SingleOrDefault(a => a.Id == id) ?? throw new CommunityProblem(404, MissingTitle);
-        if (id == Actor().Id || moderators.Contains(account.Email))
-        {
-            throw new CommunityProblem(409, ProtectedModeratorTitle);
-        }
         using var transaction = db.Database.BeginTransaction();
+        var account = db.Accounts.FromSqlInterpolated($"SELECT * FROM auth_accounts WHERE id = {id} FOR UPDATE")
+            .SingleOrDefault() ?? throw new CommunityProblem(404, MissingTitle);
+        if (id == Actor().Id || account.Role is AccountRole.Moderator or AccountRole.Admin || moderators.Contains(account.Email))
+        {
+            throw new CommunityProblem(409, ProtectedStaffTitle);
+        }
         account.IsBlocked = blocked; db.SaveChanges();
         if (blocked)
         {

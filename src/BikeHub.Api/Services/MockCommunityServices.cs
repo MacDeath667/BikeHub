@@ -1,5 +1,6 @@
 using BikeHub.Api.Authentication;
 using BikeHub.Application.Community;
+using BikeHub.Dal.Entities;
 
 namespace BikeHub.Api.Services;
 
@@ -216,7 +217,12 @@ public sealed class MockUserService(MockCommunityStore store, ICurrentUser curre
     public UserDto GetCurrentUser()
     {
         var account = current.Account ?? throw new UnauthorizedAccessException();
-        return store.EnsureUser(account.Id, account.DisplayName) with { Handle = account.Nickname ?? string.Empty };
+        return store.EnsureUser(account.Id, account.DisplayName) with
+        {
+            Handle = account.Nickname ?? string.Empty,
+            IsModerator = account.Role is AccountRole.Moderator or AccountRole.Admin,
+            IsAdmin = account.Role == AccountRole.Admin
+        };
     }
 
     public async Task<UserDto?> GetUserAsync(Guid id, CancellationToken cancellationToken = default)

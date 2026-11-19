@@ -174,6 +174,12 @@ namespace BikeHub.Dal.Migrations
                         .HasColumnType("text")
                         .HasColumnName("phone_e164");
 
+                    b.Property<int>("Role")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("role");
+
                     b.HasKey("Id")
                         .HasName("auth_accounts_pkey");
 
@@ -197,6 +203,8 @@ namespace BikeHub.Dal.Migrations
                             t.HasCheckConstraint("auth_accounts_display_name_check", "length(display_name) BETWEEN 1 AND 60");
 
                             t.HasCheckConstraint("auth_accounts_email_check", "length(email) <= 254");
+
+                            t.HasCheckConstraint("auth_accounts_role_check", "role IN (0, 1, 2)");
                         });
                 });
 

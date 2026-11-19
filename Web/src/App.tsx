@@ -16,6 +16,7 @@ import {
   MailCheck,
   Search,
   Settings as SettingsIcon,
+  ShieldCheck,
   Users,
   X,
 } from "lucide-react";
@@ -35,6 +36,7 @@ import { UserProfile } from "./pages/UserProfile";
 import { Moderation } from "./pages/Moderation";
 import { CommunityDetail, GroupEntryDetail } from "./pages/CommunityDetail";
 import { Settings } from "./pages/Settings";
+import { Admin } from "./pages/Admin";
 import { Communities } from "./pages/Communities";
 import { Rides, RideDetail } from "./pages/Rides";
 import { RouteLibrary, LibraryRouteDetail } from "./pages/RouteLibrary";
@@ -239,6 +241,7 @@ export default function App() {
           </a>
         )}
         {me && <a href="#/settings" className={`garage-link ${section === "settings" ? "active" : ""}`}><SettingsIcon size={19} />Настройки<ChevronRight size={16} /></a>}
+        {me?.isAdmin && <a href="#/admin" className={`garage-link ${section === "admin" ? "active" : ""}`} aria-label="Администрирование"><ShieldCheck size={19} />Админка<ChevronRight size={16} /></a>}
         <div className="sidebar-bottom">© 2026 BikeHub</div>
       </aside>
 
@@ -277,6 +280,7 @@ export default function App() {
                   user: "Профиль",
                   u: "Профиль",
                   settings: "Настройки",
+                  admin: "Администрирование",
                   post: "История",
                   notifications: "Уведомления",
                   search: "Поиск",
@@ -382,6 +386,7 @@ export default function App() {
                     />
                   )}
                   {section === "settings" && <Settings me={me} maskedEmail={authSession?.maskedEmail || null} account={path.split("/")[2] === "account"} />}
+                  {section === "admin" && <Admin key={me?.id || "guest"} me={me} />}
                   {section === "moderation" && <Moderation key={me?.id || "guest"} me={me} />}
                   {section === "notifications" && <Notifications key={me?.id || "guest"} me={me} />}
                   {section === "community" && <CommunityDetail key={`${path}-${searchQuery}-${me?.id || "guest"}`} id={path.split("/")[2]} me={me} reload={reload} search={searchQuery} />}
@@ -416,6 +421,7 @@ export default function App() {
                       "group-entry",
                       "moderation",
                       "settings",
+                      "admin",
                       "notifications",
                       "rides",
                       "ride",

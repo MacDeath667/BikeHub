@@ -8,14 +8,30 @@ using BikeHub.Dal;
 using Microsoft.EntityFrameworkCore;
 
 var migrationsOnly = args.Contains(Constants.MigrateOnlyArgument, StringComparer.Ordinal);
+var grantAdmin = args.Contains(Constants.GrantAdminArgument, StringComparer.Ordinal);
+string? adminEmail = null;
+if (grantAdmin)
+{
+    try
+    {
+        adminEmail = AdminAccountCommand.ParseEmail(args);
+    }
+    catch (ArgumentException error)
+    {
+        Console.Error.WriteLine(error.Message);
+        Environment.ExitCode = 2;
+        return;
+    }
+}
+var maintenanceOnly = migrationsOnly || grantAdmin;
 var builder = WebApplication.CreateBuilder(
-    args.Where(argument => !string.Equals(argument, Constants.MigrateOnlyArgument, StringComparison.Ordinal)).ToArray());
+    grantAdmin ? [] : args.Where(argument => !string.Equals(argument, Constants.MigrateOnlyArgument, StringComparison.Ordinal)).ToArray());
 
 var bootstrapEnabled = builder.Configuration.GetValue(Program.DatabaseBootstrapEnabledKey, true);
 var migrationsEnabled = builder.Configuration.GetValue(Program.DatabaseMigrationsEnabledKey, true);
 builder.AddBikeHubDatabase();
 
-if (!migrationsOnly)
+if (!maintenanceOnly)
 {
     builder.Services.AddControllers(options => options.Filters.Add<CsrfValidationFilter>());
     builder.Services.AddScoped<PostgresCommunityService>();
@@ -63,7 +79,7 @@ if (!migrationsOnly)
 
 
 var app = builder.Build();
-if (!migrationsOnly)
+if (!maintenanceOnly)
 {
     app.UseForwardedHeaders();
 }
@@ -71,7 +87,7 @@ if (!migrationsOnly)
 app.UseMiddleware<StatisticsMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-if (!migrationsOnly && app.Environment.IsDevelopment())
+if (!maintenanceOnly && app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
@@ -92,7 +108,21 @@ if (migrationsOnly || migrationsEnabled)
 }
 
 
-if (migrationsOnly)
+if (grantAdmin)
+{
+    try
+    {
+        var result = await AdminAccountCommand.GrantAsync(app.Services.GetRequiredService<IDbContextFactory<BikeHubDbContext>>(),
+            adminEmail!, CancellationToken.None);
+        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new { result.AccountId, Role = result.Role.ToString(), result.Changed }));
+    }
+    catch (AdminAccountCommandException error)
+    {
+        Console.Error.WriteLine(error.Message);
+        Environment.ExitCode = 1;
+    }
+}
+if (maintenanceOnly)
 {
     return;
 }

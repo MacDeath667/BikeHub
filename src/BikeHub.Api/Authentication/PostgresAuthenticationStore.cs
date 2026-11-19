@@ -227,5 +227,5 @@ public sealed class PostgresAuthenticationStore(IDbContextFactory<BikeHubDbConte
     }
 
     private static AuthAccount MapAccount(AuthAccountEntity value) =>
-        new(value.Id, value.Email, value.DisplayName, value.EmailConfirmedAt, value.IsBlocked, value.Handle);
+        new(value.Id, value.Email, value.DisplayName, value.EmailConfirmedAt, value.IsBlocked, value.Handle, value.Role);
 }

@@ -11,6 +11,8 @@ internal static class Constants
     public const string VerificationEmailSubject = "Код для входа в BikeHub";
     public const string AuthenticationUnavailableTitle = "Вход пока недоступен.";
     public const string MigrateOnlyArgument = "--migrate-only";
+    public const string GrantAdminArgument = "--grant-admin";
+    public const string AdminPolicy = "admin";
     public const string MediaPathPrefix = BikeHub.Application.Constants.MediaPathPrefix;
     public const string IndexDocument = "index.html";
     public const int MaximumEmailLength = 254;

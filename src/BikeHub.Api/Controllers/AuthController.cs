@@ -220,6 +220,7 @@ public sealed class AuthController(EmailAuthenticationService authentication, IA
         {
             new Claim(ClaimTypes.NameIdentifier, session.Account.Id.ToString()),
             new Claim(ClaimTypes.Name, session.Account.DisplayName),
+            new Claim(ClaimTypes.Role, session.Account.Role.ToString()),
             new Claim(Constants.Claims.SessionId, session.Id.ToString()),
             new Claim(Constants.Claims.EmailVerified, Constants.Claims.VerifiedValue)
         }, Constants.AuthenticationScheme));

@@ -34,7 +34,8 @@ public sealed record VerifyEmailCode(
 public sealed record EmailCodeResponse(Guid ChallengeId, DateTimeOffset ExpiresAt, DateTimeOffset ResendAt);
 public sealed record AuthBootstrap(UserDto? User, bool EmailConfirmed, string? MaskedEmail,
     bool PhoneConfirmed, string CsrfToken, bool Enabled, bool DevelopmentMailbox);
-public sealed record AuthAccount(Guid Id, string Email, string DisplayName, DateTimeOffset EmailConfirmedAt, bool IsBlocked = false, string? Nickname = null);
+public sealed record AuthAccount(Guid Id, string Email, string DisplayName, DateTimeOffset EmailConfirmedAt, bool IsBlocked = false, string? Nickname = null,
+    AccountRole Role = AccountRole.Member);
 public sealed record AuthSession(Guid Id, AuthAccount Account, DateTimeOffset ExpiresAt);
 public sealed record EmailChallenge(Guid Id, string Email, string DisplayName, string CodeHash,
     string BindingHash, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt,

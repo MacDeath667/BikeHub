@@ -8,7 +8,7 @@ public record Page<T>(IReadOnlyList<T> Items, int Total, int PageNumber, int Pag
 }
 
 public record UserDto(Guid Id, string Name, string Handle, string City, string Initials,
-    string Color, string Bio, int Followers, bool IsFollowing, int BikesCount, int PostsCount, string? AvatarUrl = null, bool IsModerator = false)
+    string Color, string Bio, int Followers, bool IsFollowing, int BikesCount, int PostsCount, string? AvatarUrl = null, bool IsModerator = false, bool IsAdmin = false)
 {
     public UserDto() : this(default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!, default!) { }
 }
