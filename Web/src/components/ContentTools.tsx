@@ -10,15 +10,35 @@ export function ContentTools({ bike, post, me, saved, notify }: {
   const [busy, setBusy] = useState(false);
   const item = post || bike!;
   const own = me?.id === (post ? post.author.id : bike?.ownerId);
+  const adminDeletion = !!post && !!me?.isAdmin && !own;
+  async function remove() {
+    if (busy) {
+      return;
+    }
+    const confirmation = adminDeletion
+      ? `Удалить запись «${post!.title}» пользователя ${post!.author.name}? Она исчезнет из ленты и бортжурнала, комментарии к ней станут недоступны.`
+      : post ? "Удалить запись?" : "Удалить велосипед вместе с бортжурналом?";
+    if (!window.confirm(confirmation)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await api(`/${post ? "posts" : "bikes"}/${item.id}`, { method: "DELETE" });
+      window.location.hash = post ? "/" : "/garage";
+      saved();
+      window.dispatchEvent(new Event("bikehub:content-changed"));
+      notify(post ? "Запись удалена" : "Велосипед удалён");
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   return <div className="content-tools">
-    {own && <><button className="text-button" onClick={() => setEditing(true)}>Редактировать</button>
-      <button className="text-button" disabled={busy} onClick={async () => {
-        if (!window.confirm(post ? "Удалить запись?" : "Удалить велосипед вместе с бортжурналом?")) return;
-        setBusy(true);
-        try { await api(`/${post ? "posts" : "bikes"}/${item.id}`, { method: "DELETE" }); saved(); window.dispatchEvent(new Event("bikehub:content-changed")); window.location.hash = post ? "/" : "/garage"; }
-        catch (e) { notify((e as Error).message); }
-        finally { setBusy(false); }
-      }}>Удалить</button></>}
+    {own && <button className="text-button" onClick={() => setEditing(true)}>Редактировать</button>}
+    {(own || adminDeletion) && <button className={`text-button${adminDeletion ? " danger" : ""}`} disabled={busy} onClick={remove}>
+      {adminDeletion ? "Удалить запись пользователя" : "Удалить"}
+    </button>}
     {me && !own && <ReportButton type={post ? 2 : 1} id={item.id} notify={notify} />}
     {editing && own && me && <CreateModal key={`${me.id}-${item.id}`} type={post ? "post" : "bike"} me={me} initialBike={bike} initialPost={post}
       close={() => setEditing(false)} onSuccess={() => { setEditing(false); saved(); window.dispatchEvent(new Event("bikehub:content-changed")); notify("Изменения сохранены"); }} />}

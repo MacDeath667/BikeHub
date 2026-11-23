@@ -23,6 +23,7 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     private const string InvalidPhotosTitle = "Выберите до 10 разных фотографий.";
     private const string MissingTitle = "Материал не найден.";
     private const string OwnContentTitle = "Изменять можно только свои материалы.";
+    private const string DeletePostTitle = "Удалять чужие записи может только администратор.";
     private const string MediaOwnershipTitle = "Выберите свою загруженную фотографию.";
     private const string ModeratorTitle = "Необходимы права модератора.";
     private const string HandleTakenTitle = Nicknames.TakenTitle;
@@ -313,7 +314,15 @@ public sealed class PostgresCommunityService(IDbContextFactory<BikeHubDbContext>
     {
         using var db = contexts.CreateDbContext();
         var post = db.Posts.SingleOrDefault(p => p.Id == id && !p.IsDeleted) ?? throw new CommunityProblem(404, MissingTitle);
-        Own(post.AuthorId); post.IsDeleted = true; post.ImageId = null; post.ImageIds = []; db.SaveChanges();
+        var actor = Actor();
+        if (actor.Id != post.AuthorId && actor is not { Role: AccountRole.Admin, IsBlocked: false })
+        {
+            throw new CommunityProblem(403, DeletePostTitle);
+        }
+        post.IsDeleted = true;
+        post.ImageId = null;
+        post.ImageIds = [];
+        db.SaveChanges();
     }
 
     public PostDto? SetLike(Guid id, bool active) => SetPostRelation(id, RelationKind.Like, active);
