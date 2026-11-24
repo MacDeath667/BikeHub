@@ -2,23 +2,27 @@ import { userHref } from "../api";
 import { RouteCover } from "./RouteCover";
 import { postExcerpt } from "./postMarkup";
 import { useState } from "react";
+import type { ReactNode } from "react";
+import { ContentTools } from "./ContentTools";
 import {
   Bookmark,
   Heart,
   MessageCircle,
 } from "lucide-react";
 import { api, categories, number, postCategories, relativeTime } from "../api";
-import type { Post } from "../api";
+import type { Post, User } from "../api";
 import { Avatar } from "./ui";
 
 export function PostActions({
   post,
   update,
   notify,
+  tools,
 }: {
   post: Post;
   update: (post: Post) => void;
   notify: (text: string) => void;
+  tools?: ReactNode;
 }) {
   const [busy, setBusy] = useState(false);
   async function mutate(kind: "like" | "bookmark") {
@@ -42,38 +46,41 @@ export function PostActions({
     }
   }
   return (
-    <div className="post-actions">
-      <button
-        disabled={busy}
-        className={post.isLiked ? "liked" : ""}
-        aria-label={post.isLiked ? "Убрать лайк" : "Нравится"}
-        aria-pressed={post.isLiked}
-        onClick={() => mutate("like")}
-      >
-        <Heart size={19} fill={post.isLiked ? "currentColor" : "none"} />
-        {number(post.likes)}
-      </button>
-      <a
-        href={`#/post/${post.id}?comments=1`}
-        aria-label={`Комментарии: ${post.commentsCount}`}
-      >
-        <MessageCircle size={19} />
-        {post.commentsCount}
-        <span className="comments-label">Обсудить</span>
-      </a>
-      <span className="actions-spacer" />
-      <button
-        disabled={busy}
-        aria-label={
-          post.isSaved ? "Удалить из закладок" : "Сохранить в закладки"
-        }
-        aria-pressed={post.isSaved}
-        className={post.isSaved ? "saved" : ""}
-        onClick={() => mutate("bookmark")}
-      >
-        <Bookmark size={19} fill={post.isSaved ? "currentColor" : "none"} />
-      </button>
-    </div>
+    <footer className="post-footer">
+      <div className="post-actions">
+        <button
+          disabled={busy}
+          className={post.isLiked ? "liked" : ""}
+          aria-label={post.isLiked ? "Убрать лайк" : "Нравится"}
+          aria-pressed={post.isLiked}
+          onClick={() => mutate("like")}
+        >
+          <Heart size={19} fill={post.isLiked ? "currentColor" : "none"} />
+          {number(post.likes)}
+        </button>
+        <a
+          href={`#/post/${post.id}?comments=1`}
+          aria-label={`Комментарии: ${post.commentsCount}`}
+        >
+          <MessageCircle size={19} />
+          {post.commentsCount}
+          <span className="comments-label">Обсудить</span>
+        </a>
+        <span className="actions-spacer" />
+        <button
+          disabled={busy}
+          aria-label={
+            post.isSaved ? "Удалить из закладок" : "Сохранить в закладки"
+          }
+          aria-pressed={post.isSaved}
+          className={post.isSaved ? "saved" : ""}
+          onClick={() => mutate("bookmark")}
+        >
+          <Bookmark size={19} fill={post.isSaved ? "currentColor" : "none"} />
+        </button>
+      </div>
+      {tools}
+    </footer>
   );
 }
 
@@ -81,11 +88,24 @@ export function PostCard({
   post,
   update,
   notify,
+  me = null,
 }: {
   post: Post;
   update: (post: Post) => void;
   notify: (s: string) => void;
+  me?: User | null;
 }) {
+  const [removed, setRemoved] = useState(false);
+  async function refresh() {
+    try {
+      update(await api<Post>(`/posts/${post.id}`));
+    } catch (e) {
+      notify((e as Error).message);
+    }
+  }
+  if (removed) {
+    return null;
+  }
   return (
     <article className="post-card">
       <div className="post-author">
@@ -124,7 +144,9 @@ export function PostCard({
             </a>
           ))}
         </div>
-        <PostActions post={post} update={update} notify={notify} />
+        <PostActions post={post} update={update} notify={notify} tools={me &&
+          <ContentTools post={post} me={me} saved={refresh} deleted={() => setRemoved(true)} redirectAfterDelete={false} notify={notify} />
+        } />
       </div>
     </article>
   );

@@ -150,6 +150,7 @@ export function Feed({
             <div className="post-list">
               {data.items.map((item) => item.kind === 2 ? <GroupEntryCard key={item.id} entry={item.groupEntry} /> : (
                 <PostCard
+                  me={me}
                   key={item.id}
                   post={item.post}
                   update={update}

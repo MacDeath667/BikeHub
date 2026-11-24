@@ -345,7 +345,7 @@ export default function App() {
                       onCreate={() => create("post")}
                     />
                   )}
-                  {section === "search" && <SearchResults search={searchQuery} kind={resultKind} page={resultPage} version={version} key={me?.id || "guest"} notify={notify} />}
+                  {section === "search" && <SearchResults search={searchQuery} kind={resultKind} page={resultPage} version={version} key={me?.id || "guest"} me={me} notify={notify} />}
                   {(section === "bikes" || (section === "garage" && me)) && (
                     <BikeDirectory
                       key={`${section}-${version}`}

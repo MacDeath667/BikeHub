@@ -3,8 +3,9 @@ import { api } from "../api";
 import type { Bike, Post, User } from "../api";
 import { CreateModal } from "./CreateModal";
 
-export function ContentTools({ bike, post, me, saved, notify }: {
+export function ContentTools({ bike, post, me, saved, deleted, redirectAfterDelete = true, notify }: {
   bike?: Bike; post?: Post; me: User | null; saved: () => void; notify: (s: string) => void;
+  deleted?: () => void; redirectAfterDelete?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -24,8 +25,10 @@ export function ContentTools({ bike, post, me, saved, notify }: {
     setBusy(true);
     try {
       await api(`/${post ? "posts" : "bikes"}/${item.id}`, { method: "DELETE" });
-      window.location.hash = post ? "/" : "/garage";
-      saved();
+      if (redirectAfterDelete) {
+        window.location.hash = post ? "/" : "/garage";
+      }
+      (deleted || saved)();
       window.dispatchEvent(new Event("bikehub:content-changed"));
       notify(post ? "Запись удалена" : "Велосипед удалён");
     } catch (e) {

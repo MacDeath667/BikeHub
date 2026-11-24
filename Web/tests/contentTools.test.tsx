@@ -8,12 +8,19 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http:
 for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, navigator: dom.window.navigator, HTMLElement: dom.window.HTMLElement, Event: dom.window.Event, IS_REACT_ACT_ENVIRONMENT: true })) {
   Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
 }
+dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
 const { render, screen, fireEvent, cleanup, waitFor, act } = await import("@testing-library/react");
 const { ContentTools } = await import("../src/components/ContentTools");
+const { PostCard } = await import("../src/components/PostCard");
+const { BikeDetail } = await import("../src/pages/Bikes");
+const { Feed } = await import("../src/pages/Feed");
+const { PostDetail } = await import("../src/pages/PostDetail");
+const { SearchResults } = await import("../src/pages/SearchResults");
 const author: User = { id: "author", name: "Автор", handle: "author", city: "", initials: "А", color: "green", bio: "", followers: 0, isFollowing: false, bikesCount: 1, postsCount: 1 };
 const admin: User = { ...author, id: "admin", isAdmin: true, isModerator: true };
-const bike: Bike = { id: "bike", ownerId: author.id, name: "Велосипед", description: "", brand: "Brand", category: "gravel", year: 2026, mileage: 0, imageUrl: "", color: "green", owner: author };
-const post: Post = { id: "post", author, bike, title: "Запись для проверки", content: "Текст", category: "ride", imageUrl: "", tags: [], createdAt: "2026-11-23T10:00:00Z", likes: 0, commentsCount: 0, isLiked: false, isSaved: false };
+const bike: Bike = { id: "bike", ownerId: author.id, name: "Велосипед", description: "", brand: "Brand", category: "gravel", year: 2026, mileage: 0, imageUrl: "/bike.webp", color: "green", owner: author };
+const post: Post = { id: "post", author, bike, title: "Запись для проверки", content: "Текст", category: "ride", imageUrl: "/post.webp", tags: [], createdAt: "2026-11-23T10:00:00Z", likes: 0, commentsCount: 0, isLiked: false, isSaved: false };
 const noop = () => {};
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 let requests: string[];
@@ -113,5 +120,49 @@ for (const type of ["post", "bike"] as const) {
     await waitFor(() => assert.equal(saved, true));
     assert.deepEqual(requests, [`DELETE /api/${type === "post" ? "posts/post" : "bikes/bike"}`]);
     assert.equal(window.location.hash, type === "post" ? "#/" : "#/garage");
+  });
+}
+
+test("deleting from a card removes it without leaving the current bike page", async () => {
+  window.location.hash = "/bike/bike";
+  const notices: string[] = [];
+  render(<PostCard post={post} me={admin} update={noop} notify={text => notices.push(text)} />);
+  const button = screen.getByRole("button", { name: "Удалить запись пользователя" });
+  assert.ok(button.closest(".post-footer"));
+  fireEvent.click(button);
+  await waitFor(() => assert.equal(screen.queryByRole("article") === null, true));
+  assert.deepEqual(requests, ["DELETE /api/posts/post"]);
+  assert.equal(window.location.hash, "#/bike/bike");
+  assert.deepEqual(notices, ["Запись удалена"]);
+});
+
+for (const context of ["bike history", "feed", "search", "post detail"] as const) {
+  test(`administrator actions are available in the footer of ${context}`, async () => {
+    const page = (items: unknown[]) => ({ items, total: items.length, page: 1, pageSize: 5, hasMore: false });
+    globalThis.fetch = async input => {
+      const url = new URL(String(input));
+      if (url.pathname === "/api/bikes/bike") {
+        return json(bike);
+      }
+      if (url.pathname === "/api/posts/post") {
+        return json(post);
+      }
+      if (url.pathname === "/api/posts/post/comments") {
+        return json(page([]));
+      }
+      if (url.pathname === "/api/bikes/bike/history" || url.pathname === "/api/search/posts") {
+        return json(page([post]));
+      }
+      assert.equal(url.pathname, "/api/feed/timeline");
+      return json(page([{ id: "post:post", kind: 1, createdAt: post.createdAt, post, groupEntry: null }]));
+    };
+    const view = context === "bike history" ? <BikeDetail id={bike.id} me={admin} version={0} onCreate={noop} notify={noop} />
+      : context === "feed" ? <Feed saved={false} search="" version={0} me={admin} notify={noop} onCreate={noop} />
+      : context === "search" ? <SearchResults search="Запись" kind="posts" page={1} version={0} me={admin} notify={noop} />
+      : <PostDetail id={post.id} me={admin} notify={noop} />;
+    render(view);
+    const button = await screen.findByRole("button", { name: "Удалить запись пользователя" });
+    assert.ok(button.closest(".post-footer"));
+    assert.equal(screen.queryByRole("button", { name: "Редактировать" }), null);
   });
 }

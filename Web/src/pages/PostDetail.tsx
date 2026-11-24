@@ -105,7 +105,6 @@ export function PostDetail({
       <a className="back-link" href="#/">
         <ArrowLeft size={16} />В ленту
       </a>
-      <ContentTools post={post} me={me} saved={() => { setPage(1); setRevision(v => v + 1); }} notify={notify} />
       <article className="post-detail">
         <div className="detail-article-head">
           <span className={`post-kind ${post.category}`}>
@@ -139,7 +138,9 @@ export function PostDetail({
               </a>
             ))}
           </div>
-          <PostActions post={post} update={setPost} notify={notify} />
+          <PostActions post={post} update={setPost} notify={notify} tools={me &&
+            <ContentTools post={post} me={me} saved={() => { setPage(1); setRevision(v => v + 1); }} notify={notify} />
+          } />
         </div>
       </article>
       <section className="comments-section" id="comments">

@@ -251,6 +251,7 @@ export function BikeDetail({
         <div className="post-list">
           {posts.map((p) => (
             <PostCard
+              me={me}
               key={p.id}
               post={p}
               update={(next) =>
