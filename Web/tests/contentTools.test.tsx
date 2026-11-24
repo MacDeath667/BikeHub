@@ -128,7 +128,8 @@ test("deleting from a card removes it without leaving the current bike page", as
   window.location.hash = "/bike/bike";
   const notices: string[] = [];
   render(<PostCard post={post} me={admin} update={noop} notify={text => notices.push(text)} />);
-  const button = screen.getByRole("button", { name: "Удалить запись пользователя" });
+  fireEvent.click(screen.getByRole("button", { name: "Меню модерации" }));
+  const button = screen.getByRole("menuitem", { name: "Удалить запись пользователя" });
   assert.ok(button.closest(".post-footer"));
   fireEvent.click(button);
   await waitFor(() => assert.equal(screen.queryByRole("article") === null, true));
@@ -152,9 +153,10 @@ test("editing from a card loads the full post before opening the form", async ()
     return json({ revision: 0, state: null, photos: [], updatedAt: null });
   };
   render(<PostCard post={post} me={author} update={noop} notify={noop} />);
-  const button = screen.getByRole("button", { name: "Редактировать" }) as HTMLButtonElement;
-  fireEvent.click(button);
-  assert.equal(button.disabled, true);
+  const trigger = screen.getByRole("button", { name: "Действия с записью" }) as HTMLButtonElement;
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Редактировать" }));
+  assert.equal(trigger.disabled, true);
   assert.equal(screen.queryByRole("dialog"), null);
   await act(async () => { finish(json(full)); });
   await waitFor(() => assert.equal((screen.getByLabelText("Заголовок") as HTMLInputElement).value, full.title));
@@ -187,8 +189,63 @@ for (const context of ["bike history", "feed", "search", "post detail"] as const
       : context === "search" ? <SearchResults search="Запись" kind="posts" page={1} version={0} me={admin} notify={noop} />
       : <PostDetail id={post.id} me={admin} notify={noop} />;
     render(view);
-    const button = await screen.findByRole("button", { name: "Удалить запись пользователя" });
+    const button = await screen.findByRole("button", { name: "Меню модерации" });
     assert.ok(button.closest(".post-footer"));
-    assert.equal(screen.queryByRole("button", { name: "Редактировать" }), null);
+    assert.equal(screen.queryByRole("menu"), null);
+    assert.equal(button.textContent, "");
+    fireEvent.click(button);
+    assert.ok(screen.getByRole("menuitem", { name: "Удалить запись пользователя" }));
+    assert.equal(screen.queryByRole("menuitem", { name: "Редактировать" }), null);
   });
 }
+
+test("the icon menu exposes only the current viewer's actions and closes after losing the role", () => {
+  const view = render(<ContentTools post={post} me={admin} compact saved={noop} notify={noop} />);
+  fireEvent.click(screen.getByRole("button", { name: "Меню модерации" }));
+  assert.equal(screen.getByRole("menuitem", { name: "Жалобы на материалы" }).getAttribute("href"), "#/moderation");
+  assert.ok(screen.getByRole("menuitem", { name: "Удалить запись пользователя" }));
+  const member = { ...author, id: "member" };
+  view.rerender(<ContentTools post={post} me={member} compact saved={noop} notify={noop} />);
+  assert.equal(screen.queryByRole("menu"), null);
+  fireEvent.click(screen.getByRole("button", { name: "Действия с записью" }));
+  assert.equal(screen.getAllByRole("menuitem").length, 1);
+  assert.ok(screen.getByRole("menuitem", { name: "Пожаловаться" }));
+  view.rerender(<ContentTools post={post} me={{ ...member, isModerator: true }} compact saved={noop} notify={noop} />);
+  fireEvent.click(screen.getByRole("button", { name: "Меню модерации" }));
+  assert.equal(screen.queryByRole("menuitem", { name: /Удалить/ }), null);
+  view.rerender(<ContentTools post={post} me={author} compact saved={noop} notify={noop} />);
+  fireEvent.click(screen.getByRole("button", { name: "Действия с записью" }));
+  assert.ok(screen.getByRole("menuitem", { name: "Редактировать" }));
+  assert.ok(screen.getByRole("menuitem", { name: "Удалить", exact: true }));
+});
+
+test("the menu supports keyboard navigation, Escape, focus restoration and outside dismissal", () => {
+  render(<><ContentTools post={post} me={admin} compact saved={noop} notify={noop} /><button>Снаружи</button></>);
+  const trigger = screen.getByRole("button", { name: "Меню модерации" });
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  assert.equal(document.activeElement, screen.getByRole("menuitem", { name: "Удалить запись пользователя" }));
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+  assert.equal(document.activeElement, screen.getByRole("menuitem", { name: "Жалобы на материалы" }));
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  assert.equal(screen.queryByRole("menu"), null);
+  assert.equal(document.activeElement, trigger);
+  fireEvent.click(trigger);
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Снаружи" }));
+  assert.equal(screen.queryByRole("menu"), null);
+});
+
+test("choosing a report closes the menu but clicking outside does not discard the report form", () => {
+  render(<><ContentTools post={post} me={admin} compact saved={noop} notify={noop} /><button>Снаружи</button></>);
+  fireEvent.click(screen.getByRole("button", { name: "Меню модерации" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Пожаловаться" }));
+  assert.equal(screen.queryByRole("menu"), null);
+  const textarea = screen.getByLabelText("Причина") as HTMLTextAreaElement;
+  assert.equal(document.activeElement, textarea);
+  fireEvent.change(textarea, { target: { value: "Причина жалобы" } });
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Снаружи" }));
+  assert.equal(textarea.value, "Причина жалобы");
+  assert.deepEqual(requests, []);
+  fireEvent.click(screen.getByRole("button", { name: "Отмена" }));
+  assert.equal(screen.queryByLabelText("Причина"), null);
+});

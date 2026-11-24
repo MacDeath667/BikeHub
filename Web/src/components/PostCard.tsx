@@ -145,7 +145,7 @@ export function PostCard({
           ))}
         </div>
         <PostActions post={post} update={update} notify={notify} tools={me &&
-          <ContentTools post={post} me={me} saved={refresh} deleted={() => setRemoved(true)} redirectAfterDelete={false} loadPostForEditing notify={notify} />
+          <ContentTools post={post} me={me} saved={refresh} deleted={() => setRemoved(true)} redirectAfterDelete={false} loadPostForEditing compact notify={notify} />
         } />
       </div>
     </article>

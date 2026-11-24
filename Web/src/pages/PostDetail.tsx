@@ -139,7 +139,7 @@ export function PostDetail({
             ))}
           </div>
           <PostActions post={post} update={setPost} notify={notify} tools={me &&
-            <ContentTools post={post} me={me} saved={() => { setPage(1); setRevision(v => v + 1); }} notify={notify} />
+            <ContentTools post={post} me={me} saved={() => { setPage(1); setRevision(v => v + 1); }} compact notify={notify} />
           } />
         </div>
       </article>
