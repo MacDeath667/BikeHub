@@ -3,15 +3,35 @@ import { api } from "../api";
 import type { Bike, Post, User } from "../api";
 import { CreateModal } from "./CreateModal";
 
-export function ContentTools({ bike, post, me, saved, deleted, redirectAfterDelete = true, notify }: {
+export function ContentTools({ bike, post, me, saved, deleted, redirectAfterDelete = true, loadPostForEditing = false, notify }: {
   bike?: Bike; post?: Post; me: User | null; saved: () => void; notify: (s: string) => void;
   deleted?: () => void; redirectAfterDelete?: boolean;
+  loadPostForEditing?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
+  const [editorPost, setEditorPost] = useState<Post | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const item = post || bike!;
   const own = me?.id === (post ? post.author.id : bike?.ownerId);
   const adminDeletion = !!post && !!me?.isAdmin && !own;
+  async function edit() {
+    if (busy) {
+      return;
+    }
+    if (!post || !loadPostForEditing) {
+      setEditing(true);
+      return;
+    }
+    setBusy(true);
+    try {
+      setEditorPost(await api<Post>(`/posts/${post.id}`));
+      setEditing(true);
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function remove() {
     if (busy) {
       return;
@@ -38,12 +58,12 @@ export function ContentTools({ bike, post, me, saved, deleted, redirectAfterDele
     }
   }
   return <div className="content-tools">
-    {own && <button className="text-button" onClick={() => setEditing(true)}>Редактировать</button>}
+    {own && <button className="text-button" disabled={busy} onClick={edit}>Редактировать</button>}
     {(own || adminDeletion) && <button className={`text-button${adminDeletion ? " danger" : ""}`} disabled={busy} onClick={remove}>
       {adminDeletion ? "Удалить запись пользователя" : "Удалить"}
     </button>}
     {me && !own && <ReportButton type={post ? 2 : 1} id={item.id} notify={notify} />}
-    {editing && own && me && <CreateModal key={`${me.id}-${item.id}`} type={post ? "post" : "bike"} me={me} initialBike={bike} initialPost={post}
+    {editing && own && me && <CreateModal key={`${me.id}-${item.id}`} type={post ? "post" : "bike"} me={me} initialBike={bike} initialPost={editorPost || post}
       close={() => setEditing(false)} onSuccess={() => { setEditing(false); saved(); window.dispatchEvent(new Event("bikehub:content-changed")); notify("Изменения сохранены"); }} />}
   </div>;
 }

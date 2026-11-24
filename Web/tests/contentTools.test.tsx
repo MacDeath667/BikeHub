@@ -26,6 +26,7 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 let requests: string[];
 beforeEach(() => {
   requests = [];
+  window.localStorage.clear();
   window.location.hash = "/post/post";
   window.confirm = () => true;
   globalThis.fetch = async (input, init) => {
@@ -134,6 +135,31 @@ test("deleting from a card removes it without leaving the current bike page", as
   assert.deepEqual(requests, ["DELETE /api/posts/post"]);
   assert.equal(window.location.hash, "#/bike/bike");
   assert.deepEqual(notices, ["Запись удалена"]);
+});
+
+test("editing from a card loads the full post before opening the form", async () => {
+  const full = { ...post, title: "Полный заголовок", content: "Полное содержимое записи", photos: [{ id: "019a95c0-00ab-7000-8000-000000000001", imageUrl: "/attached.webp" }] };
+  let finish: (response: Response) => void = noop;
+  globalThis.fetch = async input => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/api/posts/post") {
+      return new Promise(resolve => { finish = resolve; });
+    }
+    if (path === "/api/users/author/bikes") {
+      return json({ items: [bike] });
+    }
+    assert.equal(path, "/api/drafts/post-post");
+    return json({ revision: 0, state: null, photos: [], updatedAt: null });
+  };
+  render(<PostCard post={post} me={author} update={noop} notify={noop} />);
+  const button = screen.getByRole("button", { name: "Редактировать" }) as HTMLButtonElement;
+  fireEvent.click(button);
+  assert.equal(button.disabled, true);
+  assert.equal(screen.queryByRole("dialog"), null);
+  await act(async () => { finish(json(full)); });
+  await waitFor(() => assert.equal((screen.getByLabelText("Заголовок") as HTMLInputElement).value, full.title));
+  assert.equal((screen.getByLabelText("Ваша история") as HTMLTextAreaElement).value, full.content);
+  assert.ok(screen.getByRole("img", { name: "Фотография 1" }));
 });
 
 for (const context of ["bike history", "feed", "search", "post detail"] as const) {
